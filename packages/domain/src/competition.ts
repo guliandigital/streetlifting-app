@@ -2,6 +2,17 @@ import { z } from 'zod';
 import { CompetitionId, FederationId, DisciplineId } from './ids.js';
 import { CompetitionStatus } from './enums.js';
 
+/**
+ * IANA time zone identifier of the venue, e.g. "Europe/Moscow",
+ * "Europe/Kaliningrad", "Asia/Yekaterinburg". REQUIRED — every competition
+ * has one timezone, used for all wall-clock displays during operation
+ * (schedule, attempt clocks, announcements). See ADR-0006 §"Timezones".
+ *
+ * All timestamps elsewhere in the system are UTC ISO 8601; this is the
+ * single field that controls how they render to operators on the platform.
+ */
+const Timezone = z.string().min(3).max(64).regex(/^[A-Za-z_]+(?:\/[A-Za-z_+\-0-9]+)+$/);
+
 export const Competition = z.object({
   id: CompetitionId,
   federationId: FederationId,
@@ -15,8 +26,11 @@ export const Competition = z.object({
   registrationDeadline: z.string().datetime().optional(),
   city: z.string().optional(),
   venue: z.string().optional(),
+  /** IANA TZ of the venue. */
+  timezone: Timezone,
   status: CompetitionStatus,
-  entryFeeRub: z.number().nonnegative().default(0),
+  /** Entry fee in kopecks (see ADR-0006). */
+  entryFeeKopecks: z.number().int().nonnegative().default(0),
   disciplineIds: z.array(DisciplineId).default([]),
   isOnlineRegistrationOpen: z.boolean().default(true),
   createdAt: z.string().datetime(),

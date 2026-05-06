@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+.turbo
+.next
+coverage
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/gen
+pnpm-lock.yaml
+*.lock
+*.png
+*.ico
+*.icns
+*.zip

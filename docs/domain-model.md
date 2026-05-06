@@ -10,12 +10,47 @@ Federation ────┬── Competition ────┬── Division ─�
                │                   ├── Platform ── Flight ── Group
                │                   ├── JudgeAssignment
                │                   ├── Nomination ── Attempt
+               │                   ├── PlateSet (per-comp override; default ISF v5.1)
                │                   └── (Award, Certificate)
                │
-               ├── Receipt (top-up)
+               ├── Receipt (top-up)         ── all amounts in integer kopecks (ADR-0006)
                ├── Writeoff (consumption)
+               ├── PlateSet (federation default)
+               ├── VeteranCoefficient (federation override; default ISF v5.1 §10.9.4)
+               ├── Attachment (athlete photos, federation page files, certificate PDFs)
+               ├── Consent (152-ФЗ, first-class entity, audit-logged on grant + revoke)
+               ├── Record (best-ever per discipline × division × class × scope)
                └── User ── RoleAssignment
 ```
+
+## Reference data (presets/)
+
+`packages/domain/src/presets/` ships ISF v5.1 reference data ported from V1 (where 571 tests verified it):
+
+- 9 age categories with **M5 60–69 / M6 70+** split (the §10.9.4 correctness differentiator vs PowerTable / PowerGage)
+- 7 women's + 12 men's weight categories, M_52 men restricted to youth/junior
+- 19 disciplines (3 Classic + 16 Multirep variants)
+- ISF §6.6 plate set with canonical colours + 1.25 kg increment rule
+- §10.9.5 bodyweight-limit additional-points formula
+- §2.2 Multirep mandatory loads
+
+Federations clone these into their own `VeteranCoefficient` / `PlateSet` / discipline catalogue records and may override per their own rulebook (every override is audit-logged).
+
+`packages/domain/src/calculations/isfAbsoluteCoefficient` ports the published streetlifting.ru/points absolute-coefficient formula with all six (sex × event) curves.
+
+## Money
+
+Every monetary field is **integer kopecks** (1/100 RUB). Field names end in `...Kopecks`. See ADR-0006 for the full rationale.
+
+- `Federation.billingTariffKopecksPerNomination`
+- `Receipt.amountKopecks`
+- `Competition.entryFeeKopecks`
+
+Display conversion happens at the leaf component via the `formatRub(kopecks)` helper. Intermediate calculations stay in integer kopecks.
+
+## Time
+
+All timestamps in storage and on the wire are **UTC ISO 8601**. Each `Competition` carries a required IANA `timezone` (e.g. `"Europe/Moscow"`, `"Europe/Kaliningrad"`, `"Asia/Yekaterinburg"`) — that field is the *only* knob controlling how operator-facing surfaces render local time. See ADR-0006.
 
 ## Entities
 
@@ -83,6 +118,21 @@ Award = the place / title / rank earned. Certificate = the printed grammota (PDF
 
 ### SyncEvent
 The append-only log that powers offline-first. Every mutation in the desktop client writes one. Server orders by Lamport clock. See `architecture.md`.
+
+### Record
+Best-ever performance per (discipline × division × weight class × scope). Scope is one of `federation`, `national`, `continental`, `world`. Updated when an attempt qualifies; ratification is a separate step done by jury. Updates are audit-logged.
+
+### PlateSet
+Named collection of plates with bar + collar weight and increment rule. Default ISF v5.1 set lives in `presets/plates.ts`; a federation may register its own (e.g. gym-specific inventory) and override per competition.
+
+### VeteranCoefficient
+Multiplier per Masters tier. Defaults from ISF v5.1 §10.9.4 (M1=1.025, M2=1.05, M3=1.075, M4=1.1, M5=1.125, M6=1.15) live as a preset. Federations may override per tier with effective-from / effective-to dates; every change is audit-logged.
+
+### Consent
+First-class 152-ФЗ consent record. One row per consent grant; revocation creates a new row with `revokedAt`. Captures the exact text shown to the data subject + locale + version + IP/user-agent of grant. Audit-logged on grant and revocation. See ADR-0004 §"Personal data".
+
+### Attachment
+Generic file attachment. Stores metadata + sha256 for integrity; bytes live on disk under a sandboxed path. MIME validated by magic bytes (not extension), size capped per endpoint, images re-encoded server-side. See ADR-0004 §"Input validation".
 
 ## Status lifecycles
 

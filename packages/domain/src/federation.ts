@@ -15,7 +15,8 @@ export const Federation = z.object({
   websiteUrl: z.string().url().optional(),
   chiefAccountantName: z.string().optional(),
   cashierName: z.string().optional(),
-  billingTariffRubPerNomination: z.number().nonnegative(),
+  /** Tariff in kopecks per single weighed-in nomination (see ADR-0006). */
+  billingTariffKopecksPerNomination: z.number().int().nonnegative(),
   securityKey: z.string().uuid(),
   isPublicResultsClosed: z.boolean().default(false),
   notificationsDisabled: z.boolean().default(false),

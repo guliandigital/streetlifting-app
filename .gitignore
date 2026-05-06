@@ -49,3 +49,7 @@ coverage/
 ~/.tauri/
 *.key
 *.pem
+
+# Source assets too big to track here (curated subset is in apps/web/public/brand/)
+Streetlifting_app_logo_pack.zip
+_logo_pack_unpack/

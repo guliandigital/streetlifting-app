@@ -1,0 +1,38 @@
+# Local development stack. Run `docker compose up -d` from the repo root
+# before `pnpm dev`. Production runs on reg.ru — see docs/architecture.md.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: streetlifting-pg
+    environment:
+      POSTGRES_USER: streetlifting
+      POSTGRES_PASSWORD: streetlifting
+      POSTGRES_DB: streetlifting
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U streetlifting -d streetlifting']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: streetlifting-redis
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pg-data:
+  redis-data:

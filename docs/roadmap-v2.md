@@ -18,6 +18,14 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [x] Domain Zod schemas for the 14 core entities
 - [x] Module-isolation primitives: `LazyModule` + `ModuleErrorBoundary` (web), `loadPlugins` (api)
 - [x] First isolation-checked feature stub: `_health`
+- [x] Security baseline (ADR-0004): helmet+strict CSP, CORS allowlist, error handler, audit primitive
+- [x] Logging+audit (ADR-0005): pino with PII redact list, request-context UUIDv7, `audit.record` API
+- [x] Brand: palette + logo pack curated subset wired (favicons, app header symbol, Tauri icons, Tailwind tokens)
+- [x] Money in integer kopecks + per-competition IANA timezone (ADR-0006)
+- [x] ISF v5.1 reference presets ported from V1 with M5/M6 70+→1.150 split preserved
+- [x] ISF absolute-coefficient calculation ported from V1
+- [x] New domain entities: Record, PlateSet, VeteranCoefficient, Consent, Attachment
+- [x] Tooling: ESLint flat config (cross-feature import ban + no-console for web), Prettier, lefthook (gitleaks + prettier + eslint pre-commit, commitlint, typecheck+test pre-push), commitlint, vitest configs, .browserslistrc, docker-compose for Postgres+Redis, PR template, CONTRIBUTING.md
 
 ### M1 — Foundations (Week 1–2)
 - [ ] Prisma schema generated from domain types; migrations against Postgres 16 on reg.ru

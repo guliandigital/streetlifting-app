@@ -1,9 +1,28 @@
 @import 'tailwindcss';
 
+/* Brand palette — see docs/brand/COLOR_PALETTE.txt */
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-charcoal: #10151d;
+  --color-brand-charcoal-alt: #0d1219;
+  --color-brand-lime: #99cd14;
+  --color-brand-white: #ffffff;
+
+  --color-bg: var(--color-brand-charcoal);
+  --color-bg-alt: var(--color-brand-charcoal-alt);
+  --color-fg: var(--color-brand-white);
+  --color-accent: var(--color-brand-lime);
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
 }

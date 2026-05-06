@@ -8,7 +8,8 @@ export const Receipt = z.object({
   number: z.string().min(1),
   date: z.string().date(),
   nominationsCount: z.number().int().positive(),
-  amountRub: z.number().nonnegative(),
+  /** Money is stored as integer kopecks (see ADR-0006). 100 kopecks = 1 RUB. */
+  amountKopecks: z.number().int().nonnegative(),
   paymentMethod: PaymentMethod,
   expiresAt: z.string().date(),
   externalReference: z.string().optional(),

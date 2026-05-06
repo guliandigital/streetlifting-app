@@ -1,0 +1,6 @@
+Streetlifting.app color palette
+
+Dark Charcoal: #10151D / RGB 16 21 29
+Dark Alt:      #0D1219 / RGB 13 18 25
+Lime Accent:   #99CD14 / RGB 153 205 20
+White:         #FFFFFF / RGB 255 255 255

@@ -90,3 +90,39 @@ export type PaymentMethod = z.infer<typeof PaymentMethod>;
 
 export const NotificationChannel = z.enum(['telegram', 'email', 'webhook']);
 export type NotificationChannel = z.infer<typeof NotificationChannel>;
+
+export const ConsentScope = z.enum([
+  'data_processing',
+  'marketing_email',
+  'marketing_telegram',
+  'public_results',
+  'photo_publication',
+]);
+export type ConsentScope = z.infer<typeof ConsentScope>;
+
+export const AttachmentKind = z.enum([
+  'athlete_photo',
+  'federation_file',
+  'competition_file',
+  'certificate_pdf',
+  'protocol_pdf',
+  'misc',
+]);
+export type AttachmentKind = z.infer<typeof AttachmentKind>;
+
+export const CompetitionFormat = z.enum(['classic', 'multirep']);
+export type CompetitionFormat = z.infer<typeof CompetitionFormat>;
+
+export const Event = z.enum(['PU', 'DI', 'PUDI']);
+export type Event = z.infer<typeof Event>;
+
+export const PlateColor = z.enum([
+  'red',
+  'blue',
+  'yellow',
+  'green',
+  'white',
+  'black',
+  'gray',
+]);
+export type PlateColor = z.infer<typeof PlateColor>;

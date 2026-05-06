@@ -1,0 +1,30 @@
+# Git hooks via lefthook (https://github.com/evilmartians/lefthook).
+# Install once per clone: `pnpm exec lefthook install`.
+# See ADR-0004 §"Secrets" and ADR-0003 (lint enforces no-cross-feature imports).
+
+pre-commit:
+  parallel: true
+  commands:
+    gitleaks:
+      run: pnpm exec gitleaks protect --staged --redact --no-banner
+      fail_text: "Secrets detected in staged changes. Remove them and re-stage."
+    prettier:
+      glob: "*.{ts,tsx,js,json,md,yml,yaml,css,html}"
+      run: pnpm exec prettier --check {staged_files}
+      fail_text: "Run `pnpm exec prettier --write {staged_files}` and re-stage."
+    eslint:
+      glob: "*.{ts,tsx,js}"
+      run: pnpm exec eslint --max-warnings 0 {staged_files}
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}
+
+pre-push:
+  parallel: false
+  commands:
+    typecheck:
+      run: pnpm typecheck
+    test:
+      run: pnpm test

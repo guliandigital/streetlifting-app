@@ -1,0 +1,16 @@
+title = "streetlifting-app gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow placeholder/example secrets in docs and .env.example"
+paths = [
+  '''\.env\.example''',
+  '''docs/''',
+  '''_logo_pack_unpack/''',
+]
+regexes = [
+  # Tauri minisign pubkey is a public key, base64-encoded — safe to commit.
+  '''dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6'''
+]
