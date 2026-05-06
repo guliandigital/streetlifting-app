@@ -5,6 +5,10 @@ export interface FeaturePlugin {
   register: FastifyPluginAsync;
 }
 
+// Helper accepts any FastifyInstance variant — the precise generic params
+// (logger type, server type) are irrelevant to plugin loading.
+type AnyFastifyInstance = FastifyInstance<never, never, never, never, never>;
+
 /**
  * Register feature plugins independently. A failure in one plugin is logged
  * and skipped — the rest of the API continues to come up. See ADR-0003.
@@ -12,7 +16,10 @@ export interface FeaturePlugin {
  * Each feature module owns its routes, schemas, and error handling. Plugins
  * MUST NOT import from each other.
  */
-export async function loadPlugins(app: FastifyInstance, plugins: FeaturePlugin[]): Promise<{
+export async function loadPlugins(
+  app: AnyFastifyInstance,
+  plugins: FeaturePlugin[],
+): Promise<{
   loaded: string[];
   failed: { name: string; error: unknown }[];
 }> {
