@@ -1,0 +1,26 @@
+{
+  "name": "streetlifting-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Streetlifting & weighted calisthenics competition platform — web + desktop",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "rimraf": "^6.0.1",
+    "turbo": "^2.3.0",
+    "typescript": "^5.6.3"
+  }
+}

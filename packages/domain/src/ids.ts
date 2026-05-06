@@ -1,0 +1,47 @@
+import { z } from 'zod';
+
+const idLike = z.string().uuid();
+
+export const FederationId = idLike.brand<'FederationId'>();
+export const UserId = idLike.brand<'UserId'>();
+export const CompetitionId = idLike.brand<'CompetitionId'>();
+export const DisciplineId = idLike.brand<'DisciplineId'>();
+export const DivisionId = idLike.brand<'DivisionId'>();
+export const WeightClassId = idLike.brand<'WeightClassId'>();
+export const AthleteId = idLike.brand<'AthleteId'>();
+export const NominationId = idLike.brand<'NominationId'>();
+export const AttemptId = idLike.brand<'AttemptId'>();
+export const FlightId = idLike.brand<'FlightId'>();
+export const GroupId = idLike.brand<'GroupId'>();
+export const PlatformId = idLike.brand<'PlatformId'>();
+export const JudgeId = idLike.brand<'JudgeId'>();
+export const JudgeAssignmentId = idLike.brand<'JudgeAssignmentId'>();
+export const ReceiptId = idLike.brand<'ReceiptId'>();
+export const WriteoffId = idLike.brand<'WriteoffId'>();
+export const AwardId = idLike.brand<'AwardId'>();
+export const CertificateId = idLike.brand<'CertificateId'>();
+export const InventoryItemId = idLike.brand<'InventoryItemId'>();
+export const SupportTicketId = idLike.brand<'SupportTicketId'>();
+export const EventId = idLike.brand<'EventId'>();
+
+export type FederationId = z.infer<typeof FederationId>;
+export type UserId = z.infer<typeof UserId>;
+export type CompetitionId = z.infer<typeof CompetitionId>;
+export type DisciplineId = z.infer<typeof DisciplineId>;
+export type DivisionId = z.infer<typeof DivisionId>;
+export type WeightClassId = z.infer<typeof WeightClassId>;
+export type AthleteId = z.infer<typeof AthleteId>;
+export type NominationId = z.infer<typeof NominationId>;
+export type AttemptId = z.infer<typeof AttemptId>;
+export type FlightId = z.infer<typeof FlightId>;
+export type GroupId = z.infer<typeof GroupId>;
+export type PlatformId = z.infer<typeof PlatformId>;
+export type JudgeId = z.infer<typeof JudgeId>;
+export type JudgeAssignmentId = z.infer<typeof JudgeAssignmentId>;
+export type ReceiptId = z.infer<typeof ReceiptId>;
+export type WriteoffId = z.infer<typeof WriteoffId>;
+export type AwardId = z.infer<typeof AwardId>;
+export type CertificateId = z.infer<typeof CertificateId>;
+export type InventoryItemId = z.infer<typeof InventoryItemId>;
+export type SupportTicketId = z.infer<typeof SupportTicketId>;
+export type EventId = z.infer<typeof EventId>;

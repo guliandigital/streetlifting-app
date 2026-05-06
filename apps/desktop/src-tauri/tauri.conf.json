@@ -1,0 +1,65 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Streetlifting",
+  "version": "0.1.0",
+  "identifier": "app.streetlifting.os",
+  "build": {
+    "beforeDevCommand": "pnpm --filter=@streetlifting/web dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm --filter=@streetlifting/web build",
+    "frontendDist": "../../web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Streetlifting",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": ["msi", "nsis", "app", "dmg", "appimage", "deb"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Utility",
+    "publisher": "Gulyan Digital",
+    "copyright": "© 2026 ИП Гулян А. Г.",
+    "homepage": "https://github.com/guliandigital/streetlifting-app",
+    "shortDescription": "Streetlifting & weighted calisthenics meet client",
+    "longDescription": "Streetlifting App — competition platform for streetlifting and weighted calisthenics. Browser-first, with offline-capable desktop client for tournament day."
+  },
+  "plugins": {
+    "fs": {
+      "scope": ["$APPDATA/*", "$DOCUMENT/*", "$DOWNLOAD/*", "$DESKTOP/*"]
+    },
+    "dialog": {},
+    "sql": {
+      "preload": ["sqlite:streetlifting.db"]
+    },
+    "updater": {
+      "_comment_pubkey": "Reusing the v1.4.1 pubkey AE2CE39D47158968 to preserve auto-update continuity once V2 ships its first stable installer. Private half lives at ~/.tauri/streetlifting-os.key on the maintainer's host (NEVER commit) and is mirrored into TAURI_SIGNING_PRIVATE_KEY GitHub Actions secret. Endpoint is the new repo's releases. v1.x users continue to receive updates from the legacy repo via its own latest.json — they will be migrated via a final v1.x release that points to the V2 installer.",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFFMkNFMzlENDcxNTg5NjgKUldSb2lSVkhuZU1zcnFxVVBEbGh2Mk5hU0t4TTFIa05uWHd4VmVINTRMTGdyVHJidldPZGNhWGEK",
+      "endpoints": [
+        "https://github.com/guliandigital/streetlifting-app/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
