@@ -6,8 +6,12 @@ pre-commit:
   parallel: true
   commands:
     gitleaks:
-      run: pnpm exec gitleaks protect --staged --redact --no-banner
-      fail_text: "Secrets detected in staged changes. Remove them and re-stage."
+      # Requires gitleaks installed on $PATH:
+      #   Windows : winget install gitleaks  (or scoop install gitleaks)
+      #   macOS   : brew install gitleaks
+      #   Linux   : see https://github.com/gitleaks/gitleaks#installing
+      run: gitleaks protect --staged --redact --no-banner
+      fail_text: "Secrets detected. Remove them and re-stage. (If gitleaks is not installed, see lefthook.yml.)"
     prettier:
       glob: "*.{ts,tsx,js,json,md,yml,yaml,css,html}"
       run: pnpm exec prettier --check {staged_files}

@@ -5,6 +5,10 @@
 - **Node 20** (use `nvm use` — `.nvmrc` pins it)
 - **pnpm 9+** (`corepack enable && corepack prepare pnpm@9 --activate`)
 - **Docker Desktop** (for local Postgres + Redis via `docker compose`)
+- **gitleaks** (pre-commit secret scanner used by lefthook):
+  - Windows: `winget install gitleaks` or `scoop install gitleaks`
+  - macOS: `brew install gitleaks`
+  - Linux: see https://github.com/gitleaks/gitleaks#installing
 - **Rust + Tauri prerequisites** (only if you'll touch `apps/desktop` — see https://v2.tauri.app/start/prerequisites/)
 
 ## First-time setup
