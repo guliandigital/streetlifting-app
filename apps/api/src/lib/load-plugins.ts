@@ -7,7 +7,8 @@ export interface FeaturePlugin {
 
 // Helper accepts any FastifyInstance variant — the precise generic params
 // (logger type, server type) are irrelevant to plugin loading.
-type AnyFastifyInstance = FastifyInstance<never, never, never, never, never>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyFastifyInstance = FastifyInstance<any, any, any, any, any>;
 
 /**
  * Register feature plugins independently. A failure in one plugin is logged

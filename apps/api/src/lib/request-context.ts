@@ -9,7 +9,8 @@ declare module 'fastify' {
   }
 }
 
-type AnyFastifyInstance = FastifyInstance<never, never, never, never, never>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyFastifyInstance = FastifyInstance<any, any, any, any, any>;
 
 /**
  * Per-request correlation: generate a UUID, attach it to the request logger,
