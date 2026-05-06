@@ -25,7 +25,7 @@ export class ModuleErrorBoundary extends Component<
   ModuleErrorBoundaryProps,
   ModuleErrorBoundaryState
 > {
-  state: ModuleErrorBoundaryState = { error: null };
+  override state: ModuleErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): ModuleErrorBoundaryState {
     return { error };

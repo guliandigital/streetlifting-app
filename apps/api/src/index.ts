@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import { rootLogger, moduleLogger } from './lib/logger.js';
@@ -67,7 +67,7 @@ boot.info(
   'feature plugins boot complete',
 );
 
-app.setErrorHandler((err, req, reply) => {
+app.setErrorHandler((err: FastifyError, req, reply) => {
   const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
   req.log.error({ err, status }, 'request failed');
   reply.code(status).send({

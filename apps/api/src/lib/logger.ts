@@ -1,4 +1,4 @@
-import pino, { type Logger, type LoggerOptions } from 'pino';
+import { pino, type Logger, type LoggerOptions } from 'pino';
 
 /**
  * Centralised PII redact list. Every new field that may carry a secret or
@@ -48,7 +48,7 @@ const baseOptions: LoggerOptions = {
   },
   timestamp: pino.stdTimeFunctions.isoTime,
   formatters: {
-    level: (label) => ({ level: label }),
+    level: (label: string) => ({ level: label }),
   },
 };
 
