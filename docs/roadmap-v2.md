@@ -4,12 +4,20 @@ Target: full PowerTable functional parity, modern UX, browser-primary with offli
 
 ## Milestones
 
+## Cross-milestone rule: Module isolation
+
+Every milestone must include an **Isolation check**: prove that breaking the new module (force a throw in its boundary, kill its plugin) does NOT affect any previously shipped module. This is the top architectural principle — see [ADR-0003](decisions/ADR-0003-modular-isolation.md).
+
+Features must not import from each other. Shared shapes live in `packages/domain`; shared UI in `packages/ui`. The isolation primitives (`LazyModule`, `loadPlugins`) are already in the skeleton.
+
 ### M0 — Skeleton (Day 0–3) ← DONE 2026-05-07
 - [x] Monorepo: pnpm + Turborepo, apps/web · apps/api · apps/desktop, packages/domain · ui · sync
 - [x] React 19 + Vite + Tailwind v4 stub
 - [x] Fastify + Postgres stub with `/health`
 - [x] Tauri 2 wrapper, auto-update endpoint pointed at this repo, signing key reused from v1.4.1 (`AE2C…8968`)
 - [x] Domain Zod schemas for the 14 core entities
+- [x] Module-isolation primitives: `LazyModule` + `ModuleErrorBoundary` (web), `loadPlugins` (api)
+- [x] First isolation-checked feature stub: `_health`
 
 ### M1 — Foundations (Week 1–2)
 - [ ] Prisma schema generated from domain types; migrations against Postgres 16 on reg.ru

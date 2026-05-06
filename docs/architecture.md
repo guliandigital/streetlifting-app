@@ -66,6 +66,20 @@ A user can hold multiple role assignments. The desktop client persists the user'
 - Web → static build, served from same nginx (or Cloudflare Pages later)
 - Desktop binaries → GitHub Releases (Tauri updater pulls `latest.json` from this repo's releases)
 
+## Module isolation (top principle)
+
+Every module of the system must be independently failable. A break in one module — render error in a feature, throw in a plugin, corrupted sync events for one aggregate, dead Tauri plugin — must NOT affect the others.
+
+This is the project's main architectural rule. See [ADR-0003](decisions/ADR-0003-modular-isolation.md) for the full contract. Concrete plumbing already in the skeleton:
+
+- **Web** — every feature route mounts via `LazyModule` (per-feature lazy chunk + per-feature error boundary in `apps/web/src/lib/`). The shell, navigation, and other modules survive a crash in one.
+- **API** — every feature is a `FeaturePlugin` registered via `loadPlugins()` (`apps/api/src/lib/load-plugins.ts`), each in its own try/catch. One broken plugin is logged and skipped; the rest of the API serves.
+- **Sync** — per-aggregate queues with a dead-letter queue for poisoned events (M3).
+- **Desktop** — Tauri plugin init is fault-tolerant; an unavailable plugin degrades the relevant UI surface, app still launches (M5).
+- **Cross-cutting** — per-module logger tags, per-module health endpoints, env-var feature flags.
+
+Features must NOT import from each other. Shared shapes go through `packages/domain`; shared UI goes through `packages/ui`. This rule binds even MVP code.
+
 ## Key non-goals (V1)
 
 - Multi-region replication (RU jurisdiction, single Moscow node is enough)
