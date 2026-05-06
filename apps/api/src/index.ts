@@ -1,23 +1,59 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import { rootLogger, moduleLogger } from './lib/logger.js';
+import { registerRequestContext } from './lib/request-context.js';
 import { loadPlugins } from './lib/load-plugins.js';
 import { healthPlugin } from './plugins/health.js';
 
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '0.0.0.0';
+const isProd = process.env.NODE_ENV === 'production';
+
+const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:1420')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 const app = Fastify({
-  logger: {
-    transport:
-      process.env.NODE_ENV !== 'production'
-        ? { target: 'pino-pretty', options: { colorize: true } }
-        : undefined,
-  },
+  loggerInstance: rootLogger,
+  disableRequestLogging: false,
+  trustProxy: isProd,
+  bodyLimit: 1 * 1024 * 1024,
 });
 
-await app.register(helmet);
-await app.register(cors, { origin: true, credentials: true });
+const boot = moduleLogger('boot');
+
+await registerRequestContext(app);
+
+await app.register(helmet, {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      fontSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      objectSrc: ["'none'"],
+    },
+  },
+  strictTransportSecurity: isProd
+    ? { maxAge: 31_536_000, includeSubDomains: true, preload: true }
+    : false,
+  crossOriginEmbedderPolicy: false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+});
+
+await app.register(cors, {
+  origin: corsOrigins,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  exposedHeaders: ['x-request-id'],
+});
 
 const features = [
   healthPlugin,
@@ -26,14 +62,26 @@ const features = [
 ];
 
 const result = await loadPlugins(app, features);
-app.log.info(
+boot.info(
   { loaded: result.loaded, failed: result.failed.map((f) => f.name) },
   'feature plugins boot complete',
 );
 
+app.setErrorHandler((err, req, reply) => {
+  const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+  req.log.error({ err, status }, 'request failed');
+  reply.code(status).send({
+    error: {
+      code: err.code ?? (status >= 500 ? 'internal_error' : 'bad_request'),
+      message: status >= 500 ? 'Internal error' : err.message,
+      requestId: req.requestId,
+    },
+  });
+});
+
 try {
   await app.listen({ port, host });
 } catch (err) {
-  app.log.error(err);
+  boot.fatal({ err }, 'server failed to start');
   process.exit(1);
 }

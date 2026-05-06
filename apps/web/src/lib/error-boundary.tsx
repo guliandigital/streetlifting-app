@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { moduleLogger } from './logger.js';
 
 interface ModuleErrorBoundaryProps {
   module: string;
@@ -16,6 +17,9 @@ interface ModuleErrorBoundaryState {
  * A render error inside this module is caught here and shown via `fallback`
  * (or a default banner). The rest of the app shell, navigation, and other
  * feature routes keep working. See ADR-0003.
+ *
+ * Errors are reported via the module logger (which forwards to Sentry in
+ * production with PII scrubbed). See ADR-0005.
  */
 export class ModuleErrorBoundary extends Component<
   ModuleErrorBoundaryProps,
@@ -28,7 +32,11 @@ export class ModuleErrorBoundary extends Component<
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error(`[module:${this.props.module}] crashed`, error, info);
+    moduleLogger(this.props.module).error('module crashed', {
+      message: error.message,
+      stack: error.stack,
+      componentStack: info.componentStack ?? null,
+    });
   }
 
   private retry = (): void => {
