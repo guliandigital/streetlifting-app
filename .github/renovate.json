@@ -1,0 +1,43 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "schedule:weekly", ":prHourlyLimit2"],
+  "labels": ["dependencies"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["dependencies", "security"]
+  },
+  "packageRules": [
+    {
+      "description": "Group all non-major TypeScript / ESLint / Prettier updates",
+      "matchPackagePatterns": ["^typescript", "^eslint", "^@typescript-eslint", "^prettier"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "ts/lint tooling"
+    },
+    {
+      "description": "Group all non-major React updates",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "react"
+    },
+    {
+      "description": "Group all Tauri updates",
+      "matchPackagePatterns": ["^@tauri-apps/", "^tauri"],
+      "groupName": "tauri"
+    },
+    {
+      "description": "Group all Prisma updates",
+      "matchPackagePatterns": ["^@prisma/", "^prisma"],
+      "groupName": "prisma"
+    },
+    {
+      "description": "Open major-version updates as separate PRs",
+      "matchUpdateTypes": ["major"],
+      "labels": ["dependencies", "major"]
+    }
+  ],
+  "postUpdateOptions": ["pnpmDedupe"]
+}

@@ -17,12 +17,25 @@
 git clone https://github.com/guliandigital/streetlifting-app.git
 cd streetlifting-app
 
-pnpm install         # also installs lefthook git hooks via `prepare`
-docker compose up -d # Postgres + Redis on localhost
+pnpm install                              # also installs lefthook git hooks via `prepare`
+docker compose up -d                      # Postgres + Redis on localhost
 cp apps/api/.env.example apps/api/.env
+
+pnpm --filter=@streetlifting/api db:generate   # Prisma client
+pnpm --filter=@streetlifting/api db:migrate    # apply migrations against your local Postgres
 
 pnpm dev             # web → http://localhost:1420, api → http://localhost:3000/health
 ```
+
+## Database / Prisma workflow
+
+```bash
+pnpm --filter=@streetlifting/api db:generate   # regenerate client after schema edits
+pnpm --filter=@streetlifting/api db:migrate    # create & apply a new dev migration
+pnpm --filter=@streetlifting/api db:studio     # GUI browser at http://localhost:5555
+```
+
+Migration files live in `apps/api/prisma/migrations/` and are checked into git. The `audit_log` table is **append-only** — its `UPDATE` and `DELETE` are blocked by triggers (see ADR-0005). Prune-after-retention requires explicit DBA action.
 
 ## Day-to-day commands
 
