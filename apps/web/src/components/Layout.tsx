@@ -1,9 +1,15 @@
-import { Link, Outlet } from '@tanstack/react-router';
+import { Link, Outlet, useNavigate } from '@tanstack/react-router';
 import { useHydrateAuth, useAuth } from '../lib/auth/hooks.js';
 
 export function RootLayout() {
   const { hydrating } = useHydrateAuth();
   const { user, isAuthenticated, logout } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    await logout();
+    await navigate({ to: '/login' });
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -26,7 +32,7 @@ export function RootLayout() {
                 {user.displayName}
               </Link>
               <button
-                onClick={() => void logout()}
+                onClick={() => void handleLogout()}
                 className="px-3 py-1 rounded border border-neutral-800 hover:border-neutral-600 text-neutral-300"
               >
                 Logout
