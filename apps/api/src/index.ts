@@ -1,7 +1,10 @@
 import Fastify, { type FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import { initSentry } from './lib/sentry.js';
 import { rootLogger, moduleLogger } from './lib/logger.js';
+
+initSentry();
 import { registerRequestContext } from './lib/request-context.js';
 import { loadPlugins } from './lib/load-plugins.js';
 import { healthPlugin } from './plugins/health.js';
