@@ -92,7 +92,8 @@ export function useUpdateCountry(id: string) {
 export function useRegions(countryId?: string) {
   return useQuery<{ regions: RegionDto[] }>({
     queryKey: ['references', 'regions', { countryId }],
-    queryFn: () => api.references.regions.list({ countryId }),
+    queryFn: () =>
+      api.references.regions.list(countryId !== undefined ? { countryId } : {}),
   });
 }
 
@@ -141,7 +142,8 @@ export function useUpdateCity(id: string) {
 export function useLookups(kind?: string) {
   return useQuery<{ lookups: LookupValueDto[] }>({
     queryKey: ['references', 'lookups', { kind }],
-    queryFn: () => api.references.lookups.list({ kind }),
+    queryFn: () =>
+      api.references.lookups.list(kind !== undefined ? { kind } : {}),
   });
 }
 
