@@ -17,7 +17,7 @@ import {
   TableRow,
   toast,
 } from '@streetlifting/ui';
-import { useCountries, useCreateCountry, useUpdateCountry, type CountryDto } from './api.js';
+import { useCountries, useCreateCountry, useUpdateCountry, type CountryDto } from '../../lib/references-api.js';
 import { ApiClientError } from '../../lib/api-client.js';
 
 export default function LookupsCountriesFeature() {

@@ -23,7 +23,7 @@ import {
   useRegions,
   useUpdateRegion,
   type RegionDto,
-} from './api.js';
+} from '../../lib/references-api.js';
 import { ApiClientError } from '../../lib/api-client.js';
 
 export default function LookupsRegionsFeature() {

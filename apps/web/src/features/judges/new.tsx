@@ -13,6 +13,7 @@ import {
 } from '@streetlifting/ui';
 import { useCreateJudge } from './api.js';
 import { ApiClientError } from '../../lib/api-client.js';
+import { useLookups } from '../../lib/references-api.js';
 
 export default function JudgeNewFeature() {
   const { t } = useTranslation();
@@ -22,10 +23,12 @@ export default function JudgeNewFeature() {
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
-  const [categoryRu, setCategoryRu] = useState('');
-  const [categoryEn, setCategoryEn] = useState('');
+  const [categoryCode, setCategoryCode] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [cityRegion, setCityRegion] = useState('');
+
+  const { data: categoriesData } = useLookups('judge_category');
+  const category = categoriesData?.lookups.find((l) => l.code === categoryCode);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -35,8 +38,7 @@ export default function JudgeNewFeature() {
         lastName: trimmed(lastName),
         firstName: trimmed(firstName),
         ...(middleName.trim() !== '' && { middleName: trimmed(middleName) }),
-        ...(categoryRu.trim() !== '' && { categoryRu: trimmed(categoryRu) }),
-        ...(categoryEn.trim() !== '' && { categoryEn: trimmed(categoryEn) }),
+        ...(category && { categoryRu: category.nameRu, categoryEn: category.nameEn }),
         ...(cardNumber.trim() !== '' && { cardNumber: trimmed(cardNumber) }),
         ...(cityRegion.trim() !== '' && { cityRegion: trimmed(cityRegion) }),
       });
@@ -73,20 +75,22 @@ export default function JudgeNewFeature() {
               <Input id="middleName" value={middleName} onChange={(e) => setMiddleName(e.target.value)} />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="categoryRu">{t('judges.fields.categoryRu')}</Label>
-                <Input
-                  id="categoryRu"
-                  value={categoryRu}
-                  onChange={(e) => setCategoryRu(e.target.value)}
-                  placeholder={t('judges.fields.categoryRuHint')}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="categoryEn">{t('judges.fields.categoryEn')}</Label>
-                <Input id="categoryEn" value={categoryEn} onChange={(e) => setCategoryEn(e.target.value)} />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="categoryCode">{t('judges.fields.category')}</Label>
+              <select
+                id="categoryCode"
+                value={categoryCode}
+                onChange={(e) => setCategoryCode(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">{t('judges.fields.categoryNone')}</option>
+                {categoriesData?.lookups.map((l) => (
+                  <option key={l.id} value={l.code}>
+                    {l.nameRu}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">{t('judges.fields.categoryHint')}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

@@ -9,7 +9,7 @@ import type {
   LookupValueCreate,
   LookupValueUpdate,
 } from '@streetlifting/domain';
-import { api } from '../../lib/api-client.js';
+import { api } from './api-client.js';
 
 export interface CountryDto {
   id: string;

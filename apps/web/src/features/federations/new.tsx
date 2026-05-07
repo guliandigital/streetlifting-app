@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import {
@@ -14,6 +14,7 @@ import {
 import { useCreateFederation } from './api.js';
 import { rubToKopecks } from './format.js';
 import { ApiClientError } from '../../lib/api-client.js';
+import { useCountries, useRegions } from '../../lib/references-api.js';
 
 export default function FederationNewFeature() {
   const { t } = useTranslation();
@@ -24,7 +25,15 @@ export default function FederationNewFeature() {
   const [nameRu, setNameRu] = useState('');
   const [nameEn, setNameEn] = useState('');
   const [countryCode, setCountryCode] = useState('RU');
+  const [regionCode, setRegionCode] = useState('');
   const [tariffRub, setTariffRub] = useState('41');
+
+  const { data: countriesData } = useCountries();
+  const country = useMemo(
+    () => countriesData?.countries.find((c) => c.codeIso2 === countryCode),
+    [countriesData, countryCode],
+  );
+  const { data: regionsData } = useRegions(country?.id);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -34,6 +43,7 @@ export default function FederationNewFeature() {
         nameRu: nameRu.trim(),
         nameEn: nameEn.trim(),
         countryCode: countryCode.trim().toUpperCase(),
+        ...(regionCode.trim() !== '' && { regionCode: regionCode.trim() }),
         billingTariffKopecksPerNomination: rubToKopecks(tariffRub),
       });
       toast.success(t('federations.created'));
@@ -62,15 +72,38 @@ export default function FederationNewFeature() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="countryCode">{t('federations.fields.country')}</Label>
-                <Input
+                <select
                   id="countryCode"
                   value={countryCode}
-                  onChange={(e) => setCountryCode(e.target.value)}
+                  onChange={(e) => { setCountryCode(e.target.value); setRegionCode(''); }}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   required
-                  minLength={2}
-                  maxLength={2}
-                />
+                >
+                  {countriesData?.countries.map((c) => (
+                    <option key={c.id} value={c.codeIso2}>
+                      {c.nameRu} ({c.codeIso2})
+                    </option>
+                  ))}
+                </select>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="regionCode">{t('federations.fields.region')}</Label>
+              <select
+                id="regionCode"
+                value={regionCode}
+                onChange={(e) => setRegionCode(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!country}
+              >
+                <option value="">{t('federations.fields.regionAny')}</option>
+                {regionsData?.regions.map((r) => (
+                  <option key={r.id} value={r.codeIso}>
+                    {r.nameRu}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">

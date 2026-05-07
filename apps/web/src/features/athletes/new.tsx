@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import {
@@ -13,6 +13,7 @@ import {
 } from '@streetlifting/ui';
 import { useCreateAthlete } from './api.js';
 import { ApiClientError } from '../../lib/api-client.js';
+import { useCities, useCountries, useRegions } from '../../lib/references-api.js';
 
 export default function AthleteNewFeature() {
   const { t } = useTranslation();
@@ -25,9 +26,25 @@ export default function AthleteNewFeature() {
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState<'M' | 'F'>('M');
   const [countryCode, setCountryCode] = useState('RU');
+  const [regionCode, setRegionCode] = useState('');
   const [city, setCity] = useState('');
   const [coachName, setCoachName] = useState('');
   const [clubName, setClubName] = useState('');
+
+  // Reference data
+  const { data: countriesData } = useCountries();
+  const country = useMemo(
+    () => countriesData?.countries.find((c) => c.codeIso2 === countryCode),
+    [countriesData, countryCode],
+  );
+  const { data: regionsData } = useRegions(country?.id);
+  const region = useMemo(
+    () => regionsData?.regions.find((r) => r.codeIso === regionCode),
+    [regionsData, regionCode],
+  );
+  const { data: citiesData } = useCities(
+    region?.id ? { regionId: region.id } : country?.id ? { countryId: country.id } : {},
+  );
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -40,6 +57,7 @@ export default function AthleteNewFeature() {
         dateOfBirth,
         gender,
         countryCode: trimmed(countryCode).toUpperCase(),
+        ...(regionCode.trim() !== '' && { regionCode: trimmed(regionCode) }),
         ...(city.trim() !== '' && { city: trimmed(city) }),
         ...(coachName.trim() !== '' && { coachName: trimmed(coachName) }),
         ...(clubName.trim() !== '' && { clubName: trimmed(clubName) }),
@@ -102,20 +120,55 @@ export default function AthleteNewFeature() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="countryCode">{t('athletes.fields.country')}</Label>
-                <Input
+                <select
                   id="countryCode"
                   value={countryCode}
-                  onChange={(e) => setCountryCode(e.target.value)}
+                  onChange={(e) => { setCountryCode(e.target.value); setRegionCode(''); setCity(''); }}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   required
-                  minLength={2}
-                  maxLength={2}
-                />
+                >
+                  {countriesData?.countries.map((c) => (
+                    <option key={c.id} value={c.codeIso2}>
+                      {c.nameRu} ({c.codeIso2})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="city">{t('athletes.fields.city')}</Label>
-              <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="regionCode">{t('athletes.fields.region')}</Label>
+                <select
+                  id="regionCode"
+                  value={regionCode}
+                  onChange={(e) => { setRegionCode(e.target.value); setCity(''); }}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  disabled={!country}
+                >
+                  <option value="">{t('athletes.fields.regionAny')}</option>
+                  {regionsData?.regions.map((r) => (
+                    <option key={r.id} value={r.codeIso}>
+                      {r.nameRu}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="city">{t('athletes.fields.city')}</Label>
+                <Input
+                  id="city"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  list="city-suggestions"
+                  placeholder={t('athletes.fields.cityPlaceholder')}
+                />
+                <datalist id="city-suggestions">
+                  {citiesData?.cities.map((c) => (
+                    <option key={c.id} value={c.nameRu} />
+                  ))}
+                </datalist>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
