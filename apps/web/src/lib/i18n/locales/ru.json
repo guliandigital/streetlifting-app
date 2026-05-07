@@ -19,7 +19,8 @@
     "federations": "Федерации",
     "athletes": "Спортсмены",
     "disciplines": "Дисциплины",
-    "judges": "Судьи"
+    "judges": "Судьи",
+    "lookups": "Справочники"
   },
   "login": {
     "title": "Вход",
@@ -180,6 +181,92 @@
       "categoryEn": "Категория (EN)",
       "cardNumber": "Номер судейского билета",
       "cityRegion": "Город / регион"
+    }
+  },
+  "lookups": {
+    "title": "Справочники",
+    "subtitle": "Справочные данные платформы — страны, регионы, города и плоские списки.",
+    "listTitle": "Список",
+    "empty": "Пусто.",
+    "created": "Запись добавлена",
+    "updated": "Запись обновлена",
+    "cards": {
+      "countries": {
+        "title": "Страны",
+        "desc": "ISO 3166-1 — страны.",
+        "create": "Добавить страну",
+        "count_one": "{{count}} страна",
+        "count_few": "{{count}} страны",
+        "count_many": "{{count}} стран",
+        "count_other": "{{count}} стран"
+      },
+      "regions": {
+        "title": "Регионы",
+        "desc": "Регионы / субъекты по странам (для РФ — ISO 3166-2).",
+        "create": "Добавить регион",
+        "count_one": "{{count}} регион",
+        "count_few": "{{count}} региона",
+        "count_many": "{{count}} регионов",
+        "count_other": "{{count}} регионов"
+      },
+      "cities": {
+        "title": "Города",
+        "desc": "Города в составе регионов; используется в формах спортсменов и федераций.",
+        "create": "Добавить город",
+        "count_one": "{{count}} город",
+        "count_few": "{{count}} города",
+        "count_many": "{{count}} городов",
+        "count_other": "{{count}} городов"
+      },
+      "values": {
+        "title": "Значения",
+        "desc": "Плоские списки: судейские категории, спортивные звания, типы клубов, теги.",
+        "create": "Добавить значение",
+        "count_one": "{{count}} значение",
+        "count_few": "{{count}} значения",
+        "count_many": "{{count}} значений",
+        "count_other": "{{count}} значений"
+      }
+    },
+    "regions": {
+      "filterTitle": "Страна",
+      "defaultCountry": "— Россия (по умолчанию) —"
+    },
+    "cities": {
+      "filterTitle": "Фильтр",
+      "allRegions": "Все регионы",
+      "searchPlaceholder": "Поиск по названию…"
+    },
+    "values": {
+      "filterTitle": "Тип",
+      "allKinds": "— Все типы —"
+    },
+    "kinds": {
+      "judge_category": "Судейская категория",
+      "sport_rank": "Спортивное звание",
+      "club_type": "Тип клуба",
+      "federation_tag": "Тег федерации"
+    },
+    "fields": {
+      "codeIso2": "Код ISO-2",
+      "codeIso": "Код",
+      "code": "Код",
+      "kind": "Тип",
+      "country": "Страна",
+      "region": "Регион",
+      "nameRu": "Название (RU)",
+      "nameEn": "Название (EN)",
+      "sortOrder": "Порядок",
+      "active": "Активно"
+    },
+    "cols": {
+      "code": "Код",
+      "kind": "Тип",
+      "nameRu": "Название (RU)",
+      "nameEn": "Название (EN)",
+      "region": "Регион",
+      "sortOrder": "Порядок",
+      "active": "Активно"
     }
   },
   "language": {

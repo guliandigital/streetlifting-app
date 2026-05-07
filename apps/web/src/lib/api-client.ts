@@ -1,10 +1,18 @@
 import type {
   AthleteCreate,
   AthleteUpdate,
+  CityCreate,
+  CityUpdate,
+  CountryCreate,
+  CountryUpdate,
   FederationCreate,
   FederationUpdate,
   JudgeCreate,
   JudgeUpdate,
+  LookupValueCreate,
+  LookupValueUpdate,
+  RegionCreate,
+  RegionUpdate,
 } from '@streetlifting/domain';
 import { useAuthStore } from './auth/store.js';
 import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './auth/types.js';
@@ -13,6 +21,13 @@ import type { Federation } from '../features/federations/api.js';
 import type { AthleteDto, AthleteListResponse } from '../features/athletes/api.js';
 import type { DisciplineDto } from '../features/disciplines/api.js';
 import type { JudgeDto, JudgeListResponse } from '../features/judges/api.js';
+import type {
+  CityDto,
+  CityListResponse,
+  CountryDto,
+  LookupValueDto,
+  RegionDto,
+} from '../features/lookups/api.js';
 
 const log = moduleLogger('api-client');
 
@@ -186,5 +201,59 @@ export const api = {
       request('/judges', { method: 'POST', body: data }),
     update: (id: string, data: JudgeUpdate): Promise<{ judge: JudgeDto }> =>
       request(`/judges/${id}`, { method: 'PATCH', body: data }),
+  },
+
+  references: {
+    countries: {
+      list: (): Promise<{ countries: CountryDto[] }> => request('/references/countries'),
+      get: (id: string): Promise<{ country: CountryDto }> => request(`/references/countries/${id}`),
+      create: (data: CountryCreate): Promise<{ country: CountryDto }> =>
+        request('/references/countries', { method: 'POST', body: data }),
+      update: (id: string, data: CountryUpdate): Promise<{ country: CountryDto }> =>
+        request(`/references/countries/${id}`, { method: 'PATCH', body: data }),
+    },
+    regions: {
+      list: (params: { countryId?: string } = {}): Promise<{ regions: RegionDto[] }> => {
+        const q = new URLSearchParams();
+        if (params.countryId) q.set('countryId', params.countryId);
+        const qs = q.toString();
+        return request(`/references/regions${qs ? `?${qs}` : ''}`);
+      },
+      get: (id: string): Promise<{ region: RegionDto }> => request(`/references/regions/${id}`),
+      create: (data: RegionCreate): Promise<{ region: RegionDto }> =>
+        request('/references/regions', { method: 'POST', body: data }),
+      update: (id: string, data: RegionUpdate): Promise<{ region: RegionDto }> =>
+        request(`/references/regions/${id}`, { method: 'PATCH', body: data }),
+    },
+    cities: {
+      list: (params: { regionId?: string; countryId?: string; q?: string; limit?: number; offset?: number } = {}): Promise<CityListResponse> => {
+        const qp = new URLSearchParams();
+        if (params.regionId) qp.set('regionId', params.regionId);
+        if (params.countryId) qp.set('countryId', params.countryId);
+        if (params.q) qp.set('q', params.q);
+        if (params.limit !== undefined) qp.set('limit', String(params.limit));
+        if (params.offset !== undefined) qp.set('offset', String(params.offset));
+        const qs = qp.toString();
+        return request(`/references/cities${qs ? `?${qs}` : ''}`);
+      },
+      get: (id: string): Promise<{ city: CityDto }> => request(`/references/cities/${id}`),
+      create: (data: CityCreate): Promise<{ city: CityDto }> =>
+        request('/references/cities', { method: 'POST', body: data }),
+      update: (id: string, data: CityUpdate): Promise<{ city: CityDto }> =>
+        request(`/references/cities/${id}`, { method: 'PATCH', body: data }),
+    },
+    lookups: {
+      list: (params: { kind?: string } = {}): Promise<{ lookups: LookupValueDto[] }> => {
+        const qp = new URLSearchParams();
+        if (params.kind) qp.set('kind', params.kind);
+        const qs = qp.toString();
+        return request(`/references/lookups${qs ? `?${qs}` : ''}`);
+      },
+      get: (id: string): Promise<{ lookup: LookupValueDto }> => request(`/references/lookups/${id}`),
+      create: (data: LookupValueCreate): Promise<{ lookup: LookupValueDto }> =>
+        request('/references/lookups', { method: 'POST', body: data }),
+      update: (id: string, data: LookupValueUpdate): Promise<{ lookup: LookupValueDto }> =>
+        request(`/references/lookups/${id}`, { method: 'PATCH', body: data }),
+    },
   },
 };

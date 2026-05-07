@@ -19,7 +19,8 @@
     "federations": "Federations",
     "athletes": "Athletes",
     "disciplines": "Disciplines",
-    "judges": "Judges"
+    "judges": "Judges",
+    "lookups": "References"
   },
   "login": {
     "title": "Sign in",
@@ -172,6 +173,84 @@
       "categoryEn": "Category (EN)",
       "cardNumber": "Judge card number",
       "cityRegion": "City / region"
+    }
+  },
+  "lookups": {
+    "title": "References",
+    "subtitle": "Platform reference data — countries, regions, cities, and flat lookup lists.",
+    "listTitle": "List",
+    "empty": "Empty.",
+    "created": "Entry created",
+    "updated": "Entry updated",
+    "cards": {
+      "countries": {
+        "title": "Countries",
+        "desc": "ISO 3166-1 country list.",
+        "create": "Add country",
+        "count_one": "{{count}} country",
+        "count_other": "{{count}} countries"
+      },
+      "regions": {
+        "title": "Regions",
+        "desc": "Subdivisions per country (RU uses ISO 3166-2).",
+        "create": "Add region",
+        "count_one": "{{count}} region",
+        "count_other": "{{count}} regions"
+      },
+      "cities": {
+        "title": "Cities",
+        "desc": "Cities scoped under regions; used by athlete + federation forms.",
+        "create": "Add city",
+        "count_one": "{{count}} city",
+        "count_other": "{{count}} cities"
+      },
+      "values": {
+        "title": "Lookup values",
+        "desc": "Flat lists: judge categories, sport ranks, club types, federation tags.",
+        "create": "Add value",
+        "count_one": "{{count}} value",
+        "count_other": "{{count}} values"
+      }
+    },
+    "regions": {
+      "filterTitle": "Country",
+      "defaultCountry": "— Russia (default) —"
+    },
+    "cities": {
+      "filterTitle": "Filter",
+      "allRegions": "All regions",
+      "searchPlaceholder": "Search by name…"
+    },
+    "values": {
+      "filterTitle": "Kind",
+      "allKinds": "— All kinds —"
+    },
+    "kinds": {
+      "judge_category": "Judge category",
+      "sport_rank": "Sport rank",
+      "club_type": "Club type",
+      "federation_tag": "Federation tag"
+    },
+    "fields": {
+      "codeIso2": "ISO-2 code",
+      "codeIso": "Code",
+      "code": "Code",
+      "kind": "Kind",
+      "country": "Country",
+      "region": "Region",
+      "nameRu": "Name (RU)",
+      "nameEn": "Name (EN)",
+      "sortOrder": "Sort order",
+      "active": "Active"
+    },
+    "cols": {
+      "code": "Code",
+      "kind": "Kind",
+      "nameRu": "Name (RU)",
+      "nameEn": "Name (EN)",
+      "region": "Region",
+      "sortOrder": "Order",
+      "active": "Active"
     }
   },
   "language": {
