@@ -9,6 +9,7 @@ import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './aut
 import { moduleLogger } from './logger.js';
 import type { Federation } from '../features/federations/api.js';
 import type { AthleteDto, AthleteListResponse } from '../features/athletes/api.js';
+import type { DisciplineDto } from '../features/disciplines/api.js';
 
 const log = moduleLogger('api-client');
 
@@ -161,5 +162,10 @@ export const api = {
       request('/athletes', { method: 'POST', body: data }),
     update: (id: string, data: AthleteUpdate): Promise<{ athlete: AthleteDto }> =>
       request(`/athletes/${id}`, { method: 'PATCH', body: data }),
+  },
+
+  disciplines: {
+    list: (): Promise<{ disciplines: DisciplineDto[] }> => request('/disciplines'),
+    get: (id: string): Promise<{ discipline: DisciplineDto }> => request(`/disciplines/${id}`),
   },
 };

@@ -8,13 +8,17 @@
     "error": "Error",
     "save": "Save",
     "saving": "Saving…",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "kg": "kg",
+    "yes": "yes",
+    "no": "no"
   },
   "header": {
     "login": "Login",
     "logout": "Logout",
     "federations": "Federations",
-    "athletes": "Athletes"
+    "athletes": "Athletes",
+    "disciplines": "Disciplines"
   },
   "login": {
     "title": "Sign in",
@@ -111,6 +115,32 @@
       "club": "Club",
       "coach": "Coach",
       "cardNumber": "Federation card number"
+    }
+  },
+  "disciplines": {
+    "title": "Disciplines",
+    "subtitle": "ISF v5.1 catalog.",
+    "listTitle": "Catalog",
+    "count_one": "{{count}} discipline",
+    "count_other": "{{count}} disciplines",
+    "empty": "Catalog empty. Run `pnpm --filter=@streetlifting/api seed:disciplines`.",
+    "sections": {
+      "classic": "Classic Streetlifting (3 attempts)",
+      "multirepTwoLift": "Multirep two-lift",
+      "multirepPu": "Multirep pull-ups",
+      "multirepDi": "Multirep dips"
+    },
+    "cols": {
+      "code": "Code",
+      "name": "Name",
+      "attemptCount": "Attempts",
+      "fixedWeight": "Weight"
+    },
+    "fields": {
+      "family": "Family",
+      "format": "Format",
+      "equipment": "Equipment",
+      "veteranCoefficient": "Apply veteran coefficient"
     }
   },
   "language": {
