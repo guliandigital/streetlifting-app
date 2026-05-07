@@ -128,7 +128,8 @@
       "classic": "Classic Streetlifting (3 attempts)",
       "multirepTotal": "Multirep total",
       "multirepPu": "Multirep pull-ups",
-      "multirepDi": "Multirep dips"
+      "multirepDi": "Multirep dips",
+      "wc": "Weighted Calisthenics"
     },
     "cols": {
       "code": "Code",

@@ -15,11 +15,17 @@ import {
 } from '@streetlifting/ui';
 import { useDisciplines, type DisciplineDto } from './api.js';
 
-const SECTION_ORDER: Array<{ key: string; format: DisciplineDto['format']; codePrefix?: string }> = [
-  { key: 'classic', format: 'three_attempts_max' },
-  { key: 'multirepTotal', format: 'reps_to_failure', codePrefix: 'multirep_total_' },
-  { key: 'multirepPu', format: 'reps_to_failure', codePrefix: 'multirep_pu_' },
-  { key: 'multirepDi', format: 'reps_to_failure', codePrefix: 'multirep_di_' },
+interface Section {
+  key: string;
+  match: (d: DisciplineDto) => boolean;
+}
+
+const SECTION_ORDER: ReadonlyArray<Section> = [
+  { key: 'classic',        match: (d) => d.family === 'streetlifting' && d.format === 'three_attempts_max' },
+  { key: 'multirepTotal',  match: (d) => d.family === 'streetlifting' && d.code.startsWith('multirep_total_') },
+  { key: 'multirepPu',     match: (d) => d.family === 'streetlifting' && d.code.startsWith('multirep_pu_') },
+  { key: 'multirepDi',     match: (d) => d.family === 'streetlifting' && d.code.startsWith('multirep_di_') },
+  { key: 'wc',             match: (d) => d.family === 'weighted_calisthenics' },
 ];
 
 function partition(disciplines: DisciplineDto[]): Map<string, DisciplineDto[]> {
@@ -28,9 +34,7 @@ function partition(disciplines: DisciplineDto[]): Map<string, DisciplineDto[]> {
     groups.set(section.key, []);
   }
   for (const d of disciplines) {
-    const section = SECTION_ORDER.find(
-      (s) => d.format === s.format && (s.codePrefix ? d.code.startsWith(s.codePrefix) : !d.code.startsWith('multirep_')),
-    );
+    const section = SECTION_ORDER.find((s) => s.match(d));
     if (section) groups.get(section.key)!.push(d);
   }
   return groups;
