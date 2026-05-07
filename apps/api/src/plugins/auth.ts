@@ -69,10 +69,6 @@ async function issueTokenPair(userId: string, ctx: { ip: string | null; userAgen
 export const authPlugin: FeaturePlugin = {
   name: 'auth',
   register: async (app) => {
-    // Attach user to every request in this plugin's scope; routes opt into
-    // enforcement via requireAuth / requireRole.
-    app.addHook('preHandler', attachUser);
-
     app.get('/health/auth', async () => ({ status: 'ok', module: 'auth' }));
 
     // ─── Register ──────────────────────────────────────────────────────

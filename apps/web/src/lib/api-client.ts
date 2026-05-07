@@ -1,6 +1,8 @@
+import type { FederationCreate, FederationUpdate } from '@streetlifting/domain';
 import { useAuthStore } from './auth/store.js';
 import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './auth/types.js';
 import { moduleLogger } from './logger.js';
+import type { Federation } from '../features/federations/api.js';
 
 const log = moduleLogger('api-client');
 
@@ -127,4 +129,15 @@ export const api = {
     }),
 
   me: (): Promise<MeResponse> => request<MeResponse>('/auth/me'),
+
+  federations: {
+    list: (): Promise<{ federations: Federation[] }> =>
+      request('/federations'),
+    get: (id: string): Promise<{ federation: Federation }> =>
+      request(`/federations/${id}`),
+    create: (data: FederationCreate): Promise<{ federation: Federation }> =>
+      request('/federations', { method: 'POST', body: data }),
+    update: (id: string, data: FederationUpdate): Promise<{ federation: Federation }> =>
+      request(`/federations/${id}`, { method: 'PATCH', body: data }),
+  },
 };

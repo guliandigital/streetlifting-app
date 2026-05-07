@@ -54,6 +54,13 @@ export function RootLayout() {
           {isAuthenticated && user ? (
             <>
               <Link
+                to="/federations"
+                className="text-foreground hover:text-primary"
+                activeProps={{ className: 'text-primary' }}
+              >
+                {t('header.federations')}
+              </Link>
+              <Link
                 to="/me"
                 className="text-foreground hover:text-primary"
                 activeProps={{ className: 'text-primary' }}

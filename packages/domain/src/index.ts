@@ -2,6 +2,7 @@ export * from './ids.js';
 export * from './enums.js';
 export * from './user.js';
 export * from './federation.js';
+export * from './federation-input.js';
 export * from './athlete.js';
 export * from './discipline.js';
 export * from './division.js';

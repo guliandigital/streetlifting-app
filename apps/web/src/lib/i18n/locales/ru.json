@@ -3,9 +3,17 @@
     "title": "Streetlifting App",
     "restoringSession": "Восстанавливаем сессию…"
   },
+  "common": {
+    "loading": "Загрузка…",
+    "error": "Ошибка",
+    "save": "Сохранить",
+    "saving": "Сохраняем…",
+    "cancel": "Отмена"
+  },
   "header": {
     "login": "Войти",
-    "logout": "Выйти"
+    "logout": "Выйти",
+    "federations": "Федерации"
   },
   "login": {
     "title": "Вход",
@@ -30,6 +38,43 @@
     "scope": {
       "federation": "федерация {{id}}",
       "competition": "соревнование {{id}}"
+    }
+  },
+  "federations": {
+    "title": "Федерации",
+    "subtitle": "Управление участниками платформы.",
+    "listTitle": "Список",
+    "count_one": "{{count}} федерация",
+    "count_few": "{{count}} федерации",
+    "count_many": "{{count}} федераций",
+    "count_other": "{{count}} федерации",
+    "create": "Добавить федерацию",
+    "newTitle": "Новая федерация",
+    "empty": "Пока ни одной федерации не зарегистрировано.",
+    "created": "Федерация создана",
+    "cols": {
+      "code": "Код",
+      "name": "Название",
+      "country": "Страна",
+      "tariff": "Тариф / номинация"
+    },
+    "fields": {
+      "code": "Код (короткий идентификатор)",
+      "country": "Код страны (ISO-2)",
+      "nameRu": "Название (RU)",
+      "nameEn": "Название (EN)",
+      "tariffRub": "Тариф за номинацию, ₽",
+      "tariffHint": "Хранится в копейках. Сохраните 41 для тарифа 41,00 ₽.",
+      "contactPhone": "Телефон",
+      "contactEmail": "Email",
+      "telegram": "Telegram",
+      "website": "Сайт",
+      "accountant": "Главный бухгалтер",
+      "cashier": "Кассир",
+      "createdAt": "Создано"
+    },
+    "errors": {
+      "codeTaken": "Такой код уже занят"
     }
   },
   "language": {
