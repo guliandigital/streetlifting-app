@@ -15,6 +15,8 @@ import FederationDetailFeature from './features/federations/detail.js';
 import AthletesListFeature from './features/athletes/index.js';
 import AthleteNewFeature from './features/athletes/new.js';
 import AthleteDetailFeature from './features/athletes/detail.js';
+import DisciplinesListFeature from './features/disciplines/index.js';
+import DisciplineDetailFeature from './features/disciplines/detail.js';
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -110,6 +112,20 @@ const athleteDetailRoute = createRoute({
   component: AthleteDetailFeature,
 });
 
+const disciplinesListRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/disciplines',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: DisciplinesListFeature,
+});
+
+const disciplineDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/disciplines/$id',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: DisciplineDetailFeature,
+});
+
 const healthRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/_health',
@@ -126,6 +142,8 @@ const routeTree = rootRoute.addChildren([
   athletesListRoute,
   athleteNewRoute,
   athleteDetailRoute,
+  disciplinesListRoute,
+  disciplineDetailRoute,
   healthRoute,
 ]);
 

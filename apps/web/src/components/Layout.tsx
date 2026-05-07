@@ -68,6 +68,13 @@ export function RootLayout() {
                 {t('header.athletes')}
               </Link>
               <Link
+                to="/disciplines"
+                className="text-foreground hover:text-primary"
+                activeProps={{ className: 'text-primary' }}
+              >
+                {t('header.disciplines')}
+              </Link>
+              <Link
                 to="/me"
                 className="text-foreground hover:text-primary"
                 activeProps={{ className: 'text-primary' }}

@@ -8,13 +8,17 @@
     "error": "Ошибка",
     "save": "Сохранить",
     "saving": "Сохраняем…",
-    "cancel": "Отмена"
+    "cancel": "Отмена",
+    "kg": "кг",
+    "yes": "да",
+    "no": "нет"
   },
   "header": {
     "login": "Войти",
     "logout": "Выйти",
     "federations": "Федерации",
-    "athletes": "Спортсмены"
+    "athletes": "Спортсмены",
+    "disciplines": "Дисциплины"
   },
   "login": {
     "title": "Вход",
@@ -115,6 +119,34 @@
       "club": "Клуб",
       "coach": "Тренер",
       "cardNumber": "Номер билета федерации"
+    }
+  },
+  "disciplines": {
+    "title": "Дисциплины",
+    "subtitle": "Каталог ISF v5.1.",
+    "listTitle": "Каталог",
+    "count_one": "{{count}} дисциплина",
+    "count_few": "{{count}} дисциплины",
+    "count_many": "{{count}} дисциплин",
+    "count_other": "{{count}} дисциплин",
+    "empty": "Каталог пуст. Запустите `pnpm --filter=@streetlifting/api seed:disciplines`.",
+    "sections": {
+      "classic": "Классический стритлифтинг (3 попытки)",
+      "multirepTwoLift": "Многоповторный, двоеборье",
+      "multirepPu": "Многоповторные подтягивания",
+      "multirepDi": "Многоповторные брусья"
+    },
+    "cols": {
+      "code": "Код",
+      "name": "Название",
+      "attemptCount": "Попыток",
+      "fixedWeight": "Вес"
+    },
+    "fields": {
+      "family": "Семейство",
+      "format": "Формат",
+      "equipment": "Снаряд",
+      "veteranCoefficient": "Применять ветеранский к-нт"
     }
   },
   "language": {
