@@ -4,6 +4,7 @@ export * from './user.js';
 export * from './federation.js';
 export * from './federation-input.js';
 export * from './athlete.js';
+export * from './athlete-input.js';
 export * from './discipline.js';
 export * from './division.js';
 export * from './competition.js';

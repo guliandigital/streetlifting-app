@@ -1,8 +1,14 @@
-import type { FederationCreate, FederationUpdate } from '@streetlifting/domain';
+import type {
+  AthleteCreate,
+  AthleteUpdate,
+  FederationCreate,
+  FederationUpdate,
+} from '@streetlifting/domain';
 import { useAuthStore } from './auth/store.js';
 import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './auth/types.js';
 import { moduleLogger } from './logger.js';
 import type { Federation } from '../features/federations/api.js';
+import type { AthleteDto, AthleteListResponse } from '../features/athletes/api.js';
 
 const log = moduleLogger('api-client');
 
@@ -139,5 +145,21 @@ export const api = {
       request('/federations', { method: 'POST', body: data }),
     update: (id: string, data: FederationUpdate): Promise<{ federation: Federation }> =>
       request(`/federations/${id}`, { method: 'PATCH', body: data }),
+  },
+
+  athletes: {
+    list: (params: { search?: string; limit?: number; offset?: number } = {}): Promise<AthleteListResponse> => {
+      const q = new URLSearchParams();
+      if (params.search) q.set('search', params.search);
+      if (params.limit !== undefined) q.set('limit', String(params.limit));
+      if (params.offset !== undefined) q.set('offset', String(params.offset));
+      const qs = q.toString();
+      return request(`/athletes${qs ? `?${qs}` : ''}`);
+    },
+    get: (id: string): Promise<{ athlete: AthleteDto }> => request(`/athletes/${id}`),
+    create: (data: AthleteCreate): Promise<{ athlete: AthleteDto }> =>
+      request('/athletes', { method: 'POST', body: data }),
+    update: (id: string, data: AthleteUpdate): Promise<{ athlete: AthleteDto }> =>
+      request(`/athletes/${id}`, { method: 'PATCH', body: data }),
   },
 };

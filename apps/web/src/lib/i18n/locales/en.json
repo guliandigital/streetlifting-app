@@ -13,7 +13,8 @@
   "header": {
     "login": "Login",
     "logout": "Logout",
-    "federations": "Federations"
+    "federations": "Federations",
+    "athletes": "Athletes"
   },
   "login": {
     "title": "Sign in",
@@ -73,6 +74,43 @@
     },
     "errors": {
       "codeTaken": "This code is already taken"
+    }
+  },
+  "athletes": {
+    "title": "Athletes",
+    "subtitle": "Platform-wide athlete directory.",
+    "listTitle": "List",
+    "count_one": "{{count}} athlete",
+    "count_other": "{{count}} athletes",
+    "create": "Add athlete",
+    "newTitle": "New athlete",
+    "empty": "No athletes yet.",
+    "created": "Athlete created",
+    "searchPlaceholder": "Search by last or first name…",
+    "yearsShort": "yrs",
+    "gender": {
+      "M": "M",
+      "F": "F"
+    },
+    "cols": {
+      "name": "Name",
+      "dob": "Date of birth",
+      "gender": "Gender",
+      "country": "Country",
+      "club": "Club"
+    },
+    "fields": {
+      "lastName": "Last name",
+      "firstName": "First name",
+      "middleName": "Middle name",
+      "dob": "Date of birth",
+      "gender": "Gender",
+      "country": "Country code (ISO-2)",
+      "region": "Region",
+      "city": "City",
+      "club": "Club",
+      "coach": "Coach",
+      "cardNumber": "Federation card number"
     }
   },
   "language": {

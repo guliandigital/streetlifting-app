@@ -13,7 +13,8 @@
   "header": {
     "login": "Войти",
     "logout": "Выйти",
-    "federations": "Федерации"
+    "federations": "Федерации",
+    "athletes": "Спортсмены"
   },
   "login": {
     "title": "Вход",
@@ -75,6 +76,45 @@
     },
     "errors": {
       "codeTaken": "Такой код уже занят"
+    }
+  },
+  "athletes": {
+    "title": "Спортсмены",
+    "subtitle": "Реестр спортсменов платформы.",
+    "listTitle": "Список",
+    "count_one": "{{count}} спортсмен",
+    "count_few": "{{count}} спортсмена",
+    "count_many": "{{count}} спортсменов",
+    "count_other": "{{count}} спортсменов",
+    "create": "Добавить спортсмена",
+    "newTitle": "Новый спортсмен",
+    "empty": "Спортсменов пока нет.",
+    "created": "Спортсмен добавлен",
+    "searchPlaceholder": "Поиск по фамилии или имени…",
+    "yearsShort": "лет",
+    "gender": {
+      "M": "М",
+      "F": "Ж"
+    },
+    "cols": {
+      "name": "ФИО",
+      "dob": "Дата рождения",
+      "gender": "Пол",
+      "country": "Страна",
+      "club": "Клуб"
+    },
+    "fields": {
+      "lastName": "Фамилия",
+      "firstName": "Имя",
+      "middleName": "Отчество",
+      "dob": "Дата рождения",
+      "gender": "Пол",
+      "country": "Код страны (ISO-2)",
+      "region": "Регион",
+      "city": "Город",
+      "club": "Клуб",
+      "coach": "Тренер",
+      "cardNumber": "Номер билета федерации"
     }
   },
   "language": {
