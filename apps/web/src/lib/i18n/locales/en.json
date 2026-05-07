@@ -3,9 +3,17 @@
     "title": "Streetlifting App",
     "restoringSession": "Restoring session…"
   },
+  "common": {
+    "loading": "Loading…",
+    "error": "Error",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel"
+  },
   "header": {
     "login": "Login",
-    "logout": "Logout"
+    "logout": "Logout",
+    "federations": "Federations"
   },
   "login": {
     "title": "Sign in",
@@ -30,6 +38,41 @@
     "scope": {
       "federation": "federation {{id}}",
       "competition": "competition {{id}}"
+    }
+  },
+  "federations": {
+    "title": "Federations",
+    "subtitle": "Platform tenants.",
+    "listTitle": "List",
+    "count_one": "{{count}} federation",
+    "count_other": "{{count}} federations",
+    "create": "Add federation",
+    "newTitle": "New federation",
+    "empty": "No federations registered yet.",
+    "created": "Federation created",
+    "cols": {
+      "code": "Code",
+      "name": "Name",
+      "country": "Country",
+      "tariff": "Tariff / nomination"
+    },
+    "fields": {
+      "code": "Code (short identifier)",
+      "country": "Country code (ISO-2)",
+      "nameRu": "Name (RU)",
+      "nameEn": "Name (EN)",
+      "tariffRub": "Tariff per nomination, ₽",
+      "tariffHint": "Stored as integer kopecks. Enter 41 for ₽41.00.",
+      "contactPhone": "Phone",
+      "contactEmail": "Email",
+      "telegram": "Telegram",
+      "website": "Website",
+      "accountant": "Chief accountant",
+      "cashier": "Cashier",
+      "createdAt": "Created"
+    },
+    "errors": {
+      "codeTaken": "This code is already taken"
     }
   },
   "language": {

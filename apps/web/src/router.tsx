@@ -9,10 +9,32 @@ import { useAuthStore } from './lib/auth/store.js';
 import LoginFeature from './features/login/index.js';
 import ProfileFeature from './features/profile/index.js';
 import HealthFeature from './features/_health/index.js';
+import FederationsListFeature from './features/federations/index.js';
+import FederationNewFeature from './features/federations/new.js';
+import FederationDetailFeature from './features/federations/detail.js';
 
 const rootRoute = createRootRoute({
   component: RootLayout,
 });
+
+function requireAuthGuard(href: string): void {
+  const user = useAuthStore.getState().user;
+  const refresh = useAuthStore.getState().refreshToken;
+  if (!user && !refresh) {
+    throw redirect({ to: '/login', search: { redirect: href } });
+  }
+}
+
+function requirePlatformAdmin(href: string): void {
+  requireAuthGuard(href);
+  const user = useAuthStore.getState().user;
+  // If hydration hasn't completed (only refresh token, no user yet), let it
+  // through — the API will 403 if it's truly not platform_admin.
+  if (!user) return;
+  if (!user.roles.some((r) => r.role === 'platform_admin')) {
+    throw redirect({ to: '/me' });
+  }
+}
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -39,14 +61,29 @@ const loginRoute = createRoute({
 const meRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/me',
-  beforeLoad: ({ location }) => {
-    const user = useAuthStore.getState().user;
-    const refresh = useAuthStore.getState().refreshToken;
-    if (!user && !refresh) {
-      throw redirect({ to: '/login', search: { redirect: location.href } });
-    }
-  },
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
   component: ProfileFeature,
+});
+
+const federationsListRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/federations',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: FederationsListFeature,
+});
+
+const federationNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/federations/new',
+  beforeLoad: ({ location }) => requirePlatformAdmin(location.href),
+  component: FederationNewFeature,
+});
+
+const federationDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/federations/$id',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: FederationDetailFeature,
 });
 
 const healthRoute = createRoute({
@@ -55,7 +92,15 @@ const healthRoute = createRoute({
   component: HealthFeature,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, loginRoute, meRoute, healthRoute]);
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  loginRoute,
+  meRoute,
+  federationsListRoute,
+  federationNewRoute,
+  federationDetailRoute,
+  healthRoute,
+]);
 
 export const router = createRouter({ routeTree });
 

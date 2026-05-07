@@ -12,3 +12,11 @@ export {
   CardFooter,
 } from './components/card.js';
 export { Toaster, toast } from './components/toaster.js';
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from './components/table.js';

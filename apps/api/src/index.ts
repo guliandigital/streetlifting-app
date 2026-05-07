@@ -4,11 +4,20 @@ import helmet from '@fastify/helmet';
 import { initSentry } from './lib/sentry.js';
 import { rootLogger, moduleLogger } from './lib/logger.js';
 
+// BigInt JSON serialization. Prisma returns BigInt for *Kopecks columns;
+// JSON.stringify would throw without this. Serialised as a string so JS
+// number's 53-bit precision can never silently truncate (ADR-0006).
+(BigInt.prototype as { toJSON?: () => string }).toJSON = function (): string {
+  return this.toString();
+};
+
 initSentry();
 import { registerRequestContext } from './lib/request-context.js';
+import { attachUser } from './lib/auth/middleware.js';
 import { loadPlugins } from './lib/load-plugins.js';
 import { healthPlugin } from './plugins/health.js';
 import { authPlugin } from './plugins/auth.js';
+import { federationsPlugin } from './plugins/federations.js';
 import rateLimit from '@fastify/rate-limit';
 
 const port = Number(process.env.PORT ?? 3000);
@@ -30,6 +39,9 @@ const app = Fastify({
 const boot = moduleLogger('boot');
 
 await registerRequestContext(app);
+
+// Attach req.user globally so every plugin can use requireAuth/requireRole.
+app.addHook('preHandler', attachUser);
 
 await app.register(helmet, {
   contentSecurityPolicy: {
@@ -69,6 +81,7 @@ await app.register(rateLimit, {
 const features = [
   healthPlugin,
   authPlugin,
+  federationsPlugin,
   // Feature plugins are appended here as milestones land. Each loads
   // independently; see ADR-0003 for the isolation contract.
 ];
