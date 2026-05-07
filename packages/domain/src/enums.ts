@@ -124,6 +124,18 @@ export type CompetitionFormat = z.infer<typeof CompetitionFormat>;
 export const Event = z.enum(['PU', 'DI', 'PUDI']);
 export type Event = z.infer<typeof Event>;
 
+export const LookupKind = z.enum([
+  /** Judge categories (head judge, 1st cat, 2nd cat, side judge, …). */
+  'judge_category',
+  /** Sport ranks (МСМК, МС, КМС, 1р, 1ю, …). */
+  'sport_rank',
+  /** Club types (gym, section, school, amateur club, …). */
+  'club_type',
+  /** Free-form federation tags / pomechki (partner, sponsor, …). */
+  'federation_tag',
+]);
+export type LookupKind = z.infer<typeof LookupKind>;
+
 export const PlateColor = z.enum([
   'red',
   'blue',

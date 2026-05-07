@@ -686,6 +686,99 @@ model Consent {
   @@map("consent")
 }
 
+// ─── Reference data (lookups / справочники) ─────────────────────────────
+//
+// Centralised reference data so admins can manage canonical lists without
+// engineering. Two shapes:
+//
+//   (1) Hierarchical geographic lookups (Country → Region → City) get
+//       dedicated tables — they have stable identity and structural
+//       relationships beyond a name.
+//   (2) Flat domain lists (judge categories, sport ranks, club types,
+//       federation tags, …) live in a single `lookup_value` table keyed
+//       by `(kind, code)`.
+//
+// Workflow / state-machine enums (`Role`, `CompetitionStatus`,
+// `NominationStatus`, `Gender`, …) intentionally remain Prisma enums —
+// they are referenced by code and must not drift in production.
+// See M2.5 spec.
+
+model Country {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// ISO 3166-1 alpha-2 country code, uppercase (e.g. "RU", "US", "KZ").
+  codeIso2  String   @unique @db.Char(2)
+  nameRu    String
+  nameEn    String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  regions   Region[]
+
+  @@index([sortOrder])
+  @@map("country")
+}
+
+model Region {
+  id        String   @id @default(uuid()) @db.Uuid
+  countryId String   @db.Uuid
+  /// Region/state identifier within a country. For Russia: ISO 3166-2
+  /// codes (e.g. "RU-MOW", "RU-SPE"). For other countries: any stable
+  /// short code; uniqueness is scoped to the country.
+  codeIso   String
+  nameRu    String
+  nameEn    String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  country   Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities    City[]
+
+  @@unique([countryId, codeIso])
+  @@index([countryId, sortOrder])
+  @@map("region")
+}
+
+model City {
+  id        String   @id @default(uuid()) @db.Uuid
+  regionId  String   @db.Uuid
+  nameRu    String
+  nameEn    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  region    Region   @relation(fields: [regionId], references: [id], onDelete: Cascade)
+
+  @@unique([regionId, nameRu])
+  @@index([regionId, nameRu])
+  @@index([nameRu])
+  @@map("city")
+}
+
+/// Universal flat lookup list. Discriminated by `kind` against the
+/// `LookupKind` Zod enum in `packages/domain/src/enums.ts`. UNIQUE on
+/// `(kind, code)` so callers can resolve a value by stable identifier.
+model LookupValue {
+  id        String   @id @default(uuid()) @db.Uuid
+  kind      String
+  code      String
+  nameRu    String
+  nameEn    String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  metadata  Json?    @default("{}")
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([kind, code])
+  @@index([kind, sortOrder])
+  @@map("lookup_value")
+}
+
 // ─── Audit log ───────────────────────────────────────────────────────────
 //
 // INSERT-only for the application role (enforced via GRANT in the migration

@@ -20,6 +20,11 @@ import DisciplineDetailFeature from './features/disciplines/detail.js';
 import JudgesListFeature from './features/judges/index.js';
 import JudgeNewFeature from './features/judges/new.js';
 import JudgeDetailFeature from './features/judges/detail.js';
+import LookupsLandingFeature from './features/lookups/index.js';
+import LookupsCountriesFeature from './features/lookups/countries.js';
+import LookupsRegionsFeature from './features/lookups/regions.js';
+import LookupsCitiesFeature from './features/lookups/cities.js';
+import LookupsValuesFeature from './features/lookups/values.js';
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -150,6 +155,41 @@ const judgeDetailRoute = createRoute({
   component: JudgeDetailFeature,
 });
 
+const lookupsLandingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/lookups',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: LookupsLandingFeature,
+});
+
+const lookupsCountriesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/lookups/countries',
+  beforeLoad: ({ location }) => requirePlatformAdmin(location.href),
+  component: LookupsCountriesFeature,
+});
+
+const lookupsRegionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/lookups/regions',
+  beforeLoad: ({ location }) => requirePlatformAdmin(location.href),
+  component: LookupsRegionsFeature,
+});
+
+const lookupsCitiesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/lookups/cities',
+  beforeLoad: ({ location }) => requirePlatformAdmin(location.href),
+  component: LookupsCitiesFeature,
+});
+
+const lookupsValuesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/lookups/values',
+  beforeLoad: ({ location }) => requirePlatformAdmin(location.href),
+  component: LookupsValuesFeature,
+});
+
 const healthRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/_health',
@@ -171,6 +211,11 @@ const routeTree = rootRoute.addChildren([
   judgesListRoute,
   judgeNewRoute,
   judgeDetailRoute,
+  lookupsLandingRoute,
+  lookupsCountriesRoute,
+  lookupsRegionsRoute,
+  lookupsCitiesRoute,
+  lookupsValuesRoute,
   healthRoute,
 ]);
 

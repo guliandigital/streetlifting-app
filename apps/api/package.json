@@ -16,6 +16,11 @@
     "db:studio": "prisma studio",
     "seed:root": "tsx scripts/seed-root.ts",
     "seed:disciplines": "tsx scripts/seed-disciplines.ts",
+    "seed:countries": "tsx scripts/seed-countries.ts",
+    "seed:rf-regions": "tsx scripts/seed-rf-regions.ts",
+    "seed:rf-cities": "tsx scripts/seed-rf-cities.ts",
+    "seed:lookup-values": "tsx scripts/seed-lookup-values.ts",
+    "seed:references": "pnpm seed:countries && pnpm seed:rf-regions && pnpm seed:rf-cities && pnpm seed:lookup-values",
     "clean": "rimraf dist .turbo"
   },
   "dependencies": {
