@@ -27,6 +27,17 @@ pnpm --filter=@streetlifting/api db:migrate    # apply migrations against your l
 pnpm dev             # web → http://localhost:1420, api → http://localhost:3000/health
 ```
 
+> **Windows note**: if `pnpm dev` opens a CMD prompt and exits without
+> starting the servers (a known pnpm + cmd.exe quirk on some Windows
+> setups), use the bundled launcher instead:
+>
+> ```powershell
+> .\scripts\dev.ps1
+> ```
+>
+> It bypasses pnpm's script wrapper and spawns the API and Web in two
+> separate PowerShell windows.
+
 ## Database / Prisma workflow
 
 ```bash
