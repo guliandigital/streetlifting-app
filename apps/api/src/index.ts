@@ -5,6 +5,8 @@ import { rootLogger, moduleLogger } from './lib/logger.js';
 import { registerRequestContext } from './lib/request-context.js';
 import { loadPlugins } from './lib/load-plugins.js';
 import { healthPlugin } from './plugins/health.js';
+import { authPlugin } from './plugins/auth.js';
+import rateLimit from '@fastify/rate-limit';
 
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -55,8 +57,15 @@ await app.register(cors, {
   exposedHeaders: ['x-request-id'],
 });
 
+// Global rate limit; per-route stricter limits applied inside plugins.
+await app.register(rateLimit, {
+  max: 60,
+  timeWindow: '1 minute',
+});
+
 const features = [
   healthPlugin,
+  authPlugin,
   // Feature plugins are appended here as milestones land. Each loads
   // independently; see ADR-0003 for the isolation contract.
 ];
