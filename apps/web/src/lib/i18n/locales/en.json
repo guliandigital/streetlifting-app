@@ -1,0 +1,39 @@
+{
+  "app": {
+    "title": "Streetlifting App",
+    "restoringSession": "Restoring session…"
+  },
+  "header": {
+    "login": "Login",
+    "logout": "Logout"
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Streetlifting App — sign in to continue.",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "errors": {
+      "invalidCredentials": "Invalid email or password",
+      "unknown": "Something went wrong. Please try again."
+    }
+  },
+  "profile": {
+    "title": "Profile",
+    "subtitle": "Identity from <code>/auth/me</code>.",
+    "displayName": "Display name",
+    "email": "Email",
+    "userId": "User ID",
+    "roles": "Roles",
+    "noRoles": "No role assignments yet",
+    "scope": {
+      "federation": "federation {{id}}",
+      "competition": "competition {{id}}"
+    }
+  },
+  "language": {
+    "ru": "RU",
+    "en": "EN"
+  }
+}

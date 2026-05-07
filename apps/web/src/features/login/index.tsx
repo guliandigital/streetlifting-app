@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import {
   Button,
   Card,
@@ -18,6 +19,7 @@ import { moduleLogger } from '../../lib/logger.js';
 const log = moduleLogger('login');
 
 export default function LoginFeature() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { login } = useAuth();
   const search = useSearch({ from: '/login' }) as { redirect?: string };
@@ -35,11 +37,11 @@ export default function LoginFeature() {
       await navigate({ to: search.redirect ?? '/me' });
     } catch (err) {
       if (err instanceof ApiClientError && err.code === 'invalid_credentials') {
-        toast.error('Неверный email или пароль');
+        toast.error(t('login.errors.invalidCredentials'));
       } else if (err instanceof ApiClientError) {
         toast.error(err.message);
       } else {
-        toast.error('Что-то пошло не так. Попробуйте ещё раз.');
+        toast.error(t('login.errors.unknown'));
         log.error('login failed', { name: err instanceof Error ? err.name : 'unknown' });
       }
     } finally {
@@ -51,13 +53,13 @@ export default function LoginFeature() {
     <div className="max-w-sm mx-auto mt-16 px-6">
       <Card>
         <CardHeader>
-          <CardTitle>Вход</CardTitle>
-          <CardDescription>Streetlifting App — войдите, чтобы продолжить.</CardDescription>
+          <CardTitle>{t('login.title')}</CardTitle>
+          <CardDescription>{t('login.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t('login.email')}</Label>
               <Input
                 id="email"
                 type="email"
@@ -69,7 +71,7 @@ export default function LoginFeature() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Пароль</Label>
+              <Label htmlFor="password">{t('login.password')}</Label>
               <Input
                 id="password"
                 type="password"
@@ -85,7 +87,7 @@ export default function LoginFeature() {
               className="w-full"
               disabled={busy || email.length === 0 || password.length === 0}
             >
-              {busy ? 'Входим…' : 'Войти'}
+              {busy ? t('login.submitting') : t('login.submit')}
             </Button>
           </form>
         </CardContent>
