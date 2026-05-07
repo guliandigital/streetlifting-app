@@ -17,7 +17,7 @@ import { useDisciplines, type DisciplineDto } from './api.js';
 
 const SECTION_ORDER: Array<{ key: string; format: DisciplineDto['format']; codePrefix?: string }> = [
   { key: 'classic', format: 'three_attempts_max' },
-  { key: 'multirepTwoLift', format: 'reps_to_failure', codePrefix: 'multirep_2lift_' },
+  { key: 'multirepTotal', format: 'reps_to_failure', codePrefix: 'multirep_total_' },
   { key: 'multirepPu', format: 'reps_to_failure', codePrefix: 'multirep_pu_' },
   { key: 'multirepDi', format: 'reps_to_failure', codePrefix: 'multirep_di_' },
 ];

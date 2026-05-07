@@ -126,7 +126,7 @@
     "empty": "Catalog empty. Run `pnpm --filter=@streetlifting/api seed:disciplines`.",
     "sections": {
       "classic": "Classic Streetlifting (3 attempts)",
-      "multirepTwoLift": "Multirep two-lift",
+      "multirepTotal": "Multirep total",
       "multirepPu": "Multirep pull-ups",
       "multirepDi": "Multirep dips"
     },
