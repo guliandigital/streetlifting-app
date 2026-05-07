@@ -14,6 +14,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
+    "seed:root": "tsx scripts/seed-root.ts",
     "clean": "rimraf dist .turbo"
   },
   "dependencies": {
