@@ -22,6 +22,7 @@ import { athletesPlugin } from './plugins/athletes.js';
 import { disciplinesPlugin } from './plugins/disciplines.js';
 import { judgesPlugin } from './plugins/judges.js';
 import { referencesPlugin } from './plugins/references.js';
+import { federationChaptersPlugin } from './plugins/federation-chapters.js';
 import rateLimit from '@fastify/rate-limit';
 
 const port = Number(process.env.PORT ?? 3000);
@@ -90,6 +91,7 @@ const features = [
   disciplinesPlugin,
   judgesPlugin,
   referencesPlugin,
+  federationChaptersPlugin,
   // Feature plugins are appended here as milestones land. Each loads
   // independently; see ADR-0003 for the isolation contract.
 ];

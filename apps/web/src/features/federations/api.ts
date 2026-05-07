@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { FederationCreate, FederationUpdate } from '@streetlifting/domain';
+import type {
+  FederationChapterCreate,
+  FederationChapterUpdate,
+  FederationCreate,
+  FederationUpdate,
+} from '@streetlifting/domain';
 import { api } from '../../lib/api-client.js';
 
 interface FederationDto {
@@ -57,5 +62,50 @@ export function useUpdateFederation(id: string) {
       void qc.invalidateQueries({ queryKey: ['federations'] });
       void qc.invalidateQueries({ queryKey: ['federations', id] });
     },
+  });
+}
+
+// ─── Chapters ────────────────────────────────────────────────────────
+
+export interface FederationChapterDto {
+  id: string;
+  federationId: string;
+  code: string;
+  nameRu: string;
+  nameEn: string;
+  countryCode: string | null;
+  regionCode: string | null;
+  city: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useFederationChapters(federationId: string) {
+  return useQuery<{ chapters: FederationChapterDto[] }>({
+    queryKey: ['federations', federationId, 'chapters'],
+    queryFn: () => api.federations.chapters.list(federationId),
+    enabled: Boolean(federationId),
+  });
+}
+
+export function useCreateFederationChapter(federationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: FederationChapterCreate) => api.federations.chapters.create(federationId, data),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['federations', federationId, 'chapters'] }),
+  });
+}
+
+export function useUpdateFederationChapter(federationId: string, chapterId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: FederationChapterUpdate) =>
+      api.federations.chapters.update(federationId, chapterId, data),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['federations', federationId, 'chapters'] }),
   });
 }

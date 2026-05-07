@@ -254,6 +254,7 @@ model Federation {
   updatedAt                         DateTime  @updatedAt @db.Timestamptz(6)
 
   competitions      Competition[]
+  chapters          FederationChapter[]
   receipts          Receipt[]
   writeoffs         Writeoff[]
   veteranOverrides  VeteranCoefficient[]
@@ -264,6 +265,32 @@ model Federation {
   records           Record[]
 
   @@map("federation")
+}
+
+/// Regional branch ("отделение") of a federation. Federations may have any
+/// number of chapters across regions/cities. Used to attribute competitions
+/// to a specific local organising arm and to scope role assignments later.
+model FederationChapter {
+  id            String     @id @default(uuid()) @db.Uuid
+  federationId  String     @db.Uuid
+  /// Short identifier unique within the parent federation (e.g. "MOW", "SPB").
+  code          String
+  nameRu        String
+  nameEn        String
+  countryCode   String?    @db.Char(2)
+  regionCode    String?
+  city          String?
+  contactPhone  String?
+  contactEmail  String?
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime   @updatedAt @db.Timestamptz(6)
+
+  federation    Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+
+  @@unique([federationId, code])
+  @@index([federationId])
+  @@map("federation_chapter")
 }
 
 model Receipt {

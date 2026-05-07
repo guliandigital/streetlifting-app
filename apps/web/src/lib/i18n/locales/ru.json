@@ -84,6 +84,31 @@
     },
     "errors": {
       "codeTaken": "Такой код уже занят"
+    },
+    "chapters": {
+      "title": "Отделения",
+      "count_one": "{{count}} отделение",
+      "count_few": "{{count}} отделения",
+      "count_many": "{{count}} отделений",
+      "count_other": "{{count}} отделений",
+      "add": "Добавить отделение",
+      "empty": "Отделений пока нет.",
+      "created": "Отделение создано",
+      "updated": "Отделение обновлено",
+      "cols": {
+        "code": "Код",
+        "name": "Название",
+        "city": "Город",
+        "active": "Активно"
+      },
+      "fields": {
+        "code": "Код (например, MOW)",
+        "nameRu": "Название (RU)",
+        "nameEn": "Название (EN)",
+        "city": "Город",
+        "contactPhone": "Телефон",
+        "contactEmail": "Email"
+      }
     }
   },
   "athletes": {

@@ -82,6 +82,29 @@
     },
     "errors": {
       "codeTaken": "This code is already taken"
+    },
+    "chapters": {
+      "title": "Chapters",
+      "count_one": "{{count}} chapter",
+      "count_other": "{{count}} chapters",
+      "add": "Add chapter",
+      "empty": "No chapters yet.",
+      "created": "Chapter created",
+      "updated": "Chapter updated",
+      "cols": {
+        "code": "Code",
+        "name": "Name",
+        "city": "City",
+        "active": "Active"
+      },
+      "fields": {
+        "code": "Code (e.g. MOW)",
+        "nameRu": "Name (RU)",
+        "nameEn": "Name (EN)",
+        "city": "City",
+        "contactPhone": "Phone",
+        "contactEmail": "Email"
+      }
     }
   },
   "athletes": {

@@ -22,6 +22,8 @@ export * from './city.js';
 export * from './city-input.js';
 export * from './lookup-value.js';
 export * from './lookup-value-input.js';
+export * from './federation-chapter.js';
+export * from './federation-chapter-input.js';
 export * from './billing.js';
 export * from './event.js';
 export * from './record.js';

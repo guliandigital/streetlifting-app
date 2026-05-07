@@ -32,6 +32,7 @@ export const CountryId = idLike.brand<'CountryId'>();
 export const RegionId = idLike.brand<'RegionId'>();
 export const CityId = idLike.brand<'CityId'>();
 export const LookupValueId = idLike.brand<'LookupValueId'>();
+export const FederationChapterId = idLike.brand<'FederationChapterId'>();
 
 export type FederationId = z.infer<typeof FederationId>;
 export type UserId = z.infer<typeof UserId>;
@@ -63,3 +64,4 @@ export type CountryId = z.infer<typeof CountryId>;
 export type RegionId = z.infer<typeof RegionId>;
 export type CityId = z.infer<typeof CityId>;
 export type LookupValueId = z.infer<typeof LookupValueId>;
+export type FederationChapterId = z.infer<typeof FederationChapterId>;
