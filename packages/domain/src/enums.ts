@@ -4,6 +4,14 @@ export const Gender = z.enum(['M', 'F']);
 export type Gender = z.infer<typeof Gender>;
 
 export const Role = z.enum([
+  /**
+   * Platform-wide root. Sees and can administer every federation, every
+   * competition, every audit log entry. Typically a single account
+   * belonging to the maintainer / SaaS owner. Has implicit access to ALL
+   * scopes regardless of federationId / competitionId on the assignment.
+   * Use sparingly — most operations should be scoped via federation_admin.
+   */
+  'platform_admin',
   'federation_admin',
   'secretary',
   'head_judge',

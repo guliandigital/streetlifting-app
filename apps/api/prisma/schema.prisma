@@ -25,6 +25,8 @@ enum Gender {
 }
 
 enum Role {
+  /// Platform-wide root. Implicit access to every scope.
+  platform_admin
   federation_admin
   secretary
   head_judge
