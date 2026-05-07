@@ -18,7 +18,8 @@
     "logout": "Выйти",
     "federations": "Федерации",
     "athletes": "Спортсмены",
-    "disciplines": "Дисциплины"
+    "disciplines": "Дисциплины",
+    "judges": "Судьи"
   },
   "login": {
     "title": "Вход",
@@ -148,6 +149,37 @@
       "format": "Формат",
       "equipment": "Снаряд",
       "veteranCoefficient": "Применять ветеранский к-нт"
+    }
+  },
+  "judges": {
+    "title": "Судьи",
+    "subtitle": "Реестр судей платформы.",
+    "listTitle": "Список",
+    "count_one": "{{count}} судья",
+    "count_few": "{{count}} судьи",
+    "count_many": "{{count}} судей",
+    "count_other": "{{count}} судей",
+    "create": "Добавить судью",
+    "newTitle": "Новый судья",
+    "empty": "Судей пока нет.",
+    "created": "Судья добавлен",
+    "noCategory": "Без категории",
+    "searchPlaceholder": "Поиск по фамилии, имени или номеру билета…",
+    "cols": {
+      "name": "ФИО",
+      "category": "Категория",
+      "cardNumber": "Номер билета",
+      "cityRegion": "Город / регион"
+    },
+    "fields": {
+      "lastName": "Фамилия",
+      "firstName": "Имя",
+      "middleName": "Отчество",
+      "categoryRu": "Категория (RU)",
+      "categoryRuHint": "Например: «Спортивный судья 1 категории»",
+      "categoryEn": "Категория (EN)",
+      "cardNumber": "Номер судейского билета",
+      "cityRegion": "Город / регион"
     }
   },
   "language": {
