@@ -1,18 +1,58 @@
 @import 'tailwindcss';
 
-/* Brand palette — see docs/brand/COLOR_PALETTE.txt */
+/**
+ * Tell Tailwind to scan the shared UI package's components. Without this,
+ * classes used only inside @streetlifting/ui (Button's `bg-primary`, etc.)
+ * are tree-shaken because they don't appear in apps/web's source.
+ */
+@source "../../../packages/ui/src/**/*.{ts,tsx}";
+
+/**
+ * Brand palette + shadcn/ui semantic tokens.
+ * Brand source: docs/brand/COLOR_PALETTE.txt
+ *
+ * Shadcn convention: every component reads tokens like `bg-background`,
+ * `text-foreground`, `bg-primary`, etc. We map those tokens onto the
+ * brand colours below so the component library inherits the brand
+ * automatically.
+ */
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
 
+  /* Brand source */
   --color-brand-charcoal: #10151d;
   --color-brand-charcoal-alt: #0d1219;
   --color-brand-lime: #99cd14;
   --color-brand-white: #ffffff;
 
-  --color-bg: var(--color-brand-charcoal);
-  --color-bg-alt: var(--color-brand-charcoal-alt);
-  --color-fg: var(--color-brand-white);
-  --color-accent: var(--color-brand-lime);
+  /* shadcn/ui semantic tokens (dark theme) */
+  --color-background: #10151d;
+  --color-foreground: #fafafa;
+
+  --color-card: #0d1219;
+  --color-card-foreground: #fafafa;
+
+  --color-popover: #0d1219;
+  --color-popover-foreground: #fafafa;
+
+  --color-primary: #99cd14;
+  --color-primary-foreground: #10151d;
+
+  --color-secondary: #1a1f29;
+  --color-secondary-foreground: #fafafa;
+
+  --color-muted: #1a1f29;
+  --color-muted-foreground: #a1a1aa;
+
+  --color-accent: #1a1f29;
+  --color-accent-foreground: #fafafa;
+
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #fafafa;
+
+  --color-border: #262d3a;
+  --color-input: #262d3a;
+  --color-ring: #99cd14;
 }
 
 html,
@@ -22,7 +62,7 @@ body,
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--color-fg);
+  background: var(--color-background);
+  color: var(--color-foreground);
   font-family: var(--font-sans);
 }
