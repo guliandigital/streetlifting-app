@@ -17,6 +17,9 @@ import AthleteNewFeature from './features/athletes/new.js';
 import AthleteDetailFeature from './features/athletes/detail.js';
 import DisciplinesListFeature from './features/disciplines/index.js';
 import DisciplineDetailFeature from './features/disciplines/detail.js';
+import JudgesListFeature from './features/judges/index.js';
+import JudgeNewFeature from './features/judges/new.js';
+import JudgeDetailFeature from './features/judges/detail.js';
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -126,6 +129,27 @@ const disciplineDetailRoute = createRoute({
   component: DisciplineDetailFeature,
 });
 
+const judgesListRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/judges',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: JudgesListFeature,
+});
+
+const judgeNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/judges/new',
+  beforeLoad: ({ location }) => requirePlatformAdmin(location.href),
+  component: JudgeNewFeature,
+});
+
+const judgeDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/judges/$id',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: JudgeDetailFeature,
+});
+
 const healthRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/_health',
@@ -144,6 +168,9 @@ const routeTree = rootRoute.addChildren([
   athleteDetailRoute,
   disciplinesListRoute,
   disciplineDetailRoute,
+  judgesListRoute,
+  judgeNewRoute,
+  judgeDetailRoute,
   healthRoute,
 ]);
 

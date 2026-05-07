@@ -13,6 +13,7 @@ export * from './nomination.js';
 export * from './attempt.js';
 export * from './flight.js';
 export * from './judge.js';
+export * from './judge-input.js';
 export * from './billing.js';
 export * from './event.js';
 export * from './record.js';

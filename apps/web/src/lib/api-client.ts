@@ -3,6 +3,8 @@ import type {
   AthleteUpdate,
   FederationCreate,
   FederationUpdate,
+  JudgeCreate,
+  JudgeUpdate,
 } from '@streetlifting/domain';
 import { useAuthStore } from './auth/store.js';
 import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './auth/types.js';
@@ -10,6 +12,7 @@ import { moduleLogger } from './logger.js';
 import type { Federation } from '../features/federations/api.js';
 import type { AthleteDto, AthleteListResponse } from '../features/athletes/api.js';
 import type { DisciplineDto } from '../features/disciplines/api.js';
+import type { JudgeDto, JudgeListResponse } from '../features/judges/api.js';
 
 const log = moduleLogger('api-client');
 
@@ -167,5 +170,21 @@ export const api = {
   disciplines: {
     list: (): Promise<{ disciplines: DisciplineDto[] }> => request('/disciplines'),
     get: (id: string): Promise<{ discipline: DisciplineDto }> => request(`/disciplines/${id}`),
+  },
+
+  judges: {
+    list: (params: { search?: string; limit?: number; offset?: number } = {}): Promise<JudgeListResponse> => {
+      const q = new URLSearchParams();
+      if (params.search) q.set('search', params.search);
+      if (params.limit !== undefined) q.set('limit', String(params.limit));
+      if (params.offset !== undefined) q.set('offset', String(params.offset));
+      const qs = q.toString();
+      return request(`/judges${qs ? `?${qs}` : ''}`);
+    },
+    get: (id: string): Promise<{ judge: JudgeDto }> => request(`/judges/${id}`),
+    create: (data: JudgeCreate): Promise<{ judge: JudgeDto }> =>
+      request('/judges', { method: 'POST', body: data }),
+    update: (id: string, data: JudgeUpdate): Promise<{ judge: JudgeDto }> =>
+      request(`/judges/${id}`, { method: 'PATCH', body: data }),
   },
 };

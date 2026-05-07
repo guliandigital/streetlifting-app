@@ -18,7 +18,8 @@
     "logout": "Logout",
     "federations": "Federations",
     "athletes": "Athletes",
-    "disciplines": "Disciplines"
+    "disciplines": "Disciplines",
+    "judges": "Judges"
   },
   "login": {
     "title": "Sign in",
@@ -142,6 +143,35 @@
       "format": "Format",
       "equipment": "Equipment",
       "veteranCoefficient": "Apply veteran coefficient"
+    }
+  },
+  "judges": {
+    "title": "Judges",
+    "subtitle": "Platform-wide judge directory.",
+    "listTitle": "List",
+    "count_one": "{{count}} judge",
+    "count_other": "{{count}} judges",
+    "create": "Add judge",
+    "newTitle": "New judge",
+    "empty": "No judges yet.",
+    "created": "Judge created",
+    "noCategory": "No category",
+    "searchPlaceholder": "Search by name or card number…",
+    "cols": {
+      "name": "Name",
+      "category": "Category",
+      "cardNumber": "Card number",
+      "cityRegion": "City / region"
+    },
+    "fields": {
+      "lastName": "Last name",
+      "firstName": "First name",
+      "middleName": "Middle name",
+      "categoryRu": "Category (RU)",
+      "categoryRuHint": "e.g. «Спортивный судья 1 категории»",
+      "categoryEn": "Category (EN)",
+      "cardNumber": "Judge card number",
+      "cityRegion": "City / region"
     }
   },
   "language": {
