@@ -1,23 +1,35 @@
 /**
- * ISF v5.1 discipline catalog — 19 disciplines.
+ * ISF v5.1 discipline catalog — 25 disciplines.
  *
- *   3 Classic (PU / DI / PUDI two-lift) — formula = isf_points
- *   6 Multirep two-lift                 — formula = result_x_coefficient
- *   5 Multirep single-lift PU           — formula = result_x_coefficient
- *   5 Multirep single-lift DI           — formula = result_x_coefficient
+ *    3 Classic streetlifting (PU / DI / PUDI total)              — formula = isf_points
+ *   16 Multirep streetlifting (6 total + 5 PU singles + 5 DI)    — formula = result_x_coefficient
+ *    6 Weighted Calisthenics (PU / DI / MU bar / MU ring / SQ /
+ *      4-event total)                                            — formula = isf_points
  *
- * Source: PowerTable «Дисциплины» tab + ISF v5.1 §2.2.
- * Weighted-calisthenics disciplines (muscle-up, squat) are reserved for V2+.
+ * Source: PowerTable «Дисциплины» tab + ISF v5.1 §§2, 4.
+ *
+ * WC notes per ISF v5.1 §4.3–4.4:
+ * - Bar Muscle-Up: men's default; women may opt-in by request before start
+ * - Ring Muscle-Up: women's default
+ * - Barbell Squat: hip below knee level depth requirement
+ * - WC Total = sum of best successful Pull-Up + Dip + Muscle-Up + Squat
+ *
+ * ISF Coefficients are tabulated only for Classic (§10.9.3); WC singles
+ * use formula='isf_points' but the coefficient lookup falls back to 1.0
+ * (raw kg) until ISF publishes WC parameters.
  */
 
 export type CompetitionFormatCode = 'classic' | 'multirep';
-export type EventCode = 'PU' | 'DI' | 'PUDI';
+export type EventCode = 'PU' | 'DI' | 'PUDI' | 'MU_BAR' | 'MU_RING' | 'SQ' | 'PUDIMUSQ';
 export type FormulaCode = 'isf_points' | 'result_x_coefficient';
+export type DisciplineFamilyCode = 'streetlifting' | 'weighted_calisthenics' | 'multi_rep';
 
 export interface DisciplinePreset {
   code: string;
   labelRu: string;
   labelEn: string;
+  /** Defaults to 'streetlifting' for the classic + multirep entries. */
+  family?: DisciplineFamilyCode;
   competitionFormat: CompetitionFormatCode;
   event: EventCode;
   formula: FormulaCode;
@@ -51,4 +63,12 @@ export const ISF_V51_DISCIPLINES: ReadonlyArray<DisciplinePreset> = [
   { code: 'multirep_di_24', labelRu: 'Отжимания с 24 кг', labelEn: 'Dips with 24 kg', competitionFormat: 'multirep', event: 'DI', formula: 'result_x_coefficient', presetLoadKg: { DI: 24 } },
   { code: 'multirep_di_32', labelRu: 'Отжимания с 32 кг', labelEn: 'Dips with 32 kg', competitionFormat: 'multirep', event: 'DI', formula: 'result_x_coefficient', presetLoadKg: { DI: 32 } },
   { code: 'multirep_di_48', labelRu: 'Отжимания с 48 кг', labelEn: 'Dips with 48 kg', competitionFormat: 'multirep', event: 'DI', formula: 'result_x_coefficient', presetLoadKg: { DI: 48 } },
+
+  // ─── Weighted Calisthenics — singles + 4-event total (ISF v5.1 §§4.3–4.4) ─
+  { code: 'wc_pu',      labelRu: 'WC: подтягивания',                labelEn: 'WC: Pull-Up',           family: 'weighted_calisthenics', competitionFormat: 'classic', event: 'PU',         formula: 'isf_points' },
+  { code: 'wc_di',      labelRu: 'WC: отжимания на брусьях',        labelEn: 'WC: Dip',               family: 'weighted_calisthenics', competitionFormat: 'classic', event: 'DI',         formula: 'isf_points' },
+  { code: 'wc_mu_bar',  labelRu: 'WC: выход силой на перекладине',  labelEn: 'WC: Bar Muscle-Up',     family: 'weighted_calisthenics', competitionFormat: 'classic', event: 'MU_BAR',     formula: 'isf_points' },
+  { code: 'wc_mu_ring', labelRu: 'WC: выход силой на кольцах',      labelEn: 'WC: Ring Muscle-Up',    family: 'weighted_calisthenics', competitionFormat: 'classic', event: 'MU_RING',    formula: 'isf_points' },
+  { code: 'wc_squat',   labelRu: 'WC: приседания со штангой',       labelEn: 'WC: Barbell Squat',     family: 'weighted_calisthenics', competitionFormat: 'classic', event: 'SQ',         formula: 'isf_points' },
+  { code: 'wc_total',   labelRu: 'WC: четырёхборье (total)',        labelEn: 'WC: Four-Event (total)', family: 'weighted_calisthenics', competitionFormat: 'classic', event: 'PUDIMUSQ',   formula: 'isf_points' },
 ];
