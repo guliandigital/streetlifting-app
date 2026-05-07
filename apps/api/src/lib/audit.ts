@@ -55,7 +55,7 @@ export async function record(
           ? Prisma.DbNull
           : (entry.after as Prisma.InputJsonValue),
       requestId: entry.requestId,
-      notes: entry.notes,
+      ...(entry.notes !== undefined && { notes: entry.notes }),
     },
   });
   log.debug(
