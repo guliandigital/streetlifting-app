@@ -76,7 +76,11 @@ export const authPlugin: FeaturePlugin = {
     app.get('/health/auth', async () => ({ status: 'ok', module: 'auth' }));
 
     // ─── Register ──────────────────────────────────────────────────────
-    app.post('/auth/register', async (req, reply) => {
+    // Rate limit per ADR-0004: account-creation is the most spammable endpoint.
+    app.post(
+      '/auth/register',
+      { config: { rateLimit: { max: 3, timeWindow: '1 minute' } } },
+      async (req, reply) => {
       const parsed = RegisterBody.safeParse(req.body);
       if (!parsed.success) {
         return reply.code(400).send({
@@ -116,10 +120,15 @@ export const authPlugin: FeaturePlugin = {
         }
         throw err;
       }
-    });
+    },
+    );
 
     // ─── Login ─────────────────────────────────────────────────────────
-    app.post('/auth/login', async (req, reply) => {
+    // Strict rate limit: brute-force protection per ADR-0004.
+    app.post(
+      '/auth/login',
+      { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+      async (req, reply) => {
       const parsed = LoginBody.safeParse(req.body);
       if (!parsed.success) {
         return reply.code(400).send({
@@ -170,10 +179,15 @@ export const authPlugin: FeaturePlugin = {
       });
 
       return reply.send({ user: { id: user.id, email: user.email, displayName: user.displayName }, ...tokens });
-    });
+    },
+    );
 
     // ─── Refresh ───────────────────────────────────────────────────────
-    app.post('/auth/refresh', async (req, reply) => {
+    // Stricter than the global limit but allows healthy 1-2/min from the SPA.
+    app.post(
+      '/auth/refresh',
+      { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+      async (req, reply) => {
       const parsed = RefreshBody.safeParse(req.body);
       if (!parsed.success) {
         return reply.code(400).send({
@@ -225,7 +239,8 @@ export const authPlugin: FeaturePlugin = {
         refreshToken: result.issued.opaque,
         refreshTokenExpiresAt: result.issued.expiresAt.toISOString(),
       });
-    });
+    },
+    );
 
     // ─── Logout ────────────────────────────────────────────────────────
     app.post('/auth/logout', async (req, reply) => {
