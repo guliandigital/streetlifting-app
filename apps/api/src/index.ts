@@ -18,6 +18,7 @@ import { loadPlugins } from './lib/load-plugins.js';
 import { healthPlugin } from './plugins/health.js';
 import { authPlugin } from './plugins/auth.js';
 import { federationsPlugin } from './plugins/federations.js';
+import { athletesPlugin } from './plugins/athletes.js';
 import rateLimit from '@fastify/rate-limit';
 
 const port = Number(process.env.PORT ?? 3000);
@@ -82,6 +83,7 @@ const features = [
   healthPlugin,
   authPlugin,
   federationsPlugin,
+  athletesPlugin,
   // Feature plugins are appended here as milestones land. Each loads
   // independently; see ADR-0003 for the isolation contract.
 ];
