@@ -22,7 +22,7 @@ import {
   useLookups,
   useUpdateLookup,
   type LookupValueDto,
-} from './api.js';
+} from '../../lib/references-api.js';
 import { ApiClientError } from '../../lib/api-client.js';
 
 const KIND_OPTIONS = [

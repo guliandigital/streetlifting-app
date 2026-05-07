@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@streetlifting/ui';
-import { useCountries, useRegions, useCities, useLookups } from './api.js';
+import { useCountries, useRegions, useCities, useLookups } from '../../lib/references-api.js';
 
 interface SectionLink {
   to: '/lookups/countries' | '/lookups/regions' | '/lookups/cities' | '/lookups/values';

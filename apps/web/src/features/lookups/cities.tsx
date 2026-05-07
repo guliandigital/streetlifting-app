@@ -25,7 +25,7 @@ import {
   useUpdateCity,
   type CityDto,
   type RegionDto,
-} from './api.js';
+} from '../../lib/references-api.js';
 import { ApiClientError } from '../../lib/api-client.js';
 
 export default function LookupsCitiesFeature() {

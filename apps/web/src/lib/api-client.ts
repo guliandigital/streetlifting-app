@@ -27,7 +27,7 @@ import type {
   CountryDto,
   LookupValueDto,
   RegionDto,
-} from '../features/lookups/api.js';
+} from './references-api.js';
 
 const log = moduleLogger('api-client');
 

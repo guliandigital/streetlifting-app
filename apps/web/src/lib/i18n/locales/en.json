@@ -65,7 +65,9 @@
     },
     "fields": {
       "code": "Code (short identifier)",
-      "country": "Country code (ISO-2)",
+      "country": "Country",
+      "region": "Region",
+      "regionAny": "— Not set —",
       "nameRu": "Name (RU)",
       "nameEn": "Name (EN)",
       "tariffRub": "Tariff per nomination, ₽",
@@ -111,9 +113,11 @@
       "middleName": "Middle name",
       "dob": "Date of birth",
       "gender": "Gender",
-      "country": "Country code (ISO-2)",
+      "country": "Country",
       "region": "Region",
+      "regionAny": "— Not set —",
       "city": "City",
+      "cityPlaceholder": "Start typing or pick from suggestions",
       "club": "Club",
       "coach": "Coach",
       "cardNumber": "Federation card number"
@@ -171,6 +175,9 @@
       "categoryRu": "Category (RU)",
       "categoryRuHint": "e.g. «Спортивный судья 1 категории»",
       "categoryEn": "Category (EN)",
+      "category": "Judge category",
+      "categoryNone": "— Not set —",
+      "categoryHint": "List is editable under References → Lookup values (kind: judge_category).",
       "cardNumber": "Judge card number",
       "cityRegion": "City / region"
     }
