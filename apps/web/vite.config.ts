@@ -13,6 +13,15 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    proxy: {
+      // Same-origin call from the SPA → API. In prod, nginx serves the
+      // same path. Keeps the SPA free of API base-URL config.
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api/, ''),
+      },
+    },
   },
   build: {
     target: 'es2022',
