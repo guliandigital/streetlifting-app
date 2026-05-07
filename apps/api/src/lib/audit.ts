@@ -46,8 +46,14 @@ export async function record(
       scopeCompetitionId: entry.scopeCompetitionId,
       targetType: entry.targetType,
       targetId: entry.targetId,
-      before: entry.before === undefined ? null : (entry.before as Prisma.InputJsonValue),
-      after: entry.after === undefined ? null : (entry.after as Prisma.InputJsonValue),
+      before:
+        entry.before === undefined || entry.before === null
+          ? Prisma.DbNull
+          : (entry.before as Prisma.InputJsonValue),
+      after:
+        entry.after === undefined || entry.after === null
+          ? Prisma.DbNull
+          : (entry.after as Prisma.InputJsonValue),
       requestId: entry.requestId,
       notes: entry.notes,
     },
@@ -98,8 +104,11 @@ export async function withAudit<T>(
             scopeCompetitionId: entry.scopeCompetitionId,
             targetType: entry.targetType,
             targetId: entry.targetId,
-            before: entry.before === undefined ? null : (entry.before as Prisma.InputJsonValue),
-            after: null,
+            before:
+              entry.before === undefined || entry.before === null
+                ? Prisma.DbNull
+                : (entry.before as Prisma.InputJsonValue),
+            after: Prisma.DbNull,
             requestId: entry.requestId,
             notes: `${entry.notes ?? ''} | error: ${message}`.trim(),
           },
