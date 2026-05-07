@@ -5,6 +5,8 @@ import type {
   CityUpdate,
   CountryCreate,
   CountryUpdate,
+  FederationChapterCreate,
+  FederationChapterUpdate,
   FederationCreate,
   FederationUpdate,
   JudgeCreate,
@@ -17,7 +19,7 @@ import type {
 import { useAuthStore } from './auth/store.js';
 import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './auth/types.js';
 import { moduleLogger } from './logger.js';
-import type { Federation } from '../features/federations/api.js';
+import type { Federation, FederationChapterDto } from '../features/federations/api.js';
 import type { AthleteDto, AthleteListResponse } from '../features/athletes/api.js';
 import type { DisciplineDto } from '../features/disciplines/api.js';
 import type { JudgeDto, JudgeListResponse } from '../features/judges/api.js';
@@ -164,6 +166,16 @@ export const api = {
       request('/federations', { method: 'POST', body: data }),
     update: (id: string, data: FederationUpdate): Promise<{ federation: Federation }> =>
       request(`/federations/${id}`, { method: 'PATCH', body: data }),
+    chapters: {
+      list: (fedId: string): Promise<{ chapters: FederationChapterDto[] }> =>
+        request(`/federations/${fedId}/chapters`),
+      get: (fedId: string, id: string): Promise<{ chapter: FederationChapterDto }> =>
+        request(`/federations/${fedId}/chapters/${id}`),
+      create: (fedId: string, data: FederationChapterCreate): Promise<{ chapter: FederationChapterDto }> =>
+        request(`/federations/${fedId}/chapters`, { method: 'POST', body: data }),
+      update: (fedId: string, id: string, data: FederationChapterUpdate): Promise<{ chapter: FederationChapterDto }> =>
+        request(`/federations/${fedId}/chapters/${id}`, { method: 'PATCH', body: data }),
+    },
   },
 
   athletes: {

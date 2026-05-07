@@ -9,6 +9,7 @@ import {
 } from '@streetlifting/ui';
 import { useFederation } from './api.js';
 import { formatRub } from './format.js';
+import { ChaptersCard } from './chapters-card.js';
 import { useCountries, useRegions } from '../../lib/references-api.js';
 
 export default function FederationDetailFeature() {
@@ -72,6 +73,8 @@ export default function FederationDetailFeature() {
           </dl>
         </CardContent>
       </Card>
+
+      <ChaptersCard federationId={f.id} />
     </div>
   );
 }
