@@ -1,0 +1,715 @@
+// Prisma schema — single source of truth for the database schema.
+//
+// Maps to the Zod domain types in `packages/domain/src/*.ts`. Field names
+// match. Money fields end in `Kopecks` and use `BigInt` per ADR-0006. All
+// timestamps are UTC; `Competition.timezone` controls render.
+//
+// Audit log table (`audit_log`) gets an INSERT-only grant for the app role
+// in the migration SQL — see ADR-0005.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────
+
+enum Gender {
+  M
+  F
+}
+
+enum Role {
+  federation_admin
+  secretary
+  head_judge
+  judge
+  scoreboard_operator
+  speaker
+  athlete
+  accountant
+  viewer
+}
+
+enum CompetitionStatus {
+  draft
+  registration_open
+  registration_closed
+  in_progress
+  finalized
+  archived
+}
+
+enum NominationStatus {
+  draft
+  paid
+  weighed_in
+  on_platform
+  finished
+  disqualified
+  withdrawn
+}
+
+enum AttemptResult {
+  pending
+  good_lift
+  no_lift
+  withdrawn
+}
+
+enum DisciplineFamily {
+  streetlifting
+  weighted_calisthenics
+  multi_rep
+}
+
+enum DisciplineFormat {
+  three_attempts_max
+  reps_to_failure
+  reps_in_time
+  isometric_hold
+}
+
+enum Equipment {
+  pull_up_bar
+  dip_bars
+  bench
+  squat_rack
+  deadlift_platform
+  parallel_bars
+  rings
+  ground
+}
+
+enum VeteranTier {
+  kids
+  youth
+  junior
+  open
+  sub_master
+  m1
+  m2
+  m3
+  m4
+  m5
+  m6
+}
+
+enum JudgeRole {
+  head
+  side_left
+  side_right
+  technical
+  jury
+}
+
+enum PaymentMethod {
+  bank_transfer
+  card
+  sbp
+  cash
+  other
+}
+
+enum NotificationChannel {
+  telegram
+  email
+  webhook
+}
+
+enum ConsentScope {
+  data_processing
+  marketing_email
+  marketing_telegram
+  public_results
+  photo_publication
+}
+
+enum AttachmentKind {
+  athlete_photo
+  federation_file
+  competition_file
+  certificate_pdf
+  protocol_pdf
+  misc
+}
+
+enum PlateColor {
+  red
+  blue
+  yellow
+  green
+  white
+  black
+  gray
+}
+
+enum RecordScope {
+  federation
+  national
+  continental
+  world
+}
+
+enum AuditResult {
+  success
+  failure
+  denied
+}
+
+// ─── Identity & access ────────────────────────────────────────────────────
+
+model User {
+  id              String   @id @default(uuid()) @db.Uuid
+  email           String   @unique
+  phone           String?
+  telegramHandle  String?
+  displayName     String
+  passwordHash    String?
+  isEmailVerified Boolean  @default(false)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  roleAssignments RoleAssignment[]
+  consents        Consent[]
+  attachments     Attachment[]    @relation("AttachmentUploader")
+  refreshTokens   RefreshToken[]
+
+  @@map("user")
+}
+
+model RoleAssignment {
+  id            String       @id @default(uuid()) @db.Uuid
+  userId        String       @db.Uuid
+  role          Role
+  federationId  String?      @db.Uuid
+  competitionId String?      @db.Uuid
+  grantedByUserId String?    @db.Uuid
+  grantedAt     DateTime     @default(now()) @db.Timestamptz(6)
+  revokedAt     DateTime?    @db.Timestamptz(6)
+
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  federation    Federation?  @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  competition   Competition? @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([federationId])
+  @@index([competitionId])
+  @@map("role_assignment")
+}
+
+/// Refresh-token family entry for rotation + reuse detection (RFC 6749 §10.4).
+/// Stores hashed token; prior tokens in the family are revoked when a child
+/// is issued. If a previously rotated token is presented, the entire family
+/// is revoked.
+model RefreshToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  familyId    String    @db.Uuid
+  tokenHash   String    @unique
+  issuedAt    DateTime  @default(now()) @db.Timestamptz(6)
+  expiresAt   DateTime  @db.Timestamptz(6)
+  revokedAt   DateTime? @db.Timestamptz(6)
+  rotatedToId String?   @db.Uuid
+  userAgent   String?
+  ip          String?
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_token")
+}
+
+// ─── Federation & billing ─────────────────────────────────────────────────
+
+model Federation {
+  id                                String    @id @default(uuid()) @db.Uuid
+  code                              String    @unique
+  nameRu                            String
+  nameEn                            String
+  countryCode                       String    @db.Char(2)
+  regionCode                        String?
+  contactPhone                      String?
+  contactEmail                      String?
+  telegramHandle                    String?
+  vkUrl                             String?
+  websiteUrl                        String?
+  chiefAccountantName               String?
+  cashierName                       String?
+  /// Tariff in kopecks per single weighed-in nomination (ADR-0006).
+  billingTariffKopecksPerNomination BigInt
+  securityKey                       String    @db.Uuid
+  isPublicResultsClosed             Boolean   @default(false)
+  notificationsDisabled             Boolean   @default(false)
+  createdAt                         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt                         DateTime  @updatedAt @db.Timestamptz(6)
+
+  competitions      Competition[]
+  receipts          Receipt[]
+  writeoffs         Writeoff[]
+  veteranOverrides  VeteranCoefficient[]
+  plateSets         PlateSet[]
+  attachments       Attachment[]
+  consents          Consent[]
+  roleAssignments   RoleAssignment[]
+  records           Record[]
+
+  @@map("federation")
+}
+
+model Receipt {
+  id                String        @id @default(uuid()) @db.Uuid
+  federationId      String        @db.Uuid
+  number            String
+  date              DateTime      @db.Date
+  nominationsCount  Int
+  /// Money in integer kopecks (ADR-0006).
+  amountKopecks     BigInt
+  paymentMethod     PaymentMethod
+  expiresAt         DateTime      @db.Date
+  externalReference String?
+  createdAt         DateTime      @default(now()) @db.Timestamptz(6)
+
+  federation        Federation    @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  writeoffs         Writeoff[]    @relation("ReceiptWriteoffs")
+
+  @@unique([federationId, number])
+  @@index([federationId, date])
+  @@map("receipt")
+}
+
+model Writeoff {
+  id               String       @id @default(uuid()) @db.Uuid
+  federationId     String       @db.Uuid
+  number           String
+  date             DateTime     @db.Date
+  nominationsCount Int
+  competitionId    String?      @db.Uuid
+  linkedReceiptId  String?      @db.Uuid
+  createdAt        DateTime     @default(now()) @db.Timestamptz(6)
+
+  federation       Federation   @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  competition      Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+  linkedReceipt    Receipt?     @relation("ReceiptWriteoffs", fields: [linkedReceiptId], references: [id], onDelete: SetNull)
+
+  @@unique([federationId, number])
+  @@index([federationId, date])
+  @@map("writeoff")
+}
+
+// ─── Competition graph ────────────────────────────────────────────────────
+
+model Discipline {
+  id                       String           @id @default(uuid()) @db.Uuid
+  code                     String           @unique
+  nameRu                   String
+  nameEn                   String
+  family                   DisciplineFamily
+  format                   DisciplineFormat
+  equipment                Equipment
+  attemptCount             Int              @default(3)
+  fixedWeightKg            Float?
+  applyVeteranCoefficient  Boolean          @default(true)
+
+  nominations              Nomination[]
+  weightClasses            WeightClass[]
+  records                  Record[]
+
+  @@map("discipline")
+}
+
+model Competition {
+  id                        String            @id @default(uuid()) @db.Uuid
+  federationId              String            @db.Uuid
+  code                      String
+  nameRu                    String
+  nameEn                    String
+  description               String?
+  rulebook                  String            @default("ISF v5.1")
+  startDate                 DateTime          @db.Date
+  endDate                   DateTime          @db.Date
+  registrationDeadline      DateTime?         @db.Timestamptz(6)
+  city                      String?
+  venue                     String?
+  /// IANA timezone of the venue (ADR-0006).
+  timezone                  String
+  status                    CompetitionStatus
+  /// Entry fee in integer kopecks (ADR-0006).
+  entryFeeKopecks           BigInt            @default(0)
+  isOnlineRegistrationOpen  Boolean           @default(true)
+  createdAt                 DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt                 DateTime          @updatedAt @db.Timestamptz(6)
+
+  federation                Federation        @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  divisions                 Division[]
+  platforms                 Platform[]
+  flights                   Flight[]
+  nominations               Nomination[]
+  judgeAssignments          JudgeAssignment[]
+  writeoffs                 Writeoff[]
+  attachments               Attachment[]
+  records                   Record[]
+  plateSets                 PlateSet[]
+  roleAssignments           RoleAssignment[]
+
+  @@unique([federationId, code])
+  @@index([federationId, status])
+  @@map("competition")
+}
+
+model Division {
+  id                  String      @id @default(uuid()) @db.Uuid
+  competitionId       String      @db.Uuid
+  code                String
+  nameRu              String
+  nameEn              String
+  gender              Gender
+  veteranTier         VeteranTier
+  ageMin              Int?
+  ageMax              Int?
+  veteranCoefficient  Float       @default(1.0)
+
+  competition         Competition  @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  weightClasses       WeightClass[]
+  nominations         Nomination[]
+  records             Record[]
+
+  @@unique([competitionId, code])
+  @@map("division")
+}
+
+model WeightClass {
+  id           String      @id @default(uuid()) @db.Uuid
+  divisionId   String      @db.Uuid
+  disciplineId String?     @db.Uuid
+  code         String
+  nameRu       String
+  nameEn       String
+  weightMin    Float?
+  weightMax    Float?
+  order        Int
+
+  division     Division    @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  discipline   Discipline? @relation(fields: [disciplineId], references: [id], onDelete: SetNull)
+  nominations  Nomination[]
+  records      Record[]
+
+  @@index([divisionId, order])
+  @@map("weight_class")
+}
+
+model Athlete {
+  id                   String       @id @default(uuid()) @db.Uuid
+  lastName             String
+  firstName            String
+  middleName           String?
+  dateOfBirth          DateTime     @db.Date
+  gender               Gender
+  countryCode          String       @db.Char(2)
+  regionCode           String?
+  city                 String?
+  coachName            String?
+  clubName             String?
+  federationCardNumber String?
+  photoUrl             String?
+  createdAt            DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime     @updatedAt @db.Timestamptz(6)
+
+  nominations          Nomination[]
+  consents             Consent[]
+  attachments          Attachment[]
+  records              Record[]
+
+  @@index([lastName, firstName])
+  @@index([dateOfBirth])
+  @@map("athlete")
+}
+
+model Platform {
+  id            String      @id @default(uuid()) @db.Uuid
+  competitionId String      @db.Uuid
+  name          String
+  order         Int
+
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  flights       Flight[]
+  judgeAssigns  JudgeAssignment[]
+
+  @@unique([competitionId, order])
+  @@map("platform")
+}
+
+model Flight {
+  id            String      @id @default(uuid()) @db.Uuid
+  competitionId String      @db.Uuid
+  platformId    String      @db.Uuid
+  code          String
+  name          String
+  order         Int
+  startTime     DateTime?   @db.Timestamptz(6)
+
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  platform      Platform    @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  groups        Group[]
+  nominations   Nomination[]
+
+  @@unique([competitionId, code])
+  @@index([platformId, order])
+  @@map("flight")
+}
+
+model Group {
+  id        String      @id @default(uuid()) @db.Uuid
+  flightId  String      @db.Uuid
+  name      String
+  order     Int
+
+  flight    Flight       @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  nominations Nomination[]
+
+  @@index([flightId, order])
+  @@map("group")
+}
+
+model Judge {
+  id                   String   @id @default(uuid()) @db.Uuid
+  lastName             String
+  firstName            String
+  middleName           String?
+  categoryRu           String?
+  categoryEn           String?
+  cardNumber           String?
+  cityRegion           String?
+  createdAt            DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(6)
+
+  assignments          JudgeAssignment[]
+
+  @@index([lastName, firstName])
+  @@map("judge")
+}
+
+model JudgeAssignment {
+  id            String      @id @default(uuid()) @db.Uuid
+  competitionId String      @db.Uuid
+  judgeId       String      @db.Uuid
+  platformId    String?     @db.Uuid
+  role          JudgeRole
+  assignedAt    DateTime    @default(now()) @db.Timestamptz(6)
+
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  judge         Judge       @relation(fields: [judgeId], references: [id], onDelete: Cascade)
+  platform      Platform?   @relation(fields: [platformId], references: [id], onDelete: SetNull)
+
+  @@unique([competitionId, judgeId, platformId, role])
+  @@map("judge_assignment")
+}
+
+model Nomination {
+  id                      String           @id @default(uuid()) @db.Uuid
+  competitionId           String           @db.Uuid
+  athleteId               String           @db.Uuid
+  disciplineId            String           @db.Uuid
+  divisionId              String           @db.Uuid
+  weightClassId           String           @db.Uuid
+  bodyWeightAtWeighIn     Float?
+  entryNumber             Int?
+  flightId                String?          @db.Uuid
+  groupId                 String?          @db.Uuid
+  status                  NominationStatus
+  isEntryFeePaid          Boolean          @default(false)
+  isMandatePassed         Boolean          @default(false)
+  bestSuccessfulAttemptKg Float?
+  finalScore              Float?
+  placeInClass            Int?
+  placeInDivision         Int?
+  placeOverall            Int?
+  notes                   String?
+  createdAt               DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime         @updatedAt @db.Timestamptz(6)
+
+  competition             Competition      @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  athlete                 Athlete          @relation(fields: [athleteId], references: [id], onDelete: Restrict)
+  discipline              Discipline       @relation(fields: [disciplineId], references: [id], onDelete: Restrict)
+  division                Division         @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+  weightClass             WeightClass      @relation(fields: [weightClassId], references: [id], onDelete: Restrict)
+  flight                  Flight?          @relation(fields: [flightId], references: [id], onDelete: SetNull)
+  group                   Group?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  attempts                Attempt[]
+
+  @@unique([competitionId, athleteId, disciplineId, divisionId, weightClassId])
+  @@index([competitionId, status])
+  @@index([flightId, entryNumber])
+  @@map("nomination")
+}
+
+model Attempt {
+  id              String        @id @default(uuid()) @db.Uuid
+  nominationId    String        @db.Uuid
+  attemptNumber   Int
+  weightKg        Float
+  result          AttemptResult
+  judgeDecisions  Json          @default("[]")
+  repsCount       Int?
+  timeoutSeconds  Int?
+  startedAt       DateTime?     @db.Timestamptz(6)
+  decidedAt       DateTime?     @db.Timestamptz(6)
+  notes           String?
+
+  nomination      Nomination    @relation(fields: [nominationId], references: [id], onDelete: Cascade)
+  records         Record[]
+
+  @@unique([nominationId, attemptNumber])
+  @@map("attempt")
+}
+
+// ─── Reference data overrides ────────────────────────────────────────────
+
+model VeteranCoefficient {
+  id            String       @id @default(uuid()) @db.Uuid
+  federationId  String?      @db.Uuid
+  tier          VeteranTier
+  multiplier    Float
+  rulebook      String       @default("ISF v5.1")
+  effectiveFrom DateTime     @db.Date
+  effectiveTo   DateTime?    @db.Date
+
+  federation    Federation?  @relation(fields: [federationId], references: [id], onDelete: Cascade)
+
+  @@unique([federationId, tier, effectiveFrom])
+  @@map("veteran_coefficient")
+}
+
+model PlateSet {
+  id              String       @id @default(uuid()) @db.Uuid
+  federationId    String?      @db.Uuid
+  competitionId   String?      @db.Uuid
+  name            String
+  incrementKg     Float        @default(1.25)
+  barWeightKg     Float        @default(20)
+  collarWeightKg  Float        @default(2.5)
+  /// Inline plate list as JSON: [{ weightKg, pairCount, color, recordOnly }]
+  plates          Json         @default("[]")
+
+  federation      Federation?  @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  competition     Competition? @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@map("plate_set")
+}
+
+// ─── Records, attachments, consent ───────────────────────────────────────
+
+model Record {
+  id              String       @id @default(uuid()) @db.Uuid
+  scope           RecordScope
+  federationId    String?      @db.Uuid
+  disciplineId    String       @db.Uuid
+  divisionId      String       @db.Uuid
+  weightClassId   String       @db.Uuid
+  athleteId       String       @db.Uuid
+  competitionId   String       @db.Uuid
+  attemptId       String?      @db.Uuid
+  result          Float
+  pointsScore     Float?
+  achievedOn      DateTime     @db.Date
+  ratifiedAt      DateTime?    @db.Timestamptz(6)
+  ratifiedByUserId String?     @db.Uuid
+  notes           String?
+
+  federation      Federation?  @relation(fields: [federationId], references: [id], onDelete: SetNull)
+  discipline      Discipline   @relation(fields: [disciplineId], references: [id], onDelete: Restrict)
+  division        Division     @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+  weightClass     WeightClass  @relation(fields: [weightClassId], references: [id], onDelete: Restrict)
+  athlete         Athlete      @relation(fields: [athleteId], references: [id], onDelete: Restrict)
+  competition     Competition  @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  attempt         Attempt?     @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+
+  @@unique([scope, federationId, disciplineId, divisionId, weightClassId])
+  @@index([scope, achievedOn])
+  @@map("record")
+}
+
+model Attachment {
+  id                String         @id @default(uuid()) @db.Uuid
+  kind              AttachmentKind
+  federationId      String?        @db.Uuid
+  competitionId     String?        @db.Uuid
+  athleteId         String?        @db.Uuid
+  uploadedByUserId  String         @db.Uuid
+  filename          String
+  mimeType          String
+  sizeBytes         BigInt
+  sha256            String         @db.Char(64)
+  storagePath       String
+  uploadedAt        DateTime       @default(now()) @db.Timestamptz(6)
+  deletedAt         DateTime?      @db.Timestamptz(6)
+
+  federation        Federation?    @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  competition       Competition?   @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  athlete           Athlete?       @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  uploadedBy        User           @relation("AttachmentUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([sha256])
+  @@map("attachment")
+}
+
+model Consent {
+  id                    String       @id @default(uuid()) @db.Uuid
+  scope                 ConsentScope
+  userId                String?      @db.Uuid
+  athleteId             String?      @db.Uuid
+  federationId          String?      @db.Uuid
+  textShown             String
+  locale                String
+  textVersion           String
+  grantedAt             DateTime     @default(now()) @db.Timestamptz(6)
+  grantedFromIp         String?
+  grantedFromUserAgent  String?
+  revokedAt             DateTime?    @db.Timestamptz(6)
+  revokeReason          String?
+
+  user                  User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  athlete               Athlete?     @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  federation            Federation?  @relation(fields: [federationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, scope])
+  @@index([athleteId, scope])
+  @@map("consent")
+}
+
+// ─── Audit log ───────────────────────────────────────────────────────────
+//
+// INSERT-only for the application role (enforced via GRANT in the migration
+// SQL). Every privileged action calls `audit.record()` inside its own
+// transaction; failure to insert rolls back the transaction. See ADR-0005.
+
+model AuditLog {
+  id                   String      @id @default(uuid()) @db.Uuid
+  occurredAt           DateTime    @default(now()) @db.Timestamptz(6)
+  actorUserId          String?     @db.Uuid
+  actorIp              String?
+  actorUserAgent       String?
+  action               String
+  scopeFederationId    String?     @db.Uuid
+  scopeCompetitionId   String?     @db.Uuid
+  targetType           String
+  targetId             String      @db.Uuid
+  before               Json?
+  after                Json?
+  requestId            String      @db.Uuid
+  result               AuditResult
+  notes                String?
+
+  @@index([occurredAt])
+  @@index([actorUserId, occurredAt])
+  @@index([scopeFederationId, occurredAt])
+  @@index([action, occurredAt])
+  @@map("audit_log")
+}
