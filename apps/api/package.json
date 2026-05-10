@@ -12,7 +12,9 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run --passWithNoTests",
     "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
     "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "seed:root": "tsx scripts/seed-root.ts",
     "seed:disciplines": "tsx scripts/seed-disciplines.ts",
@@ -21,6 +23,8 @@
     "seed:rf-cities": "tsx scripts/seed-rf-cities.ts",
     "seed:lookup-values": "tsx scripts/seed-lookup-values.ts",
     "seed:references": "pnpm seed:countries && pnpm seed:rf-regions && pnpm seed:rf-cities && pnpm seed:lookup-values",
+    "seed:launch": "pnpm seed:disciplines && pnpm seed:references && pnpm seed:root",
+    "smoke:pilot": "tsx scripts/smoke-pilot-flow.ts",
     "clean": "rimraf dist .turbo"
   },
   "dependencies": {

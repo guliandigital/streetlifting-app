@@ -38,6 +38,8 @@ lerna-debug.log*
 # Test coverage
 coverage/
 .nyc_output/
+output/playwright/
+apps/web/e2e/.auth/
 
 # Local SQLite (offline desktop)
 *.sqlite

@@ -19,7 +19,7 @@ export function useHydrateAuth(): { hydrating: boolean } {
   useEffect(() => {
     if (!refreshToken || user) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const me = await api.me();
         if (!cancelled) setUser(me.user);

@@ -25,5 +25,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Generate Prisma client
         run: pnpm --filter=@streetlifting/api db:generate
+      - name: Validate Prisma schema
+        run: pnpm --filter=@streetlifting/api db:validate
+      - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm build

@@ -1,6 +1,27 @@
 # V2 Roadmap
 
-Target: full PowerTable functional parity, modern UX, browser-primary with offline-capable desktop. Scope decided 2026-05-07: option **B** (everything before first release, ~14–18 weeks).
+Target: full PowerTable functional parity with a production web launch first.
+
+Scope update 2026-05-09: the first release is **web-first** (`apps/web` + `apps/api` + Postgres). Desktop/Tauri, local SQLite, offline sync, auto-update, and signing remain in the architecture but are no longer launch blockers. They move to a post-web-launch milestone after the browser workflow is stable in pilot use.
+
+Operational rule for the first launch: do not promise offline tournament-day operation. Web tournament surfaces may ship as responsive/PWA pages, but they require a stable network connection until the sync engine lands.
+
+Pilot launch boundary 2026-05-10:
+
+- Included in the web pilot: online secretariat, nominations, mandate/weigh-in, flights/groups, component attempts, operator screen, judge tablet screen, scoreboard, CSV/XLSX exports, and print-friendly protocol view for browser PDF printing.
+- Deferred until after a stable web pilot: server-side PDF rendering, certificate/award templates, awards ceremony automation, and full desktop/offline Tauri with SQLite sync.
+- The pilot may be used at a tournament only with a stable internet connection and a manual paper/CSV fallback.
+
+## Web-first launch gates
+
+- [x] Production API runtime works with compiled workspace packages (`node dist/index.js`)
+- [x] Web production build served by nginx with `/api` reverse proxy
+- [ ] CI gates: install, Prisma generate/validate, lint, typecheck, test, build
+- [ ] Clean migration path on a fresh Postgres database
+- [x] Root/admin seed and reference-data seed documented and repeatable
+- [ ] Auth, roles, audit, request IDs, rate limits, CORS, Sentry hooks verified in staging
+- [x] Web smoke test: login, `/auth/me`, federations, athletes, judges, disciplines, references
+- [x] Explicit launch limitation documented: offline desktop mode deferred
 
 ## Milestones
 
@@ -52,19 +73,20 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [ ] "Распределение по потокам и группам" page: drag-drop assignment, automatic ordering
 - [ ] Per-platform timetable
 
-### M5 — Tournament day operations (Week 9–11) — **the offline-critical part**
-- [ ] Sync engine in `packages/sync`: local SQLite, event log, online/offline indicator
-- [ ] Operator scoreboard page: current lifter card, attempt entry, weight changes
-- [ ] Judge tablet UI (PWA-installable): three-button white/red, head-judge final
+### M5 — Web tournament day operations (Week 9–11)
+- [x] Web/PWA tournament mode with clear online-only status
+- [x] Operator scoreboard page: current lifter card, attempt entry, weight changes
+- [x] Judge tablet UI MVP: three-button good/no/withdraw decision screen
 - [ ] Speaker view: announcements queue, athlete bios
 - [ ] Public broadcast page: live results, current attempt, leaderboard
 - [ ] OBS overlay (HTML page with transparent background)
 
 ### M6 — Reports, awards, printables (Week 12–13)
-- [ ] Awards ceremony page: place computation, tie-break, deck
-- [ ] Certificate (грамота) PDF generation, template per federation
+- [ ] Awards ceremony page: place computation, tie-break, deck — post-web-pilot
+- [ ] Server-side certificate (грамота) PDF generation with federation templates — post-web-pilot
 - [ ] Standard reports: protocol, technical secretary report, weight class results, federation summary
-- [ ] CSV / XLSX exports
+- [x] CSV / XLSX protocol and accounting exports
+- [x] Print-friendly web protocol view for browser PDF printing
 
 ### M7 — Federation portal (Week 14–15)
 - [ ] Federation home: receipts/writeoffs ledger, balance, regional comparison chart
@@ -72,7 +94,10 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [ ] Support tickets: federation ↔ platform admin
 - [ ] Public results page (gated by `isPublicResultsClosed`)
 
-### M8 — Desktop binary + auto-update (Week 16)
+### M8 — Desktop/offline after web launch
+- [ ] Sync engine in `packages/sync`: local SQLite, event log, online/offline indicator
+- [ ] Event push/replay API, conflict resolution, dead-letter queue
+- [ ] Desktop degraded-mode UX for unavailable network/API
 - [ ] Tauri build pipeline (Win MSI/NSIS, macOS DMG, Linux AppImage/DEB)
 - [ ] Code signing (Windows EV cert decision pending — Schema Б)
 - [ ] First V2 release: `streetlifting-app-v2.0.0`, `latest.json` published
@@ -86,6 +111,8 @@ Features must not import from each other. Shared shapes live in `packages/domain
 
 ## What we explicitly defer
 
+- Server-side PDF certificates, federation-specific printable templates, and award ceremony automation until after the web pilot.
+- Full offline/Tauri tournament mode, local SQLite, event sync, installer signing, and updater publishing until after the web pilot.
 - Powerlifting disciplines (scope locked to streetlifting + weighted calisthenics)
 - International ООО track / EUSF integration (V2 = RU-first, ИП track per legal memory)
 - Mobile native apps

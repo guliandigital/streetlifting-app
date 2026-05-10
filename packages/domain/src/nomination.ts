@@ -9,7 +9,7 @@ import {
   FlightId,
   GroupId,
 } from './ids.js';
-import { NominationStatus } from './enums.js';
+import { NominationStatus, PaymentMethod, PaymentStatus } from './enums.js';
 
 export const Nomination = z.object({
   id: NominationId,
@@ -17,6 +17,7 @@ export const Nomination = z.object({
   athleteId: AthleteId,
   disciplineId: DisciplineId,
   divisionId: DivisionId,
+  declaredWeightClassId: WeightClassId.nullable(),
   weightClassId: WeightClassId,
   bodyWeightAtWeighIn: z.number().positive().nullable(),
   entryNumber: z.number().int().positive().nullable(),
@@ -24,6 +25,11 @@ export const Nomination = z.object({
   groupId: GroupId.nullable(),
   status: NominationStatus,
   isEntryFeePaid: z.boolean().default(false),
+  paymentStatus: PaymentStatus.default('unpaid'),
+  paidAmountKopecks: z.bigint().nonnegative().default(0n),
+  paymentMethod: PaymentMethod.nullable(),
+  paymentComment: z.string().nullable().optional(),
+  paidAt: z.string().datetime().nullable(),
   isMandatePassed: z.boolean().default(false),
   bestSuccessfulAttemptKg: z.number().nullable(),
   finalScore: z.number().nullable(),

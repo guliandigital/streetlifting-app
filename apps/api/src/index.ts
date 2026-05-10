@@ -23,11 +23,15 @@ import { disciplinesPlugin } from './plugins/disciplines.js';
 import { judgesPlugin } from './plugins/judges.js';
 import { referencesPlugin } from './plugins/references.js';
 import { federationChaptersPlugin } from './plugins/federation-chapters.js';
+import { competitionsPlugin } from './plugins/competitions.js';
+import { competitionOpsPlugin } from './plugins/competition-ops.js';
 import rateLimit from '@fastify/rate-limit';
 
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '0.0.0.0';
 const isProd = process.env.NODE_ENV === 'production';
+const globalRateLimitMax = Number(process.env.RATE_LIMIT_MAX ?? (isProd ? 120 : 600));
+const globalRateLimitTimeWindow = process.env.RATE_LIMIT_TIME_WINDOW ?? '1 minute';
 
 const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:1420')
   .split(',')
@@ -79,8 +83,8 @@ await app.register(cors, {
 
 // Global rate limit; per-route stricter limits applied inside plugins.
 await app.register(rateLimit, {
-  max: 60,
-  timeWindow: '1 minute',
+  max: Number.isFinite(globalRateLimitMax) && globalRateLimitMax > 0 ? globalRateLimitMax : 600,
+  timeWindow: globalRateLimitTimeWindow,
 });
 
 const features = [
@@ -92,6 +96,8 @@ const features = [
   judgesPlugin,
   referencesPlugin,
   federationChaptersPlugin,
+  competitionsPlugin,
+  competitionOpsPlugin,
   // Feature plugins are appended here as milestones land. Each loads
   // independently; see ADR-0003 for the isolation contract.
 ];

@@ -6,25 +6,35 @@ import {
 } from '@tanstack/react-router';
 import { RootLayout } from './components/Layout.js';
 import { useAuthStore } from './lib/auth/store.js';
-import LoginFeature from './features/login/index.js';
-import ProfileFeature from './features/profile/index.js';
-import HealthFeature from './features/_health/index.js';
-import FederationsListFeature from './features/federations/index.js';
-import FederationNewFeature from './features/federations/new.js';
-import FederationDetailFeature from './features/federations/detail.js';
-import AthletesListFeature from './features/athletes/index.js';
-import AthleteNewFeature from './features/athletes/new.js';
-import AthleteDetailFeature from './features/athletes/detail.js';
-import DisciplinesListFeature from './features/disciplines/index.js';
-import DisciplineDetailFeature from './features/disciplines/detail.js';
-import JudgesListFeature from './features/judges/index.js';
-import JudgeNewFeature from './features/judges/new.js';
-import JudgeDetailFeature from './features/judges/detail.js';
-import LookupsLandingFeature from './features/lookups/index.js';
-import LookupsCountriesFeature from './features/lookups/countries.js';
-import LookupsRegionsFeature from './features/lookups/regions.js';
-import LookupsCitiesFeature from './features/lookups/cities.js';
-import LookupsValuesFeature from './features/lookups/values.js';
+import { LazyModule } from './lib/lazy-module.js';
+
+const LoginFeature = () => <LazyModule module="login" loader={() => import('./features/login/index.js')} />;
+const ProfileFeature = () => <LazyModule module="profile" loader={() => import('./features/profile/index.js')} />;
+const HealthFeature = () => <LazyModule module="health" loader={() => import('./features/_health/index.js')} />;
+const FederationsListFeature = () => <LazyModule module="federations" loader={() => import('./features/federations/index.js')} />;
+const FederationNewFeature = () => <LazyModule module="federations-new" loader={() => import('./features/federations/new.js')} />;
+const FederationDetailFeature = () => <LazyModule module="federations-detail" loader={() => import('./features/federations/detail.js')} />;
+const CompetitionsListFeature = () => <LazyModule module="competitions" loader={() => import('./features/competitions/index.js')} />;
+const CompetitionNewFeature = () => <LazyModule module="competitions-new" loader={() => import('./features/competitions/new.js')} />;
+const CompetitionDetailFeature = () => <LazyModule module="competitions-detail" loader={() => import('./features/competitions/detail.js')} />;
+const CompetitionOperationsFeature = () => <LazyModule module="competition-operations" loader={() => import('./features/competitions/operations.js')} />;
+const CompetitionScoreboardFeature = () => <LazyModule module="competition-scoreboard" loader={() => import('./features/competitions/scoreboard.js')} />;
+const CompetitionOperatorFeature = () => <LazyModule module="competition-operator" loader={() => import('./features/competitions/operator.js')} />;
+const CompetitionJudgeFeature = () => <LazyModule module="competition-judge" loader={() => import('./features/competitions/judge.js')} />;
+const CompetitionProtocolPrintFeature = () => <LazyModule module="competition-protocol-print" loader={() => import('./features/competitions/protocol-print.js')} />;
+const AthletesListFeature = () => <LazyModule module="athletes" loader={() => import('./features/athletes/index.js')} />;
+const AthleteNewFeature = () => <LazyModule module="athletes-new" loader={() => import('./features/athletes/new.js')} />;
+const AthleteDetailFeature = () => <LazyModule module="athletes-detail" loader={() => import('./features/athletes/detail.js')} />;
+const DisciplinesListFeature = () => <LazyModule module="disciplines" loader={() => import('./features/disciplines/index.js')} />;
+const DisciplineDetailFeature = () => <LazyModule module="disciplines-detail" loader={() => import('./features/disciplines/detail.js')} />;
+const JudgesListFeature = () => <LazyModule module="judges" loader={() => import('./features/judges/index.js')} />;
+const JudgeNewFeature = () => <LazyModule module="judges-new" loader={() => import('./features/judges/new.js')} />;
+const JudgeDetailFeature = () => <LazyModule module="judges-detail" loader={() => import('./features/judges/detail.js')} />;
+const LookupsLandingFeature = () => <LazyModule module="lookups" loader={() => import('./features/lookups/index.js')} />;
+const LookupsCountriesFeature = () => <LazyModule module="lookups-countries" loader={() => import('./features/lookups/countries.js')} />;
+const LookupsRegionsFeature = () => <LazyModule module="lookups-regions" loader={() => import('./features/lookups/regions.js')} />;
+const LookupsCitiesFeature = () => <LazyModule module="lookups-cities" loader={() => import('./features/lookups/cities.js')} />;
+const LookupsValuesFeature = () => <LazyModule module="lookups-values" loader={() => import('./features/lookups/values.js')} />;
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -97,6 +107,62 @@ const federationDetailRoute = createRoute({
   path: '/federations/$id',
   beforeLoad: ({ location }) => requireAuthGuard(location.href),
   component: FederationDetailFeature,
+});
+
+const competitionsListRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionsListFeature,
+});
+
+const competitionNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/new',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionNewFeature,
+});
+
+const competitionDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionDetailFeature,
+});
+
+const competitionOperationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/operations',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionOperationsFeature,
+});
+
+const competitionScoreboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/scoreboard',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionScoreboardFeature,
+});
+
+const competitionOperatorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/operator',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionOperatorFeature,
+});
+
+const competitionJudgeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/judge',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionJudgeFeature,
+});
+
+const competitionProtocolPrintRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/protocol-print',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionProtocolPrintFeature,
 });
 
 const athletesListRoute = createRoute({
@@ -203,6 +269,14 @@ const routeTree = rootRoute.addChildren([
   federationsListRoute,
   federationNewRoute,
   federationDetailRoute,
+  competitionsListRoute,
+  competitionNewRoute,
+  competitionDetailRoute,
+  competitionOperationsRoute,
+  competitionScoreboardRoute,
+  competitionOperatorRoute,
+  competitionJudgeRoute,
+  competitionProtocolPrintRoute,
   athletesListRoute,
   athleteNewRoute,
   athleteDetailRoute,

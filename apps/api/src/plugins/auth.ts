@@ -17,7 +17,7 @@ import {
   revokeRefreshFamily,
   signAccessToken,
 } from '../lib/auth/tokens.js';
-import { attachUser, requireAuth } from '../lib/auth/middleware.js';
+import { requireAuth } from '../lib/auth/middleware.js';
 
 const log = moduleLogger('auth');
 
@@ -45,6 +45,13 @@ const RefreshBody = z
 const LogoutBody = z
   .object({
     refreshToken: z.string().min(1).max(2048),
+  })
+  .strict();
+
+const ChangePasswordBody = z
+  .object({
+    currentPassword: z.string().min(1).max(PASSWORD_MAX_LENGTH),
+    newPassword: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
   })
   .strict();
 
@@ -261,6 +268,80 @@ export const authPlugin: FeaturePlugin = {
       });
       return reply.code(204).send();
     });
+
+    // ─── Change password ───────────────────────────────────────────────
+    app.patch(
+      '/auth/password',
+      { preHandler: requireAuth(), config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+      async (req, reply) => {
+        const parsed = ChangePasswordBody.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          });
+        }
+
+        const userId = req.user!.id;
+        const { currentPassword, newPassword } = parsed.data;
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, passwordHash: true },
+        });
+        const ok = user ? await verifyPassword(user.passwordHash ?? '', currentPassword) : false;
+        const ctx = { ...audit.fromRequest(req), actorUserId: userId };
+
+        if (!user || !ok) {
+          await audit.record({
+            ...ctx,
+            action: 'auth.password.change_failed',
+            result: 'denied',
+            scopeFederationId: null,
+            scopeCompetitionId: null,
+            targetType: 'user',
+            targetId: userId,
+            before: null,
+            after: null,
+            notes: 'invalid current password',
+          });
+          return reply.code(401).send({
+            error: { code: 'invalid_current_password', message: 'Invalid current password', requestId: req.requestId },
+          });
+        }
+
+        if (currentPassword === newPassword) {
+          return reply.code(400).send({
+            error: { code: 'password_reused', message: 'New password must be different', requestId: req.requestId },
+          });
+        }
+
+        const passwordHash = await hashPassword(newPassword);
+        const revokedRefreshTokens = await prisma.$transaction(async (tx) => {
+          await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+          const revoked = await tx.refreshToken.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt: new Date() },
+          });
+          await audit.record(
+            {
+              ...ctx,
+              action: 'auth.password.changed',
+              result: 'success',
+              scopeFederationId: null,
+              scopeCompetitionId: null,
+              targetType: 'user',
+              targetId: user.id,
+              before: null,
+              after: { revokedRefreshTokens: revoked.count },
+            },
+            tx,
+          );
+          return revoked.count;
+        });
+
+        log.info({ userId, requestId: req.requestId, revokedRefreshTokens }, 'password changed');
+        return reply.send({ status: 'ok', revokedRefreshTokens });
+      },
+    );
 
     // ─── Me ────────────────────────────────────────────────────────────
     app.get('/auth/me', { preHandler: requireAuth() }, async (req) => {
