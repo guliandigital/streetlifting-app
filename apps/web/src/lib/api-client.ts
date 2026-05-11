@@ -3,26 +3,48 @@ import type {
   AthleteUpdate,
   CityCreate,
   CityUpdate,
+  CompetitionCreate,
+  CompetitionDefaultSetup,
+  CompetitionUpdate,
   CountryCreate,
   CountryUpdate,
   FederationChapterCreate,
   FederationChapterUpdate,
   FederationCreate,
   FederationUpdate,
+  FlightAutoPlan,
+  JudgeAssignmentCreate,
   JudgeCreate,
   JudgeUpdate,
   LookupValueCreate,
   LookupValueUpdate,
+  NominationDraw,
+  NominationCreate,
+  NominationUpdate,
   RegionCreate,
   RegionUpdate,
+  AttemptUpsert,
 } from '@streetlifting/domain';
 import { useAuthStore } from './auth/store.js';
 import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './auth/types.js';
 import { moduleLogger } from './logger.js';
-import type { Federation, FederationChapterDto } from '../features/federations/api.js';
+import type {
+  Federation,
+  FederationChapterDto,
+  FederationDashboardResponse,
+  FederationReceiptDto,
+  FederationWriteoffDto,
+} from '../features/federations/api.js';
 import type { AthleteDto, AthleteListResponse } from '../features/athletes/api.js';
 import type { DisciplineDto } from '../features/disciplines/api.js';
 import type { JudgeDto, JudgeListResponse } from '../features/judges/api.js';
+import type { CompetitionDto, CompetitionListResponse } from '../features/competitions/api.js';
+import type {
+  CompetitionOpsResponse,
+  ScoreboardResponse,
+  NominationDto,
+  AttemptDto,
+} from '../features/competitions/operations-api.js';
 import type {
   CityDto,
   CityListResponse,
@@ -133,6 +155,84 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return json as T;
 }
 
+async function requestText(path: string, options: RequestOptions = {}): Promise<string> {
+  const { method = 'GET', body, unauthenticated, _retried } = options;
+
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (!unauthenticated) {
+    const token = useAuthStore.getState().accessToken;
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    ...(body !== undefined && { body: JSON.stringify(body) }),
+  });
+
+  if (res.status === 401 && !unauthenticated && !_retried) {
+    const fresh = await refreshAccessToken();
+    if (fresh) return requestText(path, { ...options, _retried: true });
+  }
+
+  const text = await res.text();
+  if (!res.ok) {
+    let err: ApiError | null = null;
+    try {
+      err = text ? (JSON.parse(text) as ApiError) : null;
+    } catch {
+      err = null;
+    }
+    throw new ApiClientError(
+      res.status,
+      err?.error?.code ?? 'unknown',
+      err?.error?.message ?? res.statusText,
+      err?.error?.requestId,
+    );
+  }
+  return text;
+}
+
+async function requestBlob(path: string, options: RequestOptions = {}): Promise<Blob> {
+  const { method = 'GET', body, unauthenticated, _retried } = options;
+
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (!unauthenticated) {
+    const token = useAuthStore.getState().accessToken;
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    ...(body !== undefined && { body: JSON.stringify(body) }),
+  });
+
+  if (res.status === 401 && !unauthenticated && !_retried) {
+    const fresh = await refreshAccessToken();
+    if (fresh) return requestBlob(path, { ...options, _retried: true });
+  }
+
+  if (!res.ok) {
+    let err: ApiError | null = null;
+    const text = await res.text();
+    try {
+      err = text ? (JSON.parse(text) as ApiError) : null;
+    } catch {
+      err = null;
+    }
+    throw new ApiClientError(
+      res.status,
+      err?.error?.code ?? 'unknown',
+      err?.error?.message ?? res.statusText,
+      err?.error?.requestId,
+    );
+  }
+  return res.blob();
+}
+
 export const api = {
   login: (email: string, password: string): Promise<LoginResponse> =>
     request<LoginResponse>('/auth/login', {
@@ -157,15 +257,50 @@ export const api = {
 
   me: (): Promise<MeResponse> => request<MeResponse>('/auth/me'),
 
+  changePassword: (
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ status: 'ok'; revokedRefreshTokens: number }> =>
+    request('/auth/password', {
+      method: 'PATCH',
+      body: { currentPassword, newPassword },
+    }),
+
   federations: {
     list: (): Promise<{ federations: Federation[] }> =>
       request('/federations'),
     get: (id: string): Promise<{ federation: Federation }> =>
       request(`/federations/${id}`),
+    dashboard: (id: string): Promise<FederationDashboardResponse> =>
+      request(`/federations/${id}/dashboard`),
     create: (data: FederationCreate): Promise<{ federation: Federation }> =>
       request('/federations', { method: 'POST', body: data }),
     update: (id: string, data: FederationUpdate): Promise<{ federation: Federation }> =>
       request(`/federations/${id}`, { method: 'PATCH', body: data }),
+    createReceipt: (
+      id: string,
+      data: {
+        number: string;
+        date: string;
+        nominationsCount: number;
+        amountKopecks: number;
+        paymentMethod: FederationReceiptDto['paymentMethod'];
+        expiresAt: string;
+        externalReference?: string | null;
+      },
+    ): Promise<{ receipt: FederationReceiptDto }> =>
+      request(`/federations/${id}/receipts`, { method: 'POST', body: data }),
+    createWriteoff: (
+      id: string,
+      data: {
+        number: string;
+        date: string;
+        nominationsCount: number;
+        competitionId?: string | null;
+        linkedReceiptId?: string | null;
+      },
+    ): Promise<{ writeoff: FederationWriteoffDto }> =>
+      request(`/federations/${id}/writeoffs`, { method: 'POST', body: data }),
     chapters: {
       list: (fedId: string): Promise<{ chapters: FederationChapterDto[] }> =>
         request(`/federations/${fedId}/chapters`),
@@ -176,6 +311,49 @@ export const api = {
       update: (fedId: string, id: string, data: FederationChapterUpdate): Promise<{ chapter: FederationChapterDto }> =>
         request(`/federations/${fedId}/chapters/${id}`, { method: 'PATCH', body: data }),
     },
+  },
+
+  competitions: {
+    list: (params: { federationId?: string; status?: string; limit?: number; offset?: number } = {}): Promise<CompetitionListResponse> => {
+      const q = new URLSearchParams();
+      if (params.federationId) q.set('federationId', params.federationId);
+      if (params.status) q.set('status', params.status);
+      if (params.limit !== undefined) q.set('limit', String(params.limit));
+      if (params.offset !== undefined) q.set('offset', String(params.offset));
+      const qs = q.toString();
+      return request(`/competitions${qs ? `?${qs}` : ''}`);
+    },
+    get: (id: string): Promise<{ competition: CompetitionDto }> => request(`/competitions/${id}`),
+    create: (data: CompetitionCreate): Promise<{ competition: CompetitionDto }> =>
+      request('/competitions', { method: 'POST', body: data }),
+    update: (id: string, data: CompetitionUpdate): Promise<{ competition: CompetitionDto }> =>
+      request(`/competitions/${id}`, { method: 'PATCH', body: data }),
+    ops: (id: string): Promise<CompetitionOpsResponse> => request(`/competitions/${id}/ops`),
+    applyDefaultSetup: (id: string, data: Partial<CompetitionDefaultSetup> = {}): Promise<{ setup: { platformId: string; flightId: string; divisions: number; weightClasses: number } }> =>
+      request(`/competitions/${id}/setup/default`, { method: 'POST', body: data }),
+    drawNominations: (id: string, data: Partial<NominationDraw> = {}): Promise<{ draw: { assigned: number; firstNumber: number | null } }> =>
+      request(`/competitions/${id}/nominations/draw`, { method: 'POST', body: data }),
+    autoPlanFlights: (id: string, data: Partial<FlightAutoPlan> = {}): Promise<{ plan: { platformId: string; flights: Array<{ flightId: string; code: string; nominations: number; groups: number; startTime: string; estimatedMinutes: number }> } }> =>
+      request(`/competitions/${id}/flights/auto-plan`, { method: 'POST', body: data }),
+    createNomination: (id: string, data: NominationCreate): Promise<{ nomination: NominationDto }> =>
+      request(`/competitions/${id}/nominations`, { method: 'POST', body: data }),
+    updateNomination: (id: string, data: NominationUpdate): Promise<{ nomination: NominationDto }> =>
+      request(`/nominations/${id}`, { method: 'PATCH', body: data }),
+    upsertAttempt: (nominationId: string, attemptNumber: number, data: Omit<AttemptUpsert, 'attemptNumber'>): Promise<{ attempt: AttemptDto; nomination: NominationDto | null }> =>
+      request(`/nominations/${nominationId}/attempts/${attemptNumber}`, { method: 'PUT', body: data }),
+    upsertComponentAttempt: (nominationId: string, componentId: string, attemptNumber: number, data: Omit<AttemptUpsert, 'attemptNumber'>): Promise<{ attempt: AttemptDto; nomination: NominationDto | null }> =>
+      request(`/nominations/${nominationId}/attempts/${componentId}/${attemptNumber}`, { method: 'PUT', body: data }),
+    createJudgeAssignment: (id: string, data: JudgeAssignmentCreate): Promise<{ judgeAssignment: CompetitionOpsResponse['judgeAssignments'][number] }> =>
+      request(`/competitions/${id}/judge-assignments`, { method: 'POST', body: data }),
+    deleteJudgeAssignment: (assignmentId: string): Promise<{ deleted: true }> =>
+      request(`/judge-assignments/${assignmentId}`, { method: 'DELETE' }),
+    scoreboard: (id: string): Promise<ScoreboardResponse> => request(`/competitions/${id}/scoreboard`),
+    publicScoreboard: (id: string): Promise<ScoreboardResponse> =>
+      request(`/public/competitions/${id}/scoreboard`, { unauthenticated: true }),
+    protocolCsv: (id: string): Promise<string> => requestText(`/competitions/${id}/protocol.csv`),
+    protocolXlsx: (id: string): Promise<Blob> => requestBlob(`/competitions/${id}/protocol.xlsx`),
+    accountingCsv: (id: string): Promise<string> => requestText(`/competitions/${id}/accounting.csv`),
+    accountingXlsx: (id: string): Promise<Blob> => requestBlob(`/competitions/${id}/accounting.xlsx`),
   },
 
   athletes: {

@@ -1,80 +1,483 @@
+import { useState, type FormEvent, type ReactNode } from 'react';
+import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { useParams } from '@tanstack/react-router';
+import { toast } from '@streetlifting/ui';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@streetlifting/ui';
-import { useFederation } from './api.js';
-import { formatRub } from './format.js';
-import { ChaptersCard } from './chapters-card.js';
+  PowerTableButton,
+  PowerTableCheckbox,
+  PowerTableIcon,
+  PowerTableMenuIcon,
+  PowerTablePage,
+  PowerTablePanel,
+  PowerTableSectionTitle,
+  PowerTableToolbar,
+} from '../../components/powertable.js';
+import { useAuthStore } from '../../lib/auth/store.js';
+import { ApiClientError } from '../../lib/api-client.js';
 import { useCountries, useRegions } from '../../lib/references-api.js';
+import { formatRub, rubToKopecks } from './format.js';
+import {
+  type FederationDashboardResponse,
+  useCreateFederationReceipt,
+  useCreateFederationWriteoff,
+  useFederationDashboard,
+  useUpdateFederation,
+} from './api.js';
+import { ChaptersCard } from './chapters-card.js';
+
+function todayInput(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function nextYearInput(): string {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('ru-RU');
+}
+
+function normalizeNumber(value: string): number {
+  const parsed = Number(value.replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function canManageFederation(
+  user: ReturnType<typeof useAuthStore.getState>['user'],
+  federationId: string,
+): boolean {
+  return (
+    user?.roles.some(
+      (r) =>
+        r.role === 'platform_admin' ||
+        ((r.role === 'federation_admin' || r.role === 'accountant') && r.federationId === federationId),
+    ) ?? false
+  );
+}
+
+function ReceiptForm({ federationId }: { federationId: string }) {
+  const create = useCreateFederationReceipt(federationId);
+  const [number, setNumber] = useState(`R-${Date.now().toString(36).toUpperCase()}`);
+  const [date, setDate] = useState(todayInput());
+  const [nominationsCount, setNominationsCount] = useState('10');
+  const [amountRub, setAmountRub] = useState('0');
+  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'card' | 'sbp' | 'cash' | 'other'>('bank_transfer');
+  const [expiresAt, setExpiresAt] = useState(nextYearInput());
+  const [externalReference, setExternalReference] = useState('');
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    try {
+      await create.mutateAsync({
+        number: number.trim(),
+        date,
+        nominationsCount: Math.max(1, Math.trunc(normalizeNumber(nominationsCount))),
+        amountKopecks: rubToKopecks(amountRub),
+        paymentMethod,
+        expiresAt,
+        externalReference: externalReference.trim() || null,
+      });
+      toast.success('Поступление добавлено');
+      setNumber(`R-${Date.now().toString(36).toUpperCase()}`);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.code === 'number_taken') {
+        toast.error('Такой номер уже есть');
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Error');
+      }
+    }
+  }
+
+  return (
+    <form onSubmit={(e) => void submit(e)} className="grid grid-cols-1 gap-2 lg:grid-cols-6">
+      <label className="pt-label">
+        Номер
+        <input className="pt-field mt-1 w-full" value={number} onChange={(e) => setNumber(e.target.value)} required />
+      </label>
+      <label className="pt-label">
+        Дата
+        <input className="pt-field mt-1 w-full" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+      </label>
+      <label className="pt-label">
+        Номинаций
+        <input className="pt-field mt-1 w-full" type="number" min="1" value={nominationsCount} onChange={(e) => setNominationsCount(e.target.value)} required />
+      </label>
+      <label className="pt-label">
+        Сумма, ₽
+        <input className="pt-field mt-1 w-full" type="number" min="0" step="0.01" value={amountRub} onChange={(e) => setAmountRub(e.target.value)} required />
+      </label>
+      <label className="pt-label">
+        Метод
+        <select className="pt-select mt-1 w-full" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)}>
+          <option value="bank_transfer">Банк</option>
+          <option value="card">Карта</option>
+          <option value="sbp">СБП</option>
+          <option value="cash">Наличные</option>
+          <option value="other">Другое</option>
+        </select>
+      </label>
+      <label className="pt-label">
+        Действует до
+        <input className="pt-field mt-1 w-full" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} required />
+      </label>
+      <label className="pt-label lg:col-span-5">
+        Внешняя ссылка / комментарий
+        <input className="pt-field mt-1 w-full" value={externalReference} onChange={(e) => setExternalReference(e.target.value)} />
+      </label>
+      <div className="flex items-end">
+        <PowerTableButton type="submit" tone="green" disabled={create.isPending}>
+          {create.isPending ? 'Сохраняем...' : 'Добавить'}
+        </PowerTableButton>
+      </div>
+    </form>
+  );
+}
+
+function WriteoffForm({
+  federationId,
+  dashboard,
+}: {
+  federationId: string;
+  dashboard: FederationDashboardResponse;
+}) {
+  const create = useCreateFederationWriteoff(federationId);
+  const [number, setNumber] = useState(`W-${Date.now().toString(36).toUpperCase()}`);
+  const [date, setDate] = useState(todayInput());
+  const [nominationsCount, setNominationsCount] = useState('1');
+  const [competitionId, setCompetitionId] = useState('');
+  const [linkedReceiptId, setLinkedReceiptId] = useState('');
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    try {
+      await create.mutateAsync({
+        number: number.trim(),
+        date,
+        nominationsCount: Math.max(1, Math.trunc(normalizeNumber(nominationsCount))),
+        competitionId: competitionId || null,
+        linkedReceiptId: linkedReceiptId || null,
+      });
+      toast.success('Списание добавлено');
+      setNumber(`W-${Date.now().toString(36).toUpperCase()}`);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.code === 'number_taken') {
+        toast.error('Такой номер уже есть');
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Error');
+      }
+    }
+  }
+
+  return (
+    <form onSubmit={(e) => void submit(e)} className="grid grid-cols-1 gap-2 lg:grid-cols-5">
+      <label className="pt-label">
+        Номер
+        <input className="pt-field mt-1 w-full" value={number} onChange={(e) => setNumber(e.target.value)} required />
+      </label>
+      <label className="pt-label">
+        Дата
+        <input className="pt-field mt-1 w-full" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+      </label>
+      <label className="pt-label">
+        Номинаций
+        <input className="pt-field mt-1 w-full" type="number" min="1" value={nominationsCount} onChange={(e) => setNominationsCount(e.target.value)} required />
+      </label>
+      <label className="pt-label">
+        Соревнование
+        <select className="pt-select mt-1 w-full" value={competitionId} onChange={(e) => setCompetitionId(e.target.value)}>
+          <option value="">Без привязки</option>
+          {dashboard.competitions.map((competition) => (
+            <option key={competition.id} value={competition.id}>{competition.code} · {competition.nameRu}</option>
+          ))}
+        </select>
+      </label>
+      <label className="pt-label">
+        Поступление
+        <select className="pt-select mt-1 w-full" value={linkedReceiptId} onChange={(e) => setLinkedReceiptId(e.target.value)}>
+          <option value="">Без привязки</option>
+          {dashboard.receipts.map((receipt) => (
+            <option key={receipt.id} value={receipt.id}>{receipt.number}</option>
+          ))}
+        </select>
+      </label>
+      <div className="lg:col-span-5">
+        <PowerTableButton type="submit" tone="green" disabled={create.isPending}>
+          {create.isPending ? 'Сохраняем...' : 'Добавить списание'}
+        </PowerTableButton>
+      </div>
+    </form>
+  );
+}
+
+function MetricStrip({ dashboard }: { dashboard: FederationDashboardResponse }) {
+  return (
+    <div className="pt-metric-strip">
+      <div className="pt-metric-cell"><span>Поступило номинаций</span><strong>{dashboard.balance.receivedNominations}</strong></div>
+      <div className="pt-metric-cell"><span>Списано номинаций</span><strong>{dashboard.balance.consumedNominations}</strong></div>
+      <div className="pt-metric-cell"><span>Остаток</span><strong>{dashboard.balance.remainingNominations}</strong></div>
+      <div className="pt-metric-cell"><span>Сумма поступлений</span><strong>{formatRub(dashboard.balance.receivedAmountKopecks)}</strong></div>
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <>
+      <dt className="pt-muted">{label}</dt>
+      <dd>{value || <span className="italic text-gray-500">-</span>}</dd>
+    </>
+  );
+}
+
+function ComparisonBars({ rows }: { rows: FederationDashboardResponse['regionalComparison'] }) {
+  const max = Math.max(...rows.map((row) => row.nominations), 1);
+  return (
+    <div className="space-y-2">
+      {rows.map((row) => (
+        <div key={row.federationId} className="grid grid-cols-[190px_1fr_56px] items-center gap-3">
+          <div className="truncate text-blue-900">{row.nameRu}</div>
+          <div className="h-5 border border-gray-400 bg-white">
+            <div className="h-full bg-[#9dff9d]" style={{ width: `${Math.max(4, (row.nominations / max) * 100)}%` }} />
+          </div>
+          <div className="text-right tabular-nums">{row.nominations}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function FederationDetailFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/federations/$id' });
-  const { data, isLoading, error } = useFederation(id);
+  const user = useAuthStore((s) => s.user);
+  const { data, isLoading, error } = useFederationDashboard(id);
   const { data: countriesData } = useCountries();
   const countryRow = countriesData?.countries.find((c) => c.codeIso2 === data?.federation.countryCode);
   const { data: regionsData } = useRegions(countryRow?.id);
+  const update = useUpdateFederation(id);
 
   if (isLoading) {
-    return (
-      <div className="max-w-3xl mx-auto px-6 py-10 text-sm text-muted-foreground">
-        {t('common.loading')}
-      </div>
-    );
+    return <div className="pt-page p-6 text-sm text-gray-600">{t('common.loading')}</div>;
   }
   if (error || !data) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-10 text-sm text-destructive">
+      <div className="pt-page p-6 text-sm text-red-700">
         {t('common.error')}: {error instanceof Error ? error.message : 'not found'}
       </div>
     );
   }
+
   const f = data.federation;
   const regionRow = f.regionCode
     ? regionsData?.regions.find((r) => r.codeIso === f.regionCode)
     : undefined;
   const countryLabel = countryRow ? `${countryRow.nameRu} (${countryRow.codeIso2})` : f.countryCode;
   const regionLabel = regionRow ? regionRow.nameRu : f.regionCode;
+  const canManage = canManageFederation(user, f.id);
+  const primaryCompetitionId = data.competitions[0]?.id;
 
-  const Field = ({ label, value }: { label: string; value: React.ReactNode }) => (
-    <>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd>{value || <span className="italic text-muted-foreground">—</span>}</dd>
-    </>
-  );
+  async function toggleSettings(next: { notificationsDisabled?: boolean; isPublicResultsClosed?: boolean }) {
+    try {
+      await update.mutateAsync(next);
+      toast.success('Настройки обновлены');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>{f.nameRu}</CardTitle>
-          <CardDescription>
-            {f.nameEn} · <code className="text-primary">{f.code}</code> · {countryLabel}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-[200px_1fr] gap-y-3 gap-x-6 text-sm">
-            <Field label={t('federations.fields.country')} value={countryLabel} />
-            <Field label={t('federations.fields.region')} value={regionLabel} />
-            <Field label={t('federations.fields.tariffRub')} value={formatRub(f.billingTariffKopecksPerNomination)} />
-            <Field label={t('federations.fields.contactPhone')} value={f.contactPhone} />
-            <Field label={t('federations.fields.contactEmail')} value={f.contactEmail} />
-            <Field label={t('federations.fields.telegram')} value={f.telegramHandle} />
-            <Field label={t('federations.fields.website')} value={f.websiteUrl} />
-            <Field label={t('federations.fields.accountant')} value={f.chiefAccountantName} />
-            <Field label={t('federations.fields.cashier')} value={f.cashierName} />
-            <Field label="ID" value={<span className="font-mono text-xs">{f.id}</span>} />
-            <Field label={t('federations.fields.createdAt')} value={new Date(f.createdAt).toLocaleString()} />
-          </dl>
-        </CardContent>
-      </Card>
+    <PowerTablePage
+      title={`${f.nameRu} (Федерация)`}
+      subtitle={`${f.nameEn} · ${f.code} · ${countryLabel}`}
+      actions={(
+        <>
+          <PowerTableButton tone="danger">Записать и закрыть</PowerTableButton>
+          <PowerTableButton>Записать</PowerTableButton>
+          <Link to="/federations/$id/inventory" params={{ id }} className="pt-link-button"><PowerTableIcon name="inventory" />Склад</Link>
+          <Link to="/federations/$id/notifications" params={{ id }} className="pt-link-button"><PowerTableIcon name="notifications" />Уведомления</Link>
+        </>
+      )}
+      federationBar={<><span>{f.code}</span><span>{f.nameRu}</span></>}
+      tabs={[
+        { label: 'Основные настройки', icon: 'settings', active: true },
+        { label: 'Членские взносы', icon: 'billing' },
+        { label: 'Уведомления', icon: 'notifications' },
+        { label: 'Склад', icon: 'inventory' },
+        { label: 'Файлы', icon: 'files' },
+        { label: 'История', icon: 'history' },
+      ]}
+    >
+      <div className="pt-split">
+        <aside className="space-y-2">
+          <a className="pt-link" href="#references">Справочники</a>
+          <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="competition" /><span>Соревнования</span></Link>
+          <Link to="/athletes" className="pt-menu-button"><PowerTableMenuIcon name="athletes" /><span>Спортсмены</span></Link>
+          <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="nomination" /><span>Номинации спортсменов</span></Link>
+          <Link to="/judges" className="pt-menu-button"><PowerTableMenuIcon name="judges" /><span>Номинации судей</span></Link>
+          <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="flow" /><span>Распределение по потокам и группам</span></Link>
+          {primaryCompetitionId ? (
+            <>
+              <Link to="/competitions/$id/reports" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="reports" /><span>Отчеты, печатные формы</span></Link>
+              <Link to="/competitions/$id/certificates" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="certificate" /><span>Печать грамот</span></Link>
+              <Link to="/competitions/$id/awards" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="awards" /><span>Награждение</span></Link>
+              <Link to="/broadcast/competitions/$id" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="operator" /><span>Оператор табло</span></Link>
+            </>
+          ) : (
+            <>
+              <div className="pt-menu-button"><PowerTableMenuIcon name="reports" /><span>Отчеты, печатные формы</span></div>
+              <div className="pt-menu-button"><PowerTableMenuIcon name="certificate" /><span>Печать грамот</span></div>
+              <div className="pt-menu-button"><PowerTableMenuIcon name="awards" /><span>Награждение</span></div>
+              <div className="pt-menu-button"><PowerTableMenuIcon name="operator" /><span>Оператор табло</span></div>
+            </>
+          )}
+          <Link to="/federations/$id/inventory" params={{ id }} className="pt-menu-button"><PowerTableMenuIcon name="inventory" /><span>Склад</span></Link>
+          <Link to="/federations/$id/notifications" params={{ id }} className="pt-menu-button"><PowerTableMenuIcon name="notifications" /><span>Уведомления</span></Link>
 
-      <ChaptersCard federationId={f.id} />
-    </div>
+          <table className="pt-status-table">
+            <tbody>
+              <tr><td>Среднее значение качества связи с сервером</td><td>[295мс]</td></tr>
+              <tr><td>25.04.2026 22:55:12. Задержка</td><td>[290мс] - отлично</td></tr>
+              <tr><td>25.04.2026 22:55:08. Задержка</td><td>[324мс] - нормальное</td></tr>
+              <tr><td>25.04.2026 22:55:06. Задержка</td><td>[283мс] - отлично</td></tr>
+            </tbody>
+          </table>
+          <a className="pt-link pt-inline-icon" href="#broadcast"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</a>
+        </aside>
+
+        <main className="space-y-3">
+          <PowerTableToolbar>
+            <PowerTableButton icon="info" aria-label="Информация" />
+            <PowerTableButton icon="settings">Обращения, настройки / Feedback, settings</PowerTableButton>
+            <PowerTableButton icon="history">Входы в программу</PowerTableButton>
+          </PowerTableToolbar>
+
+          <div className="grid grid-cols-[42px_205px_42px_minmax(160px,1fr)_minmax(160px,1fr)_110px] gap-6 max-xl:grid-cols-1">
+            <div className="pt-lang-badge">RU</div>
+            <PowerTableButton>Switch the language to English</PowerTableButton>
+            <div className="pt-lang-badge">EN</div>
+            <input className="pt-field" value={f.contactPhone ?? ''} readOnly />
+            <input className="pt-field" value={f.telegramHandle ?? ''} readOnly />
+            <PowerTableButton>Тест письмо</PowerTableButton>
+          </div>
+
+          <div className="pt-section-title">Ваши контактные данные. Будут публиковаться на персональной странице федерации</div>
+          <MetricStrip dashboard={data} />
+
+          <div className="pt-info-green space-y-2">
+            <PowerTableCheckbox
+              checked={f.notificationsDisabled}
+              disabled={!canManage || update.isPending}
+              onChange={(checked) => void toggleSettings({ notificationsDisabled: checked })}
+              label="Не отправлять уведомления о новых регистрациях заявок на участие"
+            />
+            <PowerTableCheckbox
+              checked={f.isPublicResultsClosed}
+              disabled={!canManage || update.isPending}
+              onChange={(checked) => void toggleSettings({ isPublicResultsClosed: checked })}
+              label="Закрыть свободный онлайн доступ к результатам соревнований"
+            />
+          </div>
+
+          <PowerTablePanel className="p-3">
+            <dl className="grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[230px_1fr] sm:gap-x-6">
+              <Field label={t('federations.fields.country')} value={countryLabel} />
+              <Field label={t('federations.fields.region')} value={regionLabel} />
+              <Field label={t('federations.fields.tariffRub')} value={formatRub(f.billingTariffKopecksPerNomination)} />
+              <Field label={t('federations.fields.contactPhone')} value={f.contactPhone} />
+              <Field label={t('federations.fields.contactEmail')} value={f.contactEmail} />
+              <Field label={t('federations.fields.telegram')} value={f.telegramHandle} />
+              <Field label={t('federations.fields.website')} value={f.websiteUrl} />
+              <Field label={t('federations.fields.accountant')} value={f.chiefAccountantName} />
+              <Field label={t('federations.fields.cashier')} value={f.cashierName} />
+              <Field label="Ключ защиты" value={<span className="font-mono text-xs">{f.securityKey}</span>} />
+              <Field label="ID" value={<span className="font-mono text-xs">{f.id}</span>} />
+              <Field label={t('federations.fields.createdAt')} value={new Date(f.createdAt).toLocaleString()} />
+            </dl>
+          </PowerTablePanel>
+
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+            <PowerTablePanel className="p-3">
+              <PowerTableSectionTitle>Членские взносы / поступления</PowerTableSectionTitle>
+              {canManage ? <ReceiptForm federationId={f.id} /> : null}
+              <div className="mt-3 overflow-x-auto">
+                <table className="pt-grid">
+                  <thead>
+                    <tr><th>Номер</th><th>Дата</th><th>Номинаций</th><th>Сумма</th><th>До</th></tr>
+                  </thead>
+                  <tbody>
+                    {data.receipts.map((receipt, index) => (
+                      <tr key={receipt.id} className={index === 0 ? 'is-selected' : 'is-green'}>
+                        <td>{receipt.number}</td>
+                        <td>{formatDate(receipt.date)}</td>
+                        <td className="text-right tabular-nums">{receipt.nominationsCount}</td>
+                        <td className="text-right tabular-nums">{formatRub(receipt.amountKopecks)}</td>
+                        <td>{formatDate(receipt.expiresAt)}</td>
+                      </tr>
+                    ))}
+                    {data.receipts.length === 0 ? <tr><td colSpan={5} className="italic">Поступлений пока нет.</td></tr> : null}
+                  </tbody>
+                </table>
+              </div>
+            </PowerTablePanel>
+
+            <PowerTablePanel className="p-3">
+              <PowerTableSectionTitle>Списания номинаций</PowerTableSectionTitle>
+              {canManage ? <WriteoffForm federationId={f.id} dashboard={data} /> : null}
+              <div className="mt-3 overflow-x-auto">
+                <table className="pt-grid">
+                  <thead>
+                    <tr><th>Номер</th><th>Дата</th><th>Номинаций</th><th>Соревнование</th></tr>
+                  </thead>
+                  <tbody>
+                    {data.writeoffs.map((writeoff, index) => (
+                      <tr key={writeoff.id} className={index === 0 ? 'is-selected' : 'is-yellow'}>
+                        <td>{writeoff.number}</td>
+                        <td>{formatDate(writeoff.date)}</td>
+                        <td className="text-right tabular-nums">{writeoff.nominationsCount}</td>
+                        <td>{writeoff.competition?.nameRu ?? '-'}</td>
+                      </tr>
+                    ))}
+                    {data.writeoffs.length === 0 ? <tr><td colSpan={4} className="italic">Списаний пока нет.</td></tr> : null}
+                  </tbody>
+                </table>
+              </div>
+            </PowerTablePanel>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+            <PowerTablePanel className="p-3">
+              <PowerTableSectionTitle>Файлы федерации</PowerTableSectionTitle>
+              <table className="pt-grid">
+                <thead><tr><th>Имя файла</th><th>Тип</th><th>Дата</th></tr></thead>
+                <tbody>
+                  {f.attachments.map((file, index) => (
+                    <tr key={file.id} className={index === 0 ? 'is-selected' : undefined}>
+                      <td>{file.filename}</td>
+                      <td>{file.mimeType}</td>
+                      <td>{formatDate(file.uploadedAt)}</td>
+                    </tr>
+                  ))}
+                  {f.attachments.length === 0 ? <tr><td colSpan={3} className="italic">Файлы пока не загружены.</td></tr> : null}
+                </tbody>
+              </table>
+            </PowerTablePanel>
+
+            <PowerTablePanel className="p-3">
+              <PowerTableSectionTitle>График</PowerTableSectionTitle>
+              <ComparisonBars rows={data.regionalComparison} />
+            </PowerTablePanel>
+          </div>
+
+          <div className="pt-info-pink">
+            @PowerTable_bot: отправьте код <b>{data.telegramSubscriptionCode}</b>, чтобы получать уведомления по федерации.
+          </div>
+
+          <ChaptersCard federationId={f.id} />
+        </main>
+      </div>
+    </PowerTablePage>
   );
 }

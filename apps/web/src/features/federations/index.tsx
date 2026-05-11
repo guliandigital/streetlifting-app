@@ -1,4 +1,5 @@
-import { Link } from '@tanstack/react-router';
+import { useEffect } from 'react';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
@@ -20,9 +21,19 @@ import { formatRub } from './format.js';
 
 export default function FederationsListFeature() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const isPlatformAdmin = user?.roles.some((r) => r.role === 'platform_admin') ?? false;
   const { data, isLoading, error } = useFederations();
+
+  useEffect(() => {
+    if (isPlatformAdmin || !data || data.federations.length !== 1) return;
+    void navigate({
+      to: '/federations/$id',
+      params: { id: data.federations[0]!.id },
+      replace: true,
+    });
+  }, [data, isPlatformAdmin, navigate]);
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
@@ -63,6 +74,9 @@ export default function FederationsListFeature() {
                   <TableHead>{t('federations.cols.name')}</TableHead>
                   <TableHead>{t('federations.cols.country')}</TableHead>
                   <TableHead className="text-right">{t('federations.cols.tariff')}</TableHead>
+                  {isPlatformAdmin ? (
+                    <TableHead className="text-right">{t('federations.cols.workspace')}</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -83,6 +97,15 @@ export default function FederationsListFeature() {
                     <TableCell className="text-right tabular-nums">
                       {formatRub(f.billingTariffKopecksPerNomination)}
                     </TableCell>
+                    {isPlatformAdmin ? (
+                      <TableCell className="text-right">
+                        <Button asChild variant="outline" size="sm">
+                          <Link to="/federations/$id" params={{ id: f.id }}>
+                            {t('federations.openWorkspace')}
+                          </Link>
+                        </Button>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>

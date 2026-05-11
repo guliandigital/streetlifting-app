@@ -13,6 +13,8 @@ import {
   toast,
 } from '@streetlifting/ui';
 import { useAuth } from '../../lib/auth/hooks.js';
+import { defaultAuthenticatedRoute } from '../../lib/auth/default-route.js';
+import { useAuthStore } from '../../lib/auth/store.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import { moduleLogger } from '../../lib/logger.js';
 
@@ -34,7 +36,8 @@ export default function LoginFeature() {
     try {
       await login(email, password);
       log.info('login succeeded');
-      await navigate({ to: search.redirect ?? '/me' });
+      const user = useAuthStore.getState().user;
+      await navigate({ to: search.redirect ?? defaultAuthenticatedRoute(user) });
     } catch (err) {
       if (err instanceof ApiClientError && err.code === 'invalid_credentials') {
         toast.error(t('login.errors.invalidCredentials'));

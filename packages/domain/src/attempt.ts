@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AttemptId, NominationId, JudgeId } from './ids.js';
+import { AttemptId, DisciplineComponentId, NominationId, JudgeId } from './ids.js';
 import { AttemptResult } from './enums.js';
 
 export const JudgeDecision = z.object({
@@ -14,6 +14,7 @@ export type JudgeDecision = z.infer<typeof JudgeDecision>;
 export const Attempt = z.object({
   id: AttemptId,
   nominationId: NominationId,
+  componentId: DisciplineComponentId.nullable(),
   attemptNumber: z.number().int().min(1).max(5),
   weightKg: z.number().nonnegative(),
   result: AttemptResult,

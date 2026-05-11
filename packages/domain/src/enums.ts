@@ -96,6 +96,9 @@ export type JudgeRole = z.infer<typeof JudgeRole>;
 export const PaymentMethod = z.enum(['bank_transfer', 'card', 'sbp', 'cash', 'other']);
 export type PaymentMethod = z.infer<typeof PaymentMethod>;
 
+export const PaymentStatus = z.enum(['unpaid', 'partial', 'paid', 'waived', 'refunded']);
+export type PaymentStatus = z.infer<typeof PaymentStatus>;
+
 export const NotificationChannel = z.enum(['telegram', 'email', 'webhook']);
 export type NotificationChannel = z.infer<typeof NotificationChannel>;
 

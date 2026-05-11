@@ -29,6 +29,40 @@ const EQUIPMENT_BY_EVENT: Record<string, Equipment> = {
   PUDIMUSQ: 'pull_up_bar',
 };
 
+const COMPONENT_BY_EVENT: Record<
+  string,
+  { code: string; nameRu: string; nameEn: string; equipment: Equipment }
+> = {
+  PU: { code: 'pu', nameRu: 'Подтягивания', nameEn: 'Pull-Up', equipment: 'pull_up_bar' },
+  DI: { code: 'di', nameRu: 'Отжимания на брусьях', nameEn: 'Dip', equipment: 'dip_bars' },
+  MU_BAR: {
+    code: 'mu_bar',
+    nameRu: 'Выход силой на перекладине',
+    nameEn: 'Bar Muscle-Up',
+    equipment: 'pull_up_bar',
+  },
+  MU_RING: {
+    code: 'mu_ring',
+    nameRu: 'Выход силой на кольцах',
+    nameEn: 'Ring Muscle-Up',
+    equipment: 'rings',
+  },
+  SQ: { code: 'sq', nameRu: 'Приседания со штангой', nameEn: 'Barbell Squat', equipment: 'squat_rack' },
+};
+
+function componentEvents(p: (typeof presets.ISF_V51_DISCIPLINES)[number]): string[] {
+  if (p.event === 'PUDI') return ['PU', 'DI'];
+  if (p.event === 'PUDIMUSQ') return ['PU', 'DI', 'MU_BAR', 'SQ'];
+  return [p.event];
+}
+
+function fixedWeightForEvent(p: (typeof presets.ISF_V51_DISCIPLINES)[number], event: string): number | null {
+  if (p.competitionFormat !== 'multirep' || !p.presetLoadKg) return null;
+  if (event === 'PU') return p.presetLoadKg.PU ?? null;
+  if (event === 'DI') return p.presetLoadKg.DI ?? null;
+  return null;
+}
+
 function mapPresetToRow(p: (typeof presets.ISF_V51_DISCIPLINES)[number]) {
   const format: 'three_attempts_max' | 'reps_to_failure' =
     p.competitionFormat === 'classic' ? 'three_attempts_max' : 'reps_to_failure';
@@ -64,15 +98,42 @@ function mapPresetToRow(p: (typeof presets.ISF_V51_DISCIPLINES)[number]) {
 }
 
 let upserted = 0;
+let componentUpserted = 0;
 for (const p of presets.ISF_V51_DISCIPLINES) {
   const data = mapPresetToRow(p);
-  await prisma.discipline.upsert({
+  const discipline = await prisma.discipline.upsert({
     where: { code: data.code },
     create: data,
     update: data,
   });
+
+  const components = componentEvents(p).map((event, index) => {
+    const component = COMPONENT_BY_EVENT[event] ?? COMPONENT_BY_EVENT.PU;
+    return {
+      ...component,
+      order: index + 1,
+      attemptCount: p.competitionFormat === 'classic' ? 3 : 1,
+      fixedWeightKg: fixedWeightForEvent(p, event),
+    };
+  });
+
+  await prisma.disciplineComponent.deleteMany({
+    where: {
+      disciplineId: discipline.id,
+      code: { notIn: components.map((component) => component.code) },
+    },
+  });
+
+  for (const component of components) {
+    await prisma.disciplineComponent.upsert({
+      where: { disciplineId_code: { disciplineId: discipline.id, code: component.code } },
+      create: { ...component, disciplineId: discipline.id },
+      update: component,
+    });
+    componentUpserted++;
+  }
   upserted++;
 }
 
-console.log(`OK. Upserted ${upserted} ISF v5.1 disciplines.`);
+console.log(`OK. Upserted ${upserted} ISF v5.1 disciplines and ${componentUpserted} components.`);
 await prisma.$disconnect();

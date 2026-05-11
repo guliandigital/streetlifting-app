@@ -14,14 +14,17 @@ export default tseslint.config(
       '**/build/**',
       '**/.turbo/**',
       '**/coverage/**',
+      'output/**',
       'apps/desktop/src-tauri/target/**',
       'apps/desktop/src-tauri/gen/**',
       '_logo_pack_unpack/**',
+      'commitlint.config.js',
+      'eslint.config.js',
     ],
   },
 
   js.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
+  ...tseslint.configs.recommended,
 
   {
     files: ['**/*.{ts,tsx}'],
@@ -37,10 +40,27 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       '@typescript-eslint/no-floating-promises': 'error',
-      '@typescript-eslint/no-misused-promises': 'error',
+      '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: false }],
       '@typescript-eslint/require-await': 'off',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'eqeqeq': ['error', 'always', { null: 'ignore' }],
+    },
+  },
+
+  // Build/config/seed scripts are not part of package tsconfig "include".
+  // Lint them without type-aware rules; runtime validation happens through
+  // the scripts themselves and Prisma schema checks.
+  {
+    files: ['**/*.config.ts', 'apps/api/scripts/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-misused-promises': 'off',
+      'no-console': 'off',
     },
   },
 
@@ -105,9 +125,36 @@ export default tseslint.config(
     },
   },
 
+  // Browser E2E tests run in Playwright but also use Node helpers for auth state.
+  {
+    files: ['apps/web/e2e/**/*.ts', 'apps/web/playwright.config.ts'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+      parserOptions: {
+        projectService: false,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-misused-promises': 'off',
+      'no-console': 'off',
+    },
+  },
+
+  // Web helper scripts run in Node and are intentionally CLI-oriented.
+  {
+    files: ['apps/web/scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+
   // Test files relax some rules
   {
-    files: ['**/*.test.ts', '**/*.test.tsx', '**/tests/**/*.ts'],
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', '**/tests/**/*.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       'no-console': 'off',

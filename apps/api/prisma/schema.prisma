@@ -118,6 +118,14 @@ enum PaymentMethod {
   other
 }
 
+enum PaymentStatus {
+  unpaid
+  partial
+  paid
+  waived
+  refunded
+}
+
 enum NotificationChannel {
   telegram
   email
@@ -349,9 +357,29 @@ model Discipline {
 
   nominations              Nomination[]
   weightClasses            WeightClass[]
+  components               DisciplineComponent[]
   records                  Record[]
 
   @@map("discipline")
+}
+
+model DisciplineComponent {
+  id              String      @id @default(uuid()) @db.Uuid
+  disciplineId    String      @db.Uuid
+  code            String
+  nameRu          String
+  nameEn          String
+  equipment       Equipment
+  order           Int
+  attemptCount    Int         @default(3)
+  fixedWeightKg   Float?
+
+  discipline      Discipline  @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
+  attempts        Attempt[]
+
+  @@unique([disciplineId, code])
+  @@index([disciplineId, order])
+  @@map("discipline_component")
 }
 
 model Competition {
@@ -427,7 +455,8 @@ model WeightClass {
 
   division     Division    @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   discipline   Discipline? @relation(fields: [disciplineId], references: [id], onDelete: SetNull)
-  nominations  Nomination[]
+  nominations  Nomination[] @relation("NominationActualWeightClass")
+  declaredNominations Nomination[] @relation("NominationDeclaredWeightClass")
   records      Record[]
 
   @@index([divisionId, order])
@@ -547,6 +576,7 @@ model Nomination {
   athleteId               String           @db.Uuid
   disciplineId            String           @db.Uuid
   divisionId              String           @db.Uuid
+  declaredWeightClassId   String?          @db.Uuid
   weightClassId           String           @db.Uuid
   bodyWeightAtWeighIn     Float?
   entryNumber             Int?
@@ -554,6 +584,11 @@ model Nomination {
   groupId                 String?          @db.Uuid
   status                  NominationStatus
   isEntryFeePaid          Boolean          @default(false)
+  paymentStatus           PaymentStatus    @default(unpaid)
+  paidAmountKopecks       BigInt           @default(0)
+  paymentMethod           PaymentMethod?
+  paymentComment          String?
+  paidAt                  DateTime?        @db.Timestamptz(6)
   isMandatePassed         Boolean          @default(false)
   bestSuccessfulAttemptKg Float?
   finalScore              Float?
@@ -568,20 +603,23 @@ model Nomination {
   athlete                 Athlete          @relation(fields: [athleteId], references: [id], onDelete: Restrict)
   discipline              Discipline       @relation(fields: [disciplineId], references: [id], onDelete: Restrict)
   division                Division         @relation(fields: [divisionId], references: [id], onDelete: Restrict)
-  weightClass             WeightClass      @relation(fields: [weightClassId], references: [id], onDelete: Restrict)
+  declaredWeightClass     WeightClass?     @relation("NominationDeclaredWeightClass", fields: [declaredWeightClassId], references: [id], onDelete: SetNull)
+  weightClass             WeightClass      @relation("NominationActualWeightClass", fields: [weightClassId], references: [id], onDelete: Restrict)
   flight                  Flight?          @relation(fields: [flightId], references: [id], onDelete: SetNull)
   group                   Group?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
   attempts                Attempt[]
 
-  @@unique([competitionId, athleteId, disciplineId, divisionId, weightClassId])
+  @@unique([competitionId, athleteId, disciplineId, divisionId])
   @@index([competitionId, status])
   @@index([flightId, entryNumber])
+  @@index([declaredWeightClassId])
   @@map("nomination")
 }
 
 model Attempt {
   id              String        @id @default(uuid()) @db.Uuid
   nominationId    String        @db.Uuid
+  componentId     String?       @db.Uuid
   attemptNumber   Int
   weightKg        Float
   result          AttemptResult
@@ -593,9 +631,11 @@ model Attempt {
   notes           String?
 
   nomination      Nomination    @relation(fields: [nominationId], references: [id], onDelete: Cascade)
+  component       DisciplineComponent? @relation(fields: [componentId], references: [id], onDelete: Restrict)
   records         Record[]
 
-  @@unique([nominationId, attemptNumber])
+  @@unique([nominationId, componentId, attemptNumber])
+  @@index([componentId])
   @@map("attempt")
 }
 

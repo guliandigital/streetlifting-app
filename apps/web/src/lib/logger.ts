@@ -41,11 +41,9 @@ function emit(level: Level, module: string, msg: string, fields?: Record<string,
         console.info(line, fields ?? '');
         return;
       case 'warn':
-        // eslint-disable-next-line no-console
         console.warn(line, fields ?? '');
         return;
       case 'error':
-        // eslint-disable-next-line no-console
         console.error(line, fields ?? '');
         return;
     }

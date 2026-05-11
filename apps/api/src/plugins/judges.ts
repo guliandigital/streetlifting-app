@@ -1,6 +1,7 @@
 import { JudgeCreate, JudgeUpdate, JudgeListQuery } from '@streetlifting/domain';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
-import { prisma, Prisma } from '../lib/db.js';
+import { prisma } from '../lib/db.js';
+import type { Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';

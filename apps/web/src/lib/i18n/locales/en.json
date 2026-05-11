@@ -9,6 +9,7 @@
     "save": "Save",
     "saving": "Saving…",
     "cancel": "Cancel",
+    "search": "Search",
     "kg": "kg",
     "yes": "yes",
     "no": "no"
@@ -17,6 +18,7 @@
     "login": "Login",
     "logout": "Logout",
     "federations": "Federations",
+    "competitions": "Competitions",
     "athletes": "Athletes",
     "disciplines": "Disciplines",
     "judges": "Judges",
@@ -36,15 +38,42 @@
   },
   "profile": {
     "title": "Profile",
-    "subtitle": "Identity from <code>/auth/me</code>.",
+    "subtitle": "Account details and access.",
     "displayName": "Display name",
     "email": "Email",
     "userId": "User ID",
     "roles": "Roles",
     "noRoles": "No role assignments yet",
+    "role": {
+      "platform_admin": "Super admin",
+      "federation_admin": "Federation admin",
+      "secretary": "Secretary",
+      "head_judge": "Head judge",
+      "judge": "Judge",
+      "scoreboard_operator": "Scoreboard operator",
+      "speaker": "Speaker",
+      "athlete": "Athlete",
+      "accountant": "Accountant",
+      "viewer": "Viewer"
+    },
     "scope": {
       "federation": "federation {{id}}",
       "competition": "competition {{id}}"
+    },
+    "password": {
+      "title": "Password",
+      "subtitle": "Changing the password will end active sessions.",
+      "current": "Current password",
+      "next": "New password",
+      "confirm": "Confirm new password",
+      "submit": "Change password",
+      "changed": "Password changed. Sign in again.",
+      "errors": {
+        "invalidCurrent": "Current password is incorrect",
+        "mismatch": "New passwords do not match",
+        "reused": "New password must be different",
+        "tooShort": "Password must be at least {{min}} characters"
+      }
     }
   },
   "federations": {
@@ -57,11 +86,13 @@
     "newTitle": "New federation",
     "empty": "No federations registered yet.",
     "created": "Federation created",
+    "openWorkspace": "Open",
     "cols": {
       "code": "Code",
       "name": "Name",
       "country": "Country",
-      "tariff": "Tariff / nomination"
+      "tariff": "Tariff / nomination",
+      "workspace": "Workspace"
     },
     "fields": {
       "code": "Code (short identifier)",
@@ -145,6 +176,284 @@
       "coach": "Coach",
       "cardNumber": "Federation card number"
     }
+  },
+  "competitions": {
+    "title": "Competitions",
+    "subtitle": "Competition calendar and baseline tournament setup.",
+    "listTitle": "Calendar",
+    "count_one": "{{count}} competition",
+    "count_other": "{{count}} competitions",
+    "create": "Add competition",
+    "newTitle": "New competition",
+    "editTitle": "Competition settings",
+    "empty": "No competitions yet.",
+    "created": "Competition created",
+    "updated": "Competition updated",
+    "cols": {
+      "name": "Name",
+      "federation": "Federation",
+      "dates": "Dates",
+      "status": "Status",
+      "entryFee": "Entry fee",
+      "nominations": "Nominations"
+    },
+    "fields": {
+      "federation": "Federation",
+      "chooseFederation": "— Choose federation —",
+      "code": "Competition code",
+      "nameRu": "Name (RU)",
+      "nameEn": "Name (EN)",
+      "description": "Description",
+      "rulebook": "Rulebook",
+      "startDate": "Start date",
+      "endDate": "End date",
+      "dates": "Dates",
+      "registrationDeadline": "Registration deadline",
+      "city": "City",
+      "venue": "Venue",
+      "location": "Location",
+      "timezone": "Timezone",
+      "status": "Status",
+      "entryFeeRub": "Entry fee, ₽",
+      "onlineRegistrationOpen": "Online registration open",
+      "nominations": "Nominations",
+      "flights": "Flights",
+      "judgeAssignments": "Judge assignments"
+    },
+    "status": {
+      "draft": "Draft",
+      "registration_open": "Registration open",
+      "registration_closed": "Registration closed",
+      "in_progress": "In progress",
+      "finalized": "Finalized",
+      "archived": "Archived"
+    },
+    "errors": {
+      "codeTaken": "This code is already used in this federation",
+      "federationRequired": "Choose a federation",
+      "invalidTimezone": "Invalid IANA timezone"
+    }
+  },
+  "competitionOps": {
+    "title": "Competition operations",
+    "backToCompetition": "Competition",
+    "scoreboard": "Scoreboard",
+    "hallScreen": "Hall screen",
+    "exportProtocol": "Protocol CSV",
+    "exportProtocolXlsx": "Protocol XLSX",
+    "exportAccounting": "Accounting CSV",
+    "exportAccountingXlsx": "Accounting XLSX",
+    "exportsDesc": "Secretary and accounting exports for the current competition state.",
+    "tabs": {
+      "setup": "Setup",
+      "nominations": "Nominations",
+      "mandate": "Mandate / weigh-in",
+      "flights": "Flights",
+      "judges": "Judges",
+      "attempts": "Attempts",
+      "scoreboard": "Scoreboard",
+      "exports": "Exports"
+    },
+    "setupTitle": "Baseline structure is missing",
+    "setupDesc": "Creates open divisions, ISF v5.1 weight classes, main platform, flight, and group.",
+    "setupReady": "Baseline structure is ready. You can manage nominations, mandate, flights, and attempts.",
+    "applySetup": "Create structure",
+    "setupApplied": "Structure created",
+    "drawNumbers": "Draw entry numbers",
+    "drawApplied": "Entry numbers assigned",
+    "autoPlan": "Auto-plan flights",
+    "planApplied": "Flights and groups planned",
+    "bulkUpdated": "Bulk action applied",
+    "markAllMandate": "Mark all mandate",
+    "markAllPaid": "Mark all paid",
+    "markFilteredMandate": "Mark selected mandate ({{count}})",
+    "markFilteredPaid": "Mark selected paid ({{count}})",
+    "flightCount": "{{count}} flights",
+    "noFlights": "No flights yet.",
+    "flightPlannerTitle": "Flight plan",
+    "flightPlannerDesc": "Assignment, group, and estimated tournament-day duration control.",
+    "nominationFilters": "Nomination filters",
+    "nominationFiltersDesc": "Filter nominations for checks, mandate, payments, and bulk actions.",
+    "nominationSearchPlaceholder": "Name, number, discipline, division, or class…",
+    "flightFilters": "Flight filters",
+    "flightFiltersDesc": "Filter nominations for manual flight, group, or status checks.",
+    "flightSearchPlaceholder": "Name, number, discipline, division, or class…",
+    "allDisciplines": "All disciplines",
+    "allDivisions": "All divisions",
+    "allWeightClasses": "All weight classes",
+    "allStatuses": "All statuses",
+    "allPayments": "All payments",
+    "mandateFilter": "Mandate",
+    "assigned": "Assigned",
+    "unassigned": "Unassigned",
+    "totalEstimated": "Estimated time",
+    "minutesShort": "min",
+    "end": "end",
+    "nominationsInFlight": "{{count}} nominations in flight",
+    "unassignedWarning": "{{count}} nominations are still missing a flight or group.",
+    "manualAssignmentHint": "Manual correction is done by dragging a nomination row to a group or by saving flight and group in the table below.",
+    "flightDragHandle": "Drag nomination",
+    "flightDropHint": "Drop nomination here",
+    "flightDropAssigned": "Nomination assigned to group",
+    "filteredNominations": "Planning nominations",
+    "filteredNominationsDesc": "The table below uses the active filters and saves changes through the existing nomination API.",
+    "noFilteredNominations": "No nominations match the selected filters.",
+    "flightBulkAssignTitle": "Bulk assignment",
+    "flightBulkAssignDesc": "Assigns every nomination from the current filtered set to the selected flight and group.",
+    "flightBulkAssignAction": "Assign {{count}}",
+    "flightBulkAssigned": "{{count}} nominations assigned",
+    "judges": {
+      "title": "Judge assignments",
+      "desc": "Assign judges to the competition and, when needed, to a specific platform.",
+      "assign": "Assign",
+      "assigned": "Judge assigned",
+      "removed": "Assignment removed",
+      "empty": "No judge assignments yet.",
+      "noJudges": "No judges found",
+      "chooseJudge": "Choose a judge",
+      "allPlatforms": "All platforms",
+      "remove": "Remove"
+    },
+    "assignment": {
+      "title": "Assignment",
+      "all": "All",
+      "assigned": "With flight and group",
+      "unassigned": "Missing flight or group"
+    },
+    "mandate": {
+      "all": "All",
+      "passed": "Passed",
+      "missing": "Missing"
+    },
+    "createNomination": "New nomination",
+    "createNominationDesc": "A nomination links an athlete, discipline, division, and weight class.",
+    "nominationCreated": "Nomination created",
+    "nominationUpdated": "Nomination updated",
+    "autoWeightClass": "Auto: {{value}}",
+    "attemptSaved": "Attempt saved",
+    "saveAttempt": "Save attempt",
+    "noAttempts": "No attempts yet.",
+    "empty": "No nominations yet.",
+    "metrics": {
+      "total": "Nominations",
+      "paid": "Paid",
+      "weighedIn": "Weighed in",
+      "entryFees": "Entry fees",
+      "billing": "Writeoff"
+    },
+    "fields": {
+      "athlete": "Athlete",
+      "discipline": "Discipline",
+      "division": "Division",
+      "declaredWeightClass": "Declared class",
+      "weightClass": "Weight class",
+      "entryNumber": "Entry #",
+      "notes": "Notes",
+      "bodyWeight": "Body weight",
+      "status": "Status",
+      "paid": "Paid",
+      "paymentStatus": "Payment",
+      "paidAmount": "Amount, RUB",
+      "paymentMethod": "Method",
+      "mandate": "Mandate",
+      "judge": "Judge",
+      "role": "Role",
+      "platform": "Platform",
+      "flight": "Flight",
+      "group": "Group",
+      "noFlight": "No flight",
+      "noGroup": "No group",
+      "component": "Component",
+      "attempt": "Attempt",
+      "weightKg": "Weight, kg",
+      "reps": "Reps",
+      "result": "Decision",
+      "placeInClass": "Class place",
+      "placeOverall": "Overall"
+    },
+    "judgeRole": {
+      "head": "Head judge",
+      "side_left": "Left side",
+      "side_right": "Right side",
+      "technical": "Technical judge",
+      "jury": "Jury"
+    },
+    "paymentStatus": {
+      "unpaid": "Unpaid",
+      "partial": "Partial",
+      "paid": "Paid",
+      "waived": "Waived",
+      "refunded": "Refunded"
+    },
+    "paymentMethod": {
+      "none": "—",
+      "bank_transfer": "Bank transfer",
+      "card": "Card",
+      "sbp": "SBP",
+      "cash": "Cash",
+      "other": "Other"
+    },
+    "status": {
+      "draft": "Draft",
+      "paid": "Paid",
+      "weighed_in": "Weighed in",
+      "on_platform": "On platform",
+      "finished": "Finished",
+      "disqualified": "Disqualified",
+      "withdrawn": "Withdrawn"
+    },
+    "attemptResult": {
+      "pending": "Pending",
+      "good_lift": "Good lift",
+      "no_lift": "No lift",
+      "withdrawn": "Withdrawn"
+    },
+    "errors": {
+      "nominationExists": "This nomination already exists",
+      "invalidAttempt": "Invalid attempt number",
+      "invalidWeight": "Invalid weight"
+    }
+  },
+  "scoreboard": {
+    "title": "Competition scoreboard",
+    "operations": "Operations",
+    "currentBoard": "Current results",
+    "count_one": "{{count}} nomination",
+    "count_other": "{{count}} nominations",
+    "generatedAt": "updated {{value}}",
+    "attempts": "Attempts",
+    "best": "Best",
+    "score": "Score",
+    "empty": "No nominations for the scoreboard."
+  },
+  "competitionOperator": {
+    "title": "Platform operator",
+    "currentAthlete": "Current athlete",
+    "empty": "No active nominations for the platform.",
+    "timer": "Timer",
+    "startTimer": "Start",
+    "pauseTimer": "Pause",
+    "resetTimer": "Reset",
+    "markOnPlatform": "On platform",
+    "saveCall": "Save call",
+    "markFinished": "Finished",
+    "attemptSaved": "Attempt saved",
+    "statusUpdated": "Status updated",
+    "nextAthletes": "Queue",
+    "nextAthletesDesc": "Upcoming athletes by flight, group, and entry number."
+  },
+  "competitionJudge": {
+    "title": "Judge tablet",
+    "empty": "No active attempts for judging.",
+    "good": "Good lift",
+    "no": "No lift",
+    "withdraw": "Withdraw",
+    "decisionSaved": "Decision saved"
+  },
+  "protocolPrint": {
+    "title": "Print protocol",
+    "results": "Final results",
+    "printPdf": "Print / PDF"
   },
   "disciplines": {
     "title": "Disciplines",
@@ -281,6 +590,53 @@
       "region": "Region",
       "sortOrder": "Order",
       "active": "Active"
+    }
+  },
+  "publicRegistration": {
+    "formTitle": "Online registration",
+    "formDesc": "The nomination will appear for the secretary as unpaid.",
+    "closed": "Online registration for this competition is closed.",
+    "created": "Registration submitted",
+    "successTitle": "Registration accepted",
+    "successDesc": "The secretary will see it in nominations. Payment and mandate checks follow the organizer rules.",
+    "nominationNumber": "Registration number: {{value}}",
+    "submit": "Submit registration",
+    "backToFederation": "Back to federation competitions",
+    "noOpenCompetitions": "No competitions are open for online registration yet.",
+    "entryFee": "Entry fee",
+    "currentNominations": "Nominations",
+    "paymentHint": "Due by organizer rules: {{value}}",
+    "fields": {
+      "lastName": "Last name",
+      "firstName": "First name",
+      "middleName": "Middle name",
+      "dateOfBirth": "Date of birth",
+      "gender": "Gender",
+      "country": "Country ISO-2",
+      "region": "Region",
+      "city": "City",
+      "club": "Club",
+      "coach": "Coach",
+      "phone": "Phone",
+      "email": "Email",
+      "discipline": "Discipline",
+      "division": "Division",
+      "weightClass": "Weight class"
+    },
+    "gender": {
+      "M": "Men",
+      "F": "Women"
+    },
+    "consents": {
+      "dataProcessing": "I consent to personal data processing for competition participation.",
+      "publicResults": "I consent to publication of competition results.",
+      "photoPublication": "I consent to publication of photos and event media."
+    },
+    "errors": {
+      "setupMissing": "Registration is missing a discipline, division, or weight class.",
+      "consentRequired": "Personal data processing consent is required.",
+      "duplicate": "This nomination already exists in the competition.",
+      "closed": "Online registration is closed."
     }
   },
   "language": {

@@ -64,7 +64,7 @@ export async function record(
   );
 }
 
-export type AuditEntryFor<T> = Omit<AuditEntryInput, 'result'> & {
+export type AuditEntryFor = Omit<AuditEntryInput, 'result'> & {
   /** Computed by `withAudit` after the inner work succeeds or throws. */
   result?: never;
 };
@@ -80,7 +80,7 @@ export type AuditEntryFor<T> = Omit<AuditEntryInput, 'result'> & {
  * trail.
  */
 export async function withAudit<T>(
-  entry: AuditEntryFor<T>,
+  entry: AuditEntryFor,
   work: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
   return prisma.$transaction(async (tx) => {

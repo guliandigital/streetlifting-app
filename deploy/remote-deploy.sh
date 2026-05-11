@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_DIR="${STREETLIFTING_APP_DIR:-/opt/streetlifting-app}"
+WEB_ROOT="${STREETLIFTING_WEB_ROOT:-/var/www/streetlifting.app}"
+REPO_URL="${STREETLIFTING_REPO_URL:-https://github.com/guliandigital/streetlifting-app.git}"
+BRANCH="${STREETLIFTING_BRANCH:-main}"
+API_SERVICE="${STREETLIFTING_API_SERVICE:-streetlifting-api}"
+API_PORT="${STREETLIFTING_API_PORT:-3000}"
+SKIP_MIGRATIONS="${STREETLIFTING_SKIP_MIGRATIONS:-0}"
+
+if [[ "${API_SERVICE}" != *.service ]]; then
+  API_SERVICE="${API_SERVICE}.service"
+fi
+
+if command -v sudo >/dev/null 2>&1; then
+  SUDO="sudo"
+else
+  SUDO=""
+fi
+
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1" >&2
+    exit 1
+  fi
+}
+
+require_command git
+require_command node
+require_command pnpm
+
+${SUDO} mkdir -p "${APP_DIR}" "${WEB_ROOT}"
+${SUDO} chown -R "$(id -un):$(id -gn)" "${APP_DIR}"
+
+if [[ ! -d "${APP_DIR}/.git" ]]; then
+  git clone --branch "${BRANCH}" "${REPO_URL}" "${APP_DIR}"
+fi
+
+cd "${APP_DIR}"
+
+git fetch origin "${BRANCH}"
+git checkout "${BRANCH}"
+git pull --ff-only origin "${BRANCH}"
+
+corepack enable >/dev/null 2>&1 || true
+pnpm install --frozen-lockfile
+pnpm --filter=@streetlifting/api db:generate
+
+if [[ "${SKIP_MIGRATIONS}" != "1" ]]; then
+  pnpm release:migrate
+fi
+
+pnpm --filter=@streetlifting/api build
+pnpm --filter=@streetlifting/web build
+
+if [[ ! -d "apps/web/dist" ]]; then
+  echo "apps/web/dist was not produced" >&2
+  exit 1
+fi
+
+${SUDO} mkdir -p "${WEB_ROOT}"
+${SUDO} find "${WEB_ROOT}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+${SUDO} cp -a apps/web/dist/. "${WEB_ROOT}/"
+${SUDO} chown -R www-data:www-data "${WEB_ROOT}" 2>/dev/null || true
+${SUDO} find "${WEB_ROOT}" -type d -exec chmod 755 {} +
+${SUDO} find "${WEB_ROOT}" -type f -exec chmod 644 {} +
+
+if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files "${API_SERVICE}" >/dev/null 2>&1; then
+  ${SUDO} systemctl restart "${API_SERVICE}"
+  ${SUDO} systemctl --no-pager --full status "${API_SERVICE}" || true
+else
+  echo "WARNING: ${API_SERVICE} was not found in systemd; API process was not restarted" >&2
+fi
+
+curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null
+echo "OK: deployed ${BRANCH} to ${APP_DIR}, web root ${WEB_ROOT}, API port ${API_PORT}"

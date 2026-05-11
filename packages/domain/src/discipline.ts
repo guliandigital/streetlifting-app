@@ -1,6 +1,19 @@
 import { z } from 'zod';
-import { DisciplineId } from './ids.js';
+import { DisciplineComponentId, DisciplineId } from './ids.js';
 import { DisciplineFamily, DisciplineFormat, Equipment } from './enums.js';
+
+export const DisciplineComponent = z.object({
+  id: DisciplineComponentId,
+  disciplineId: DisciplineId,
+  code: z.string().min(1),
+  nameRu: z.string().min(1),
+  nameEn: z.string().min(1),
+  equipment: Equipment,
+  order: z.number().int().positive(),
+  attemptCount: z.number().int().min(1).max(5).default(3),
+  fixedWeightKg: z.number().nonnegative().nullable(),
+});
+export type DisciplineComponent = z.infer<typeof DisciplineComponent>;
 
 export const Discipline = z.object({
   id: DisciplineId,
