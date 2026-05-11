@@ -1903,6 +1903,16 @@ export default function CompetitionOperationsFeature() {
               {t('competitionJudge.title')}
             </Link>
           </Button>
+          <Button asChild variant="outline">
+            <Link to="/competitions/$id/reports" params={{ id }}>
+              {t('competitionOps.tabs.exports')}
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/broadcast/competitions/$id" params={{ id }}>
+              Broadcast
+            </Link>
+          </Button>
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import {
   redirect,
 } from '@tanstack/react-router';
 import { RootLayout } from './components/Layout.js';
+import { defaultAuthenticatedRoute } from './lib/auth/default-route.js';
 import { useAuthStore } from './lib/auth/store.js';
 import { LazyModule } from './lib/lazy-module.js';
 
@@ -14,6 +15,8 @@ const HealthFeature = () => <LazyModule module="health" loader={() => import('./
 const FederationsListFeature = () => <LazyModule module="federations" loader={() => import('./features/federations/index.js')} />;
 const FederationNewFeature = () => <LazyModule module="federations-new" loader={() => import('./features/federations/new.js')} />;
 const FederationDetailFeature = () => <LazyModule module="federations-detail" loader={() => import('./features/federations/detail.js')} />;
+const FederationInventoryFeature = () => <LazyModule module="federations-inventory" loader={() => import('./features/federations/inventory.js')} />;
+const FederationNotificationsFeature = () => <LazyModule module="federations-notifications" loader={() => import('./features/federations/notifications.js')} />;
 const CompetitionsListFeature = () => <LazyModule module="competitions" loader={() => import('./features/competitions/index.js')} />;
 const CompetitionNewFeature = () => <LazyModule module="competitions-new" loader={() => import('./features/competitions/new.js')} />;
 const CompetitionDetailFeature = () => <LazyModule module="competitions-detail" loader={() => import('./features/competitions/detail.js')} />;
@@ -22,6 +25,10 @@ const CompetitionScoreboardFeature = () => <LazyModule module="competition-score
 const CompetitionOperatorFeature = () => <LazyModule module="competition-operator" loader={() => import('./features/competitions/operator.js')} />;
 const CompetitionJudgeFeature = () => <LazyModule module="competition-judge" loader={() => import('./features/competitions/judge.js')} />;
 const CompetitionProtocolPrintFeature = () => <LazyModule module="competition-protocol-print" loader={() => import('./features/competitions/protocol-print.js')} />;
+const CompetitionReportsFeature = () => <LazyModule module="competition-reports" loader={() => import('./features/competitions/reports.js')} />;
+const CompetitionCertificatesFeature = () => <LazyModule module="competition-certificates" loader={() => import('./features/competitions/certificates.js')} />;
+const CompetitionAwardsFeature = () => <LazyModule module="competition-awards" loader={() => import('./features/competitions/awards.js')} />;
+const CompetitionBroadcastFeature = () => <LazyModule module="competition-broadcast" loader={() => import('./features/competitions/broadcast.js')} />;
 const PublicCompetitionRegistrationFeature = () => <LazyModule module="public-registration" loader={() => import('./features/public-registration/register.js')} />;
 const PublicFederationRegistrationFeature = () => <LazyModule module="public-federation-registration" loader={() => import('./features/public-registration/federation.js')} />;
 const AthletesListFeature = () => <LazyModule module="athletes" loader={() => import('./features/athletes/index.js')} />;
@@ -67,7 +74,8 @@ const indexRoute = createRoute({
   beforeLoad: () => {
     const user = useAuthStore.getState().user;
     const refresh = useAuthStore.getState().refreshToken;
-    if (user || refresh) throw redirect({ to: '/me' });
+    if (user) throw redirect({ to: defaultAuthenticatedRoute(user) });
+    if (refresh) throw redirect({ to: '/me' });
     throw redirect({ to: '/login' });
   },
 });
@@ -78,7 +86,8 @@ const loginRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { redirect?: string } =>
     typeof search.redirect === 'string' ? { redirect: search.redirect } : {},
   beforeLoad: () => {
-    if (useAuthStore.getState().user) throw redirect({ to: '/me' });
+    const user = useAuthStore.getState().user;
+    if (user) throw redirect({ to: defaultAuthenticatedRoute(user) });
   },
   component: LoginFeature,
 });
@@ -109,6 +118,20 @@ const federationDetailRoute = createRoute({
   path: '/federations/$id',
   beforeLoad: ({ location }) => requireAuthGuard(location.href),
   component: FederationDetailFeature,
+});
+
+const federationInventoryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/federations/$id/inventory',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: FederationInventoryFeature,
+});
+
+const federationNotificationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/federations/$id/notifications',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: FederationNotificationsFeature,
 });
 
 const competitionsListRoute = createRoute({
@@ -165,6 +188,33 @@ const competitionProtocolPrintRoute = createRoute({
   path: '/competitions/$id/protocol-print',
   beforeLoad: ({ location }) => requireAuthGuard(location.href),
   component: CompetitionProtocolPrintFeature,
+});
+
+const competitionReportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/reports',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionReportsFeature,
+});
+
+const competitionCertificatesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/certificates',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionCertificatesFeature,
+});
+
+const competitionAwardsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/awards',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionAwardsFeature,
+});
+
+const competitionBroadcastRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/broadcast/competitions/$id',
+  component: CompetitionBroadcastFeature,
 });
 
 const publicCompetitionRegistrationRoute = createRoute({
@@ -283,6 +333,8 @@ const routeTree = rootRoute.addChildren([
   federationsListRoute,
   federationNewRoute,
   federationDetailRoute,
+  federationInventoryRoute,
+  federationNotificationsRoute,
   competitionsListRoute,
   competitionNewRoute,
   competitionDetailRoute,
@@ -291,6 +343,10 @@ const routeTree = rootRoute.addChildren([
   competitionOperatorRoute,
   competitionJudgeRoute,
   competitionProtocolPrintRoute,
+  competitionReportsRoute,
+  competitionCertificatesRoute,
+  competitionAwardsRoute,
+  competitionBroadcastRoute,
   publicCompetitionRegistrationRoute,
   publicFederationRegistrationRoute,
   athletesListRoute,

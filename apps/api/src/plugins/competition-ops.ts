@@ -84,6 +84,7 @@ async function loadCompetition(competitionId: string) {
           code: true,
           nameRu: true,
           billingTariffKopecksPerNomination: true,
+          isPublicResultsClosed: true,
         },
       },
     },
@@ -643,6 +644,7 @@ async function getOpsPayload(competitionId: string) {
             code: true,
             nameRu: true,
             billingTariffKopecksPerNomination: true,
+            isPublicResultsClosed: true,
           },
         },
       },
@@ -1619,6 +1621,29 @@ export const competitionOpsPlugin: FeaturePlugin = {
         if (!canRead(req.user, payload.competition)) {
           return reply.code(403).send({
             error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+        return {
+          competition: payload.competition,
+          nominations: payload.nominations,
+          rows: payload.scoreboardRows,
+          generatedAt: new Date().toISOString(),
+        };
+      },
+    );
+
+    app.get<{ Params: { id: string } }>(
+      '/public/competitions/:id/scoreboard',
+      async (req, reply) => {
+        const payload = await getOpsPayload(req.params.id);
+        if (!payload) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+          });
+        }
+        if (payload.competition.federation.isPublicResultsClosed) {
+          return reply.code(403).send({
+            error: { code: 'public_results_closed', message: 'Public results are closed', requestId: req.requestId },
           });
         }
         return {

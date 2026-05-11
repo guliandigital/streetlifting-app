@@ -42,6 +42,16 @@ One-time root seed:
 
 Do not keep `ROOT_PASSWORD` in a long-lived env file after the first seed. Re-running `seed:root` rotates that account password.
 
+One-time federation user provisioning:
+
+- `FEDERATION_ID` or `FEDERATION_CODE`
+- `FEDERATION_USER_EMAIL`
+- `FEDERATION_USER_PASSWORD`
+- `FEDERATION_USER_DISPLAY_NAME`
+- `FEDERATION_USER_ROLE` (`federation_admin`, `secretary`, or `accountant`; defaults to `federation_admin`)
+
+Do not keep `FEDERATION_USER_PASSWORD` in a long-lived env file. Re-running `seed:federation-user` rotates that user's password and preserves existing non-revoked scoped roles.
+
 ## Deployment sequence
 
 1. Install dependencies with the locked workspace versions:
@@ -68,6 +78,16 @@ Do not keep `ROOT_PASSWORD` in a long-lived env file after the first seed. Re-ru
    pnpm release:seed
    ```
 
+4a. Provision a federation-scoped login when a federation account should open its PowerTable-style workspace directly:
+
+   ```bash
+   FEDERATION_CODE=<federation-code> \
+   FEDERATION_USER_EMAIL=<federation-email> \
+   FEDERATION_USER_PASSWORD=<temporary-password> \
+   FEDERATION_USER_DISPLAY_NAME=<display-name> \
+   pnpm --filter=@streetlifting/api seed:federation-user
+   ```
+
 5. Run the authenticated pilot smoke against the target API:
 
    ```bash
@@ -87,6 +107,43 @@ Do not keep `ROOT_PASSWORD` in a long-lived env file after the first seed. Re-ru
 
 7. Serve `apps/web/dist` from nginx or another static host. Proxy `/api/*` to the API with the `/api` prefix stripped, matching Vite dev behavior.
 
+   Deploy the web build with deletion enabled so old hashed assets cannot remain addressable forever:
+
+   ```bash
+   rsync -avz --delete apps/web/dist/ deploy@<server>:/var/www/streetlifting.app/
+   ```
+
+   Keep service-worker cleanup files outside the SPA fallback. They intentionally unregister any old PWA/service worker from the legacy app and clear browser caches:
+
+   ```nginx
+   location = /sw.js {
+       add_header Cache-Control "no-store, no-cache, must-revalidate";
+       default_type application/javascript;
+       try_files $uri =404;
+   }
+
+   location = /service-worker.js {
+       add_header Cache-Control "no-store, no-cache, must-revalidate";
+       default_type application/javascript;
+       try_files $uri =404;
+   }
+
+   location = /registerSW.js {
+       add_header Cache-Control "no-store, no-cache, must-revalidate";
+       default_type application/javascript;
+       try_files $uri =404;
+   }
+
+   location /assets/ {
+       add_header Cache-Control "public, max-age=31536000, immutable";
+       try_files $uri =404;
+   }
+
+   location / {
+       try_files $uri $uri/ /index.html;
+   }
+   ```
+
 ## Smoke checks
 
 Run these after deployment:
@@ -95,6 +152,8 @@ Run these after deployment:
 curl -fsS https://<web-domain>/api/health
 curl -fsS https://<web-domain>/api/health/competitions
 curl -fsS https://<web-domain>/api/health/competition-ops
+curl -fsSI https://<web-domain>/sw.js | grep -Ei 'content-type|cache-control'
+curl -fsSI https://<web-domain>/service-worker.js | grep -Ei 'content-type|cache-control'
 ```
 
 Manual web flow:

@@ -218,6 +218,7 @@ export interface CompetitionOpsResponse {
       code: string;
       nameRu: string;
       billingTariffKopecksPerNomination: string | number;
+      isPublicResultsClosed?: boolean;
     };
   };
   divisions: DivisionDto[];
@@ -255,6 +256,14 @@ export function useScoreboard(id: string) {
   return useQuery<ScoreboardResponse>({
     queryKey: ['competitions', id, 'scoreboard'],
     queryFn: () => api.competitions.scoreboard(id),
+    refetchInterval: 15_000,
+  });
+}
+
+export function usePublicScoreboard(id: string) {
+  return useQuery<ScoreboardResponse>({
+    queryKey: ['public-competitions', id, 'scoreboard'],
+    queryFn: () => api.competitions.publicScoreboard(id),
     refetchInterval: 15_000,
   });
 }

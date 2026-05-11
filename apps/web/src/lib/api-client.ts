@@ -28,7 +28,13 @@ import type {
 import { useAuthStore } from './auth/store.js';
 import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './auth/types.js';
 import { moduleLogger } from './logger.js';
-import type { Federation, FederationChapterDto } from '../features/federations/api.js';
+import type {
+  Federation,
+  FederationChapterDto,
+  FederationDashboardResponse,
+  FederationReceiptDto,
+  FederationWriteoffDto,
+} from '../features/federations/api.js';
 import type { AthleteDto, AthleteListResponse } from '../features/athletes/api.js';
 import type { DisciplineDto } from '../features/disciplines/api.js';
 import type { JudgeDto, JudgeListResponse } from '../features/judges/api.js';
@@ -265,10 +271,36 @@ export const api = {
       request('/federations'),
     get: (id: string): Promise<{ federation: Federation }> =>
       request(`/federations/${id}`),
+    dashboard: (id: string): Promise<FederationDashboardResponse> =>
+      request(`/federations/${id}/dashboard`),
     create: (data: FederationCreate): Promise<{ federation: Federation }> =>
       request('/federations', { method: 'POST', body: data }),
     update: (id: string, data: FederationUpdate): Promise<{ federation: Federation }> =>
       request(`/federations/${id}`, { method: 'PATCH', body: data }),
+    createReceipt: (
+      id: string,
+      data: {
+        number: string;
+        date: string;
+        nominationsCount: number;
+        amountKopecks: number;
+        paymentMethod: FederationReceiptDto['paymentMethod'];
+        expiresAt: string;
+        externalReference?: string | null;
+      },
+    ): Promise<{ receipt: FederationReceiptDto }> =>
+      request(`/federations/${id}/receipts`, { method: 'POST', body: data }),
+    createWriteoff: (
+      id: string,
+      data: {
+        number: string;
+        date: string;
+        nominationsCount: number;
+        competitionId?: string | null;
+        linkedReceiptId?: string | null;
+      },
+    ): Promise<{ writeoff: FederationWriteoffDto }> =>
+      request(`/federations/${id}/writeoffs`, { method: 'POST', body: data }),
     chapters: {
       list: (fedId: string): Promise<{ chapters: FederationChapterDto[] }> =>
         request(`/federations/${fedId}/chapters`),
@@ -316,6 +348,8 @@ export const api = {
     deleteJudgeAssignment: (assignmentId: string): Promise<{ deleted: true }> =>
       request(`/judge-assignments/${assignmentId}`, { method: 'DELETE' }),
     scoreboard: (id: string): Promise<ScoreboardResponse> => request(`/competitions/${id}/scoreboard`),
+    publicScoreboard: (id: string): Promise<ScoreboardResponse> =>
+      request(`/public/competitions/${id}/scoreboard`, { unauthenticated: true }),
     protocolCsv: (id: string): Promise<string> => requestText(`/competitions/${id}/protocol.csv`),
     protocolXlsx: (id: string): Promise<Blob> => requestBlob(`/competitions/${id}/protocol.xlsx`),
     accountingCsv: (id: string): Promise<string> => requestText(`/competitions/${id}/accounting.csv`),

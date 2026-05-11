@@ -32,6 +32,83 @@ interface FederationDto {
 
 export type Federation = FederationDto;
 
+export interface FederationReceiptDto {
+  id: string;
+  federationId: string;
+  number: string;
+  date: string;
+  nominationsCount: number;
+  amountKopecks: string | number;
+  paymentMethod: 'bank_transfer' | 'card' | 'sbp' | 'cash' | 'other';
+  expiresAt: string;
+  externalReference: string | null;
+  createdAt: string;
+}
+
+export interface FederationWriteoffDto {
+  id: string;
+  federationId: string;
+  number: string;
+  date: string;
+  nominationsCount: number;
+  competitionId: string | null;
+  linkedReceiptId: string | null;
+  createdAt: string;
+  competition: { id: string; code: string; nameRu: string } | null;
+}
+
+export interface FederationAttachmentDto {
+  id: string;
+  kind: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: string | number;
+  storagePath: string;
+  uploadedAt: string;
+}
+
+export interface FederationPlateSetDto {
+  id: string;
+  federationId: string | null;
+  competitionId: string | null;
+  name: string;
+  incrementKg: number;
+  barWeightKg: number;
+  collarWeightKg: number;
+  plates: unknown;
+}
+
+export interface FederationDashboardResponse {
+  federation: Federation & {
+    attachments: FederationAttachmentDto[];
+    plateSets: FederationPlateSetDto[];
+  };
+  receipts: FederationReceiptDto[];
+  writeoffs: FederationWriteoffDto[];
+  competitions: Array<{
+    id: string;
+    code: string;
+    nameRu: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+    _count: { nominations: number };
+  }>;
+  balance: {
+    receivedNominations: number;
+    consumedNominations: number;
+    remainingNominations: number;
+    receivedAmountKopecks: string | number;
+  };
+  telegramSubscriptionCode: string;
+  regionalComparison: Array<{
+    federationId: string;
+    code: string;
+    nameRu: string;
+    nominations: number;
+  }>;
+}
+
 export function useFederations() {
   return useQuery<{ federations: Federation[] }>({
     queryKey: ['federations'],
@@ -43,6 +120,13 @@ export function useFederation(id: string) {
   return useQuery<{ federation: Federation }>({
     queryKey: ['federations', id],
     queryFn: () => api.federations.get(id),
+  });
+}
+
+export function useFederationDashboard(id: string) {
+  return useQuery<FederationDashboardResponse>({
+    queryKey: ['federations', id, 'dashboard'],
+    queryFn: () => api.federations.dashboard(id),
   });
 }
 
@@ -61,6 +145,42 @@ export function useUpdateFederation(id: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['federations'] });
       void qc.invalidateQueries({ queryKey: ['federations', id] });
+    },
+  });
+}
+
+export function useCreateFederationReceipt(federationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      number: string;
+      date: string;
+      nominationsCount: number;
+      amountKopecks: number;
+      paymentMethod: FederationReceiptDto['paymentMethod'];
+      expiresAt: string;
+      externalReference?: string | null;
+    }) => api.federations.createReceipt(federationId, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', federationId] });
+      void qc.invalidateQueries({ queryKey: ['federations', federationId, 'dashboard'] });
+    },
+  });
+}
+
+export function useCreateFederationWriteoff(federationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      number: string;
+      date: string;
+      nominationsCount: number;
+      competitionId?: string | null;
+      linkedReceiptId?: string | null;
+    }) => api.federations.createWriteoff(federationId, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', federationId] });
+      void qc.invalidateQueries({ queryKey: ['federations', federationId, 'dashboard'] });
     },
   });
 }
