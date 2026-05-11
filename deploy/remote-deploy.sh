@@ -74,5 +74,14 @@ else
   echo "WARNING: ${API_SERVICE} was not found in systemd; API process was not restarted" >&2
 fi
 
-curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null
+for attempt in {1..30}; do
+  if curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null; then
+    break
+  fi
+  if [[ "${attempt}" == "30" ]]; then
+    echo "API health check failed after ${attempt} attempts" >&2
+    exit 1
+  fi
+  sleep 1
+done
 echo "OK: deployed ${BRANCH} to ${APP_DIR}, web root ${WEB_ROOT}, API port ${API_PORT}"
