@@ -5,7 +5,6 @@ import {
   PowerTableIcon,
   PowerTablePage,
   PowerTablePanel,
-  PowerTableToolbar,
 } from '../../components/powertable.js';
 import { usePublicScoreboard } from './operations-api.js';
 

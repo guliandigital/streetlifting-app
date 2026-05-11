@@ -81,7 +81,7 @@ export default function FederationInventoryFeature() {
       <div className="pt-split">
         <PowerTablePanel className="p-2">
           <div className="mb-2 text-sm">
-            Для изменения цвета дважды кликните на ячейку в колонке "Цвет" и нажимаем на появившуюся кнопку с двумя квадратиками
+            Для изменения цвета дважды кликните на ячейку в колонке &quot;Цвет&quot; и нажимаем на появившуюся кнопку с двумя квадратиками
           </div>
           <table className="pt-grid">
             <thead><tr><th>Вес диска</th><th>Количество</th><th>Цвет</th></tr></thead>

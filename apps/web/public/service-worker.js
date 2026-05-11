@@ -1,4 +1,6 @@
-self.addEventListener('install', (event) => {
+/* global caches, self */
+
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 

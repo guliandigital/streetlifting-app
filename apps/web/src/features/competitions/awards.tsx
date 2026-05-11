@@ -4,7 +4,6 @@ import {
   PowerTableButton,
   PowerTablePage,
   PowerTablePanel,
-  PowerTableSectionTitle,
   PowerTableToolbar,
 } from '../../components/powertable.js';
 import { useCompetitionOps, type ScoreboardRowDto } from './operations-api.js';

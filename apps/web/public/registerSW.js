@@ -1,3 +1,5 @@
+/* global caches, navigator, window */
+
 (function () {
   if (!('serviceWorker' in navigator)) return;
 
