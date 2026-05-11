@@ -32,4 +32,5 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm build
+      - run: pnpm --filter=@streetlifting/api build
+      - run: pnpm --filter=@streetlifting/web build
