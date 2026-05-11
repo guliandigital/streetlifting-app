@@ -51,6 +51,7 @@ if [[ "${SKIP_MIGRATIONS}" != "1" ]]; then
   pnpm release:migrate
 fi
 
+pnpm build:packages
 pnpm --filter=@streetlifting/api build
 pnpm --filter=@streetlifting/web build
 
