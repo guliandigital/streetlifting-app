@@ -43,6 +43,7 @@ pnpm build
 ## Production launch
 
 Use the web-first production runbook in [docs/production-launch.md](docs/production-launch.md).
+reg.ru deployment setup is documented in [docs/reg-ru-deployment.md](docs/reg-ru-deployment.md).
 
 ## License
 

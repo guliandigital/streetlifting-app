@@ -1,0 +1,61 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Git branch to deploy
+        required: true
+        default: main
+      skip_migrations:
+        description: Skip Prisma migrations
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy to reg.ru
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABASE_URL: postgresql://streetlifting:streetlifting@localhost:5432/streetlifting?schema=public
+      DEPLOY_HOST: ${{ secrets.REG_RU_HOST }}
+      DEPLOY_PORT: ${{ secrets.REG_RU_PORT || '22' }}
+      DEPLOY_USER: ${{ secrets.REG_RU_USER }}
+      DEPLOY_BRANCH: ${{ inputs.branch }}
+      SKIP_MIGRATIONS: ${{ inputs.skip_migrations && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm release:check
+      - name: Configure SSH
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.REG_RU_SSH_KEY }}" > ~/.ssh/reg_ru
+          chmod 600 ~/.ssh/reg_ru
+          ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Upload remote deploy script
+        run: |
+          scp -P "$DEPLOY_PORT" -i ~/.ssh/reg_ru deploy/remote-deploy.sh "$DEPLOY_USER@$DEPLOY_HOST:/tmp/streetlifting-remote-deploy.sh"
+      - name: Run remote deploy
+        run: |
+          ssh -p "$DEPLOY_PORT" -i ~/.ssh/reg_ru "$DEPLOY_USER@$DEPLOY_HOST" \
+            "chmod +x /tmp/streetlifting-remote-deploy.sh && STREETLIFTING_BRANCH='$DEPLOY_BRANCH' STREETLIFTING_SKIP_MIGRATIONS='$SKIP_MIGRATIONS' bash /tmp/streetlifting-remote-deploy.sh && rm -f /tmp/streetlifting-remote-deploy.sh"
+      - name: Smoke production
+        run: |
+          curl -fsS https://streetlifting.app/api/health
+          curl -fsSI https://streetlifting.app/sw.js | grep -Ei 'content-type|cache-control'

@@ -54,6 +54,12 @@ Do not keep `FEDERATION_USER_PASSWORD` in a long-lived env file. Re-running `see
 
 ## Deployment sequence
 
+For reg.ru-specific SSH, nginx, systemd, and GitHub Actions setup, use [reg-ru-deployment.md](reg-ru-deployment.md). After one-time server setup, the normal deploy command from Windows is:
+
+```powershell
+.\scripts\deploy-reg-ru.ps1 -SshTarget streetlifting-prod -Branch main
+```
+
 1. Install dependencies with the locked workspace versions:
 
    ```bash
