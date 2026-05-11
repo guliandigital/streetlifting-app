@@ -10,22 +10,49 @@ import {
   PowerTableSectionTitle,
   PowerTableToolbar,
 } from '../../components/powertable.js';
+import { ApiClientError } from '../../lib/api-client.js';
 import { useAuthStore } from '../../lib/auth/store.js';
-import { useFederationDashboard, useUpdateFederation } from './api.js';
+import {
+  type FederationAuditEntryDto,
+  useCreateFederationFeedback,
+  useFederationAudit,
+  useFederationDashboard,
+  useTestFederationEmail,
+  useUpdateFederation,
+} from './api.js';
+
+function nullableText(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+function auditComment(entry: FederationAuditEntryDto): string {
+  if (!entry.after || typeof entry.after !== 'object') return entry.notes ?? '-';
+  const payload = entry.after as Record<string, unknown>;
+  const message = typeof payload.message === 'string' ? payload.message : null;
+  const recipient = typeof payload.recipient === 'string' ? payload.recipient : null;
+  return message ?? recipient ?? entry.notes ?? '-';
+}
 
 export default function FederationNotificationsFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/federations/$id/notifications' });
   const user = useAuthStore((s) => s.user);
   const { data, isLoading, error } = useFederationDashboard(id);
+  const { data: auditData, isLoading: auditLoading } = useFederationAudit(id);
   const update = useUpdateFederation(id);
+  const testEmail = useTestFederationEmail(id);
+  const createFeedback = useCreateFederationFeedback(id);
+  const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [telegramHandle, setTelegramHandle] = useState('');
   const [notificationsDisabled, setNotificationsDisabled] = useState(false);
   const [isPublicResultsClosed, setIsPublicResultsClosed] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState('');
 
   useEffect(() => {
     if (!data) return;
+    setContactPhone(data.federation.contactPhone ?? '');
     setContactEmail(data.federation.contactEmail ?? '');
     setTelegramHandle(data.federation.telegramHandle ?? '');
     setNotificationsDisabled(data.federation.notificationsDisabled);
@@ -47,19 +74,58 @@ export default function FederationNotificationsFeature() {
     user?.roles.some(
       (r) =>
         r.role === 'platform_admin' ||
-        ((r.role === 'federation_admin' || r.role === 'accountant') && r.federationId === id),
+        (r.role === 'federation_admin' && r.federationId === id),
     ) ?? false;
+  const notificationHistory =
+    auditData?.audit.filter((entry) =>
+      ['federation.feedback.created', 'federation.updated', 'federation.test_email.requested'].includes(
+        entry.action,
+      ),
+    ) ?? [];
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     try {
       await update.mutateAsync({
-        contactEmail: contactEmail.trim() || undefined,
-        telegramHandle: telegramHandle.trim() || undefined,
+        contactPhone: nullableText(contactPhone),
+        contactEmail: nullableText(contactEmail),
+        telegramHandle: nullableText(telegramHandle),
         notificationsDisabled,
         isPublicResultsClosed,
       });
       toast.success('Настройки уведомлений сохранены');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
+  async function sendTestEmail() {
+    try {
+      const result = await testEmail.mutateAsync();
+      toast.success(
+        result.smtpConfigured
+          ? `Тестовое письмо поставлено в очередь: ${result.recipient}`
+          : `Email заполнен: ${result.recipient}. SMTP-доставка пока не настроена.`,
+      );
+    } catch (err) {
+      if (err instanceof ApiClientError && err.code === 'contact_email_missing') {
+        toast.error('Заполните email федерации');
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Error');
+      }
+    }
+  }
+
+  async function submitFeedback() {
+    const message = feedbackMessage.trim();
+    if (message.length < 3) {
+      toast.error('Напишите текст обращения');
+      return;
+    }
+    try {
+      await createFeedback.mutateAsync({ message });
+      setFeedbackMessage('');
+      toast.success('Обращение сохранено в истории');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error');
     }
@@ -86,7 +152,8 @@ export default function FederationNotificationsFeature() {
         { label: 'Каналы связи', icon: 'notifications', active: true },
         { label: 'Почта', icon: 'mail' },
         { label: 'Telegram', icon: 'telegram' },
-        { label: 'История', icon: 'history' },
+        { label: <Link to="/federations/$id/logins" params={{ id }}>История</Link>, icon: 'history' },
+        { label: <Link to="/federations/$id/files" params={{ id }}>Файлы</Link>, icon: 'files' },
       ]}
     >
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -97,7 +164,7 @@ export default function FederationNotificationsFeature() {
               <div className="pt-lang-badge">RU</div>
               <PowerTableButton type="button">Switch the language to English</PowerTableButton>
               <div className="pt-lang-badge">EN</div>
-              <input className="pt-field" value={data.federation.contactPhone ?? ''} readOnly />
+              <input className="pt-field" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} disabled={!canManage} />
             </div>
 
             <div className="pt-form-grid max-w-4xl">
@@ -139,17 +206,33 @@ export default function FederationNotificationsFeature() {
 
             <PowerTableToolbar>
               <PowerTableButton type="submit" tone="green" icon="refresh" disabled={!canManage || update.isPending}>Обновить</PowerTableButton>
-              <PowerTableButton type="button" icon="add">Добавить обращение</PowerTableButton>
-              <PowerTableButton type="button" icon="mail">Тест письмо</PowerTableButton>
+              <PowerTableButton type="button" icon="add" onClick={() => void submitFeedback()} disabled={createFeedback.isPending}>Добавить обращение</PowerTableButton>
+              <PowerTableButton type="button" icon="mail" onClick={() => void sendTestEmail()} disabled={!canManage || testEmail.isPending}>Тест письмо</PowerTableButton>
             </PowerTableToolbar>
+            <textarea
+              className="pt-textarea w-full"
+              value={feedbackMessage}
+              onChange={(event) => setFeedbackMessage(event.target.value)}
+              rows={3}
+              placeholder="Текст обращения"
+            />
           </form>
 
           <table className="pt-grid mt-2">
             <thead><tr><th>Автор</th><th>Дата</th><th>Содержание</th><th>Ответ</th></tr></thead>
             <tbody>
-              <tr className="is-green"><td>Секретарь</td><td>10.03.26</td><td>Проверка уведомлений по новым регистрациям.</td><td>Настройки обновлены.</td></tr>
-              <tr className="is-green"><td>{data.federation.nameRu}</td><td>{new Date().toLocaleDateString('ru-RU')}</td><td>Код Telegram: {data.telegramSubscriptionCode}</td><td>Ожидает подключения.</td></tr>
-              <tr><td>Система</td><td>{new Date().toLocaleDateString('ru-RU')}</td><td>Публичный доступ к результатам</td><td>{isPublicResultsClosed ? 'Закрыт' : 'Открыт'}</td></tr>
+              {auditLoading ? <tr><td colSpan={4}>Загружаем...</td></tr> : null}
+              {!auditLoading && notificationHistory.map((entry, index) => (
+                <tr key={entry.id} className={index === 0 ? 'is-green' : undefined}>
+                  <td>{entry.actorUser?.displayName ?? data.federation.nameRu}</td>
+                  <td>{new Date(entry.occurredAt).toLocaleDateString('ru-RU')}</td>
+                  <td>{auditComment(entry)}</td>
+                  <td>{entry.result === 'success' ? 'Принято' : 'Ошибка'}</td>
+                </tr>
+              ))}
+              {!auditLoading && notificationHistory.length === 0 ? (
+                <tr><td colSpan={4} className="italic">История уведомлений пока пуста.</td></tr>
+              ) : null}
             </tbody>
           </table>
         </PowerTablePanel>

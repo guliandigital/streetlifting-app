@@ -67,6 +67,27 @@ export interface FederationAttachmentDto {
   uploadedAt: string;
 }
 
+export interface FederationAuditEntryDto {
+  id: string;
+  occurredAt: string;
+  action: string;
+  result: 'success' | 'failure' | 'denied';
+  actorIp: string | null;
+  actorUserAgent: string | null;
+  actorUser: { id: string; email: string; displayName: string } | null;
+  targetType: string;
+  targetId: string;
+  targetUser: { id: string; email: string; displayName: string } | null;
+  after: unknown;
+  notes: string | null;
+}
+
+export interface FederationTestEmailResponse {
+  status: 'queued' | 'configuration_checked';
+  recipient: string;
+  smtpConfigured: boolean;
+}
+
 export interface FederationPlateSetDto {
   id: string;
   federationId: string | null;
@@ -130,6 +151,13 @@ export function useFederationDashboard(id: string) {
   });
 }
 
+export function useFederationAudit(id: string) {
+  return useQuery<{ audit: FederationAuditEntryDto[] }>({
+    queryKey: ['federations', id, 'audit'],
+    queryFn: () => api.federations.audit(id),
+  });
+}
+
 export function useCreateFederation() {
   const qc = useQueryClient();
   return useMutation({
@@ -145,6 +173,51 @@ export function useUpdateFederation(id: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['federations'] });
       void qc.invalidateQueries({ queryKey: ['federations', id] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useTestFederationEmail(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.federations.testEmail(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useCreateFederationFeedback(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { message: string }) => api.federations.createFeedback(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useUploadFederationAttachment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { filename: string; mimeType: string; contentBase64: string }) =>
+      api.federations.uploadAttachment(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useDeleteFederationAttachment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (attachmentId: string) => api.federations.deleteAttachment(id, attachmentId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
     },
   });
 }

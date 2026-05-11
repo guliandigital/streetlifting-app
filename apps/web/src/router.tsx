@@ -17,6 +17,8 @@ const FederationNewFeature = () => <LazyModule module="federations-new" loader={
 const FederationDetailFeature = () => <LazyModule module="federations-detail" loader={() => import('./features/federations/detail.js')} />;
 const FederationInventoryFeature = () => <LazyModule module="federations-inventory" loader={() => import('./features/federations/inventory.js')} />;
 const FederationNotificationsFeature = () => <LazyModule module="federations-notifications" loader={() => import('./features/federations/notifications.js')} />;
+const FederationSettingsFeature = () => <LazyModule module="federations-settings" loader={() => import('./features/federations/settings.js')} />;
+const FederationFilesFeature = () => <LazyModule module="federations-files" loader={() => import('./features/federations/files.js')} />;
 const CompetitionsListFeature = () => <LazyModule module="competitions" loader={() => import('./features/competitions/index.js')} />;
 const CompetitionNewFeature = () => <LazyModule module="competitions-new" loader={() => import('./features/competitions/new.js')} />;
 const CompetitionDetailFeature = () => <LazyModule module="competitions-detail" loader={() => import('./features/competitions/detail.js')} />;
@@ -134,6 +136,27 @@ const federationNotificationsRoute = createRoute({
   component: FederationNotificationsFeature,
 });
 
+const federationSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/federations/$id/settings',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: FederationSettingsFeature,
+});
+
+const federationLoginsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/federations/$id/logins',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: FederationSettingsFeature,
+});
+
+const federationFilesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/federations/$id/files',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: FederationFilesFeature,
+});
+
 const competitionsListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/competitions',
@@ -158,6 +181,27 @@ const competitionDetailRoute = createRoute({
 const competitionOperationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/competitions/$id/operations',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionOperationsFeature,
+});
+
+const competitionNominationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/nominations',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionOperationsFeature,
+});
+
+const competitionJudgeAssignmentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/judges',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionOperationsFeature,
+});
+
+const competitionScheduleRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/schedule',
   beforeLoad: ({ location }) => requireAuthGuard(location.href),
   component: CompetitionOperationsFeature,
 });
@@ -335,10 +379,16 @@ const routeTree = rootRoute.addChildren([
   federationDetailRoute,
   federationInventoryRoute,
   federationNotificationsRoute,
+  federationSettingsRoute,
+  federationLoginsRoute,
+  federationFilesRoute,
   competitionsListRoute,
   competitionNewRoute,
   competitionDetailRoute,
   competitionOperationsRoute,
+  competitionNominationsRoute,
+  competitionJudgeAssignmentsRoute,
+  competitionScheduleRoute,
   competitionScoreboardRoute,
   competitionOperatorRoute,
   competitionJudgeRoute,

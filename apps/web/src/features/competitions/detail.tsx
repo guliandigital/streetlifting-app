@@ -248,6 +248,9 @@ export default function CompetitionDetailFeature() {
           {canWrite ? <PowerTableButton tone="danger" form="competitionSettingsForm" type="submit">Записать и закрыть</PowerTableButton> : null}
           {canWrite ? <PowerTableButton form="competitionSettingsForm" type="submit">Записать</PowerTableButton> : null}
           <Link to="/competitions/$id/operations" params={{ id }} className="pt-link-button">{t('competitionOps.title')}</Link>
+          <Link to="/competitions/$id/nominations" params={{ id }} className="pt-link-button">Номинации</Link>
+          <Link to="/competitions/$id/schedule" params={{ id }} className="pt-link-button">Потоки</Link>
+          <Link to="/competitions/$id/judges" params={{ id }} className="pt-link-button">Судьи</Link>
           <Link to="/competitions/$id/scoreboard" params={{ id }} className="pt-link-button">{t('competitionOps.scoreboard')}</Link>
           <Link to="/competitions/$id/operator" params={{ id }} className="pt-link-button">{t('competitionOperator.title')}</Link>
           <Link to="/competitions/$id/reports" params={{ id }} className="pt-link-button">Отчеты</Link>

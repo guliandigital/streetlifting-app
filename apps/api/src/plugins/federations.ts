@@ -1,4 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { z } from 'zod';
 import { FederationCreate, FederationUpdate } from '@streetlifting/domain';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
@@ -8,6 +10,21 @@ import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
 
 const log = moduleLogger('federations');
+const MAX_FEDERATION_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+const FederationAttachmentCreateInput = z
+  .object({
+    filename: z.string().min(1).max(180),
+    mimeType: z.string().min(1).max(120),
+    contentBase64: z.string().min(1),
+  })
+  .strict();
+
+const FederationFeedbackCreateInput = z
+  .object({
+    message: z.string().min(3).max(4000),
+  })
+  .strict();
 
 /**
  * Returns the set of federation IDs the caller is allowed to read/edit.
@@ -49,6 +66,33 @@ const WriteoffCreateInput = z
     linkedReceiptId: z.string().uuid().nullable().optional(),
   })
   .strict();
+
+function uploadRoot(): string {
+  return process.env.STORAGE_DIR ?? path.join(process.cwd(), 'storage');
+}
+
+function sanitizeFilename(filename: string): string {
+  return filename
+    .replace(/[\\/:"*?<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180) || 'file';
+}
+
+function contentDispositionFilename(filename: string): string {
+  return sanitizeFilename(filename).replace(/[\r\n"]/g, '_');
+}
+
+function decodeBase64File(contentBase64: string): Buffer | null {
+  const normalized = contentBase64.includes(',')
+    ? contentBase64.slice(contentBase64.indexOf(',') + 1)
+    : contentBase64;
+  try {
+    return Buffer.from(normalized, 'base64');
+  } catch {
+    return null;
+  }
+}
 
 function canManageFederation(
   user: { roles: Array<{ role: string; federationId: string | null }> } | null,
@@ -186,6 +230,184 @@ export const federationsPlugin: FeaturePlugin = {
           telegramSubscriptionCode: federation.securityKey.replace(/-/g, '').slice(0, 10),
           regionalComparison,
         };
+      },
+    );
+
+    app.get<{ Params: { id: string } }>(
+      '/federations/:id/audit',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const visible = visibleFederationIds(req.user);
+        if (!('all' in visible) && !visible.ids.includes(req.params.id)) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+
+        const federation = await prisma.federation.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+
+        const members = await prisma.roleAssignment.findMany({
+          where: { federationId: req.params.id, revokedAt: null },
+          select: { userId: true },
+          distinct: ['userId'],
+        });
+        const memberUserIds = members.map((item) => item.userId);
+        const auditRows = await prisma.auditLog.findMany({
+          where: {
+            OR: [
+              { scopeFederationId: req.params.id },
+              ...(memberUserIds.length > 0
+                ? [
+                    {
+                      targetType: 'user',
+                      targetId: { in: memberUserIds },
+                      action: { in: ['auth.login.succeeded', 'auth.login.failed'] },
+                    },
+                  ]
+                : []),
+            ],
+          },
+          orderBy: { occurredAt: 'desc' },
+          take: 100,
+        });
+
+        const userIds = new Set<string>();
+        for (const row of auditRows) {
+          if (row.actorUserId) userIds.add(row.actorUserId);
+          if (row.targetType === 'user') userIds.add(row.targetId);
+        }
+        const users =
+          userIds.size > 0
+            ? await prisma.user.findMany({
+                where: { id: { in: [...userIds] } },
+                select: { id: true, email: true, displayName: true },
+              })
+            : [];
+        const usersById = new Map(users.map((user) => [user.id, user]));
+
+        return {
+          audit: auditRows.map((row) => ({
+            id: row.id,
+            occurredAt: row.occurredAt,
+            action: row.action,
+            result: row.result,
+            actorIp: row.actorIp,
+            actorUserAgent: row.actorUserAgent,
+            actorUser: row.actorUserId ? usersById.get(row.actorUserId) ?? null : null,
+            targetType: row.targetType,
+            targetId: row.targetId,
+            targetUser: row.targetType === 'user' ? usersById.get(row.targetId) ?? null : null,
+            after: row.after,
+            notes: row.notes,
+          })),
+        };
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/federations/:id/test-email',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+          });
+        }
+
+        const federation = await prisma.federation.findUnique({
+          where: { id: req.params.id },
+          select: { id: true, contactEmail: true },
+        });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+        if (!federation.contactEmail) {
+          return reply.code(400).send({
+            error: { code: 'contact_email_missing', message: 'Federation contact email is empty', requestId: req.requestId },
+          });
+        }
+
+        const smtpConfigured = Boolean(process.env.SMTP_HOST || process.env.MAILER_ENDPOINT);
+        await audit.record({
+          ...audit.fromRequest(req),
+          actorUserId: req.user!.id,
+          action: 'federation.test_email.requested',
+          result: 'success',
+          scopeFederationId: req.params.id,
+          scopeCompetitionId: null,
+          targetType: 'federation',
+          targetId: req.params.id,
+          before: null,
+          after: { recipient: federation.contactEmail, smtpConfigured },
+          ...(!smtpConfigured && {
+            notes: 'SMTP delivery is not configured; contact email validation only',
+          }),
+        });
+
+        return {
+          status: smtpConfigured ? 'queued' : 'configuration_checked',
+          recipient: federation.contactEmail,
+          smtpConfigured,
+        };
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/federations/:id/feedback',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const visible = visibleFederationIds(req.user);
+        if (!('all' in visible) && !visible.ids.includes(req.params.id)) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+        const parsed = FederationFeedbackCreateInput.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          });
+        }
+        const federation = await prisma.federation.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+
+        await audit.record({
+          ...audit.fromRequest(req),
+          actorUserId: req.user!.id,
+          action: 'federation.feedback.created',
+          result: 'success',
+          scopeFederationId: req.params.id,
+          scopeCompetitionId: null,
+          targetType: 'federation',
+          targetId: req.params.id,
+          before: null,
+          after: { message: parsed.data.message.trim() },
+        });
+
+        return reply.code(201).send({
+          feedback: {
+            author: req.user!.displayName,
+            message: parsed.data.message.trim(),
+            status: 'new',
+          },
+        });
       },
     );
 
@@ -349,6 +571,184 @@ export const federationsPlugin: FeaturePlugin = {
             });
           }
           throw err;
+        }
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/federations/:id/attachments',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+          });
+        }
+        const parsed = FederationAttachmentCreateInput.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          });
+        }
+        const federation = await prisma.federation.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+
+        const content = decodeBase64File(parsed.data.contentBase64);
+        if (!content || content.length === 0 || content.length > MAX_FEDERATION_ATTACHMENT_BYTES) {
+          return reply.code(400).send({
+            error: {
+              code: 'invalid_file',
+              message: `File must be between 1 byte and ${MAX_FEDERATION_ATTACHMENT_BYTES} bytes`,
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const filename = sanitizeFilename(parsed.data.filename);
+        const storagePath = path.join('federations', req.params.id, `${randomUUID()}-${filename}`);
+        const absolutePath = path.join(uploadRoot(), storagePath);
+        await mkdir(path.dirname(absolutePath), { recursive: true });
+        await writeFile(absolutePath, content);
+
+        try {
+          const attachment = await prisma.$transaction(async (tx) => {
+            const created = await tx.attachment.create({
+              data: {
+                kind: 'federation_file',
+                federationId: req.params.id,
+                uploadedByUserId: req.user!.id,
+                filename,
+                mimeType: parsed.data.mimeType,
+                sizeBytes: BigInt(content.length),
+                sha256: createHash('sha256').update(content).digest('hex'),
+                storagePath,
+              },
+            });
+            await audit.record(
+              {
+                ...audit.fromRequest(req),
+                actorUserId: req.user!.id,
+                action: 'federation.attachment.uploaded',
+                result: 'success',
+                scopeFederationId: req.params.id,
+                scopeCompetitionId: null,
+                targetType: 'attachment',
+                targetId: created.id,
+                before: null,
+                after: { filename, mimeType: parsed.data.mimeType, sizeBytes: content.length },
+              },
+              tx,
+            );
+            return created;
+          });
+          return reply.code(201).send({ attachment });
+        } catch (err) {
+          await unlink(absolutePath).catch(() => undefined);
+          throw err;
+        }
+      },
+    );
+
+    app.delete<{ Params: { id: string; attachmentId: string } }>(
+      '/federations/:id/attachments/:attachmentId',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+          });
+        }
+        const before = await prisma.attachment.findFirst({
+          where: {
+            id: req.params.attachmentId,
+            federationId: req.params.id,
+            deletedAt: null,
+          },
+        });
+        if (!before) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Attachment not found', requestId: req.requestId },
+          });
+        }
+
+        await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.attachment.deleted',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'attachment',
+            targetId: req.params.attachmentId,
+            before: {
+              filename: before.filename,
+              mimeType: before.mimeType,
+              sizeBytes: before.sizeBytes.toString(),
+            },
+            after: null,
+          },
+          (tx) =>
+            tx.attachment.update({
+              where: { id: req.params.attachmentId },
+              data: { deletedAt: new Date() },
+            }),
+        );
+        return { status: 'ok' };
+      },
+    );
+
+    app.get<{ Params: { id: string; attachmentId: string } }>(
+      '/federations/:id/attachments/:attachmentId/download',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const visible = visibleFederationIds(req.user);
+        if (!('all' in visible) && !visible.ids.includes(req.params.id)) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+
+        const attachment = await prisma.attachment.findFirst({
+          where: {
+            id: req.params.attachmentId,
+            federationId: req.params.id,
+            deletedAt: null,
+          },
+        });
+        if (!attachment) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Attachment not found', requestId: req.requestId },
+          });
+        }
+
+        const root = path.resolve(uploadRoot());
+        const absolutePath = path.resolve(root, attachment.storagePath);
+        if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`)) {
+          return reply.code(500).send({
+            error: { code: 'invalid_storage_path', message: 'Attachment storage path is invalid', requestId: req.requestId },
+          });
+        }
+
+        try {
+          const content = await readFile(absolutePath);
+          reply.header('Content-Type', attachment.mimeType);
+          reply.header(
+            'Content-Disposition',
+            `attachment; filename="${contentDispositionFilename(attachment.filename)}"`,
+          );
+          return reply.send(content);
+        } catch (err) {
+          log.error({ err, attachmentId: attachment.id }, 'attachment file read failed');
+          return reply.code(404).send({
+            error: { code: 'file_missing', message: 'Attachment file is missing from storage', requestId: req.requestId },
+          });
         }
       },
     );

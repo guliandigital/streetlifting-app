@@ -21,6 +21,7 @@ import {
   useCreateFederationReceipt,
   useCreateFederationWriteoff,
   useFederationDashboard,
+  useTestFederationEmail,
   useUpdateFederation,
 } from './api.js';
 import { ChaptersCard } from './chapters-card.js';
@@ -48,12 +49,13 @@ function normalizeNumber(value: string): number {
 function canManageFederation(
   user: ReturnType<typeof useAuthStore.getState>['user'],
   federationId: string,
+  roles: readonly string[],
 ): boolean {
   return (
     user?.roles.some(
       (r) =>
         r.role === 'platform_admin' ||
-        ((r.role === 'federation_admin' || r.role === 'accountant') && r.federationId === federationId),
+        (roles.includes(r.role) && r.federationId === federationId),
     ) ?? false
   );
 }
@@ -258,6 +260,7 @@ export default function FederationDetailFeature() {
   const countryRow = countriesData?.countries.find((c) => c.codeIso2 === data?.federation.countryCode);
   const { data: regionsData } = useRegions(countryRow?.id);
   const update = useUpdateFederation(id);
+  const testEmail = useTestFederationEmail(id);
 
   if (isLoading) {
     return <div className="pt-page p-6 text-sm text-gray-600">{t('common.loading')}</div>;
@@ -276,7 +279,8 @@ export default function FederationDetailFeature() {
     : undefined;
   const countryLabel = countryRow ? `${countryRow.nameRu} (${countryRow.codeIso2})` : f.countryCode;
   const regionLabel = regionRow ? regionRow.nameRu : f.regionCode;
-  const canManage = canManageFederation(user, f.id);
+  const canEditFederation = canManageFederation(user, f.id, ['federation_admin']);
+  const canManageAccounting = canManageFederation(user, f.id, ['federation_admin', 'accountant']);
   const primaryCompetitionId = data.competitions[0]?.id;
 
   async function toggleSettings(next: { notificationsDisabled?: boolean; isPublicResultsClosed?: boolean }) {
@@ -288,14 +292,31 @@ export default function FederationDetailFeature() {
     }
   }
 
+  async function sendTestEmail() {
+    try {
+      const result = await testEmail.mutateAsync();
+      toast.success(
+        result.smtpConfigured
+          ? `Тестовое письмо поставлено в очередь: ${result.recipient}`
+          : `Email заполнен: ${result.recipient}. SMTP-доставка пока не настроена.`,
+      );
+    } catch (err) {
+      if (err instanceof ApiClientError && err.code === 'contact_email_missing') {
+        toast.error('Заполните email федерации');
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Error');
+      }
+    }
+  }
+
   return (
     <PowerTablePage
       title={`${f.nameRu} (Федерация)`}
       subtitle={`${f.nameEn} · ${f.code} · ${countryLabel}`}
       actions={(
         <>
-          <PowerTableButton tone="danger">Записать и закрыть</PowerTableButton>
-          <PowerTableButton>Записать</PowerTableButton>
+          <Link to="/federations" className="pt-link-button pt-button-danger">Записать и закрыть</Link>
+          <Link to="/federations/$id/settings" params={{ id }} className="pt-link-button">Записать</Link>
           <Link to="/federations/$id/inventory" params={{ id }} className="pt-link-button"><PowerTableIcon name="inventory" />Склад</Link>
           <Link to="/federations/$id/notifications" params={{ id }} className="pt-link-button"><PowerTableIcon name="notifications" />Уведомления</Link>
         </>
@@ -304,26 +325,36 @@ export default function FederationDetailFeature() {
       tabs={[
         { label: 'Основные настройки', icon: 'settings', active: true },
         { label: 'Членские взносы', icon: 'billing' },
-        { label: 'Уведомления', icon: 'notifications' },
-        { label: 'Склад', icon: 'inventory' },
-        { label: 'Файлы', icon: 'files' },
-        { label: 'История', icon: 'history' },
+        { label: <Link to="/federations/$id/notifications" params={{ id }}>Уведомления</Link>, icon: 'notifications' },
+        { label: <Link to="/federations/$id/inventory" params={{ id }}>Склад</Link>, icon: 'inventory' },
+        { label: <Link to="/federations/$id/files" params={{ id }}>Файлы</Link>, icon: 'files' },
+        { label: <Link to="/federations/$id/logins" params={{ id }}>История</Link>, icon: 'history' },
       ]}
     >
       <div className="pt-split">
         <aside className="space-y-2">
-          <a className="pt-link" href="#references">Справочники</a>
+          <Link className="pt-link" to="/lookups">Справочники</Link>
           <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="competition" /><span>Соревнования</span></Link>
           <Link to="/athletes" className="pt-menu-button"><PowerTableMenuIcon name="athletes" /><span>Спортсмены</span></Link>
-          <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="nomination" /><span>Номинации спортсменов</span></Link>
-          <Link to="/judges" className="pt-menu-button"><PowerTableMenuIcon name="judges" /><span>Номинации судей</span></Link>
-          <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="flow" /><span>Распределение по потокам и группам</span></Link>
+          {primaryCompetitionId ? (
+            <>
+              <Link to="/competitions/$id/nominations" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="nomination" /><span>Номинации спортсменов</span></Link>
+              <Link to="/competitions/$id/judges" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="judges" /><span>Номинации судей</span></Link>
+              <Link to="/competitions/$id/schedule" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="flow" /><span>Распределение по потокам и группам</span></Link>
+            </>
+          ) : (
+            <>
+              <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="nomination" /><span>Номинации спортсменов</span></Link>
+              <Link to="/judges" className="pt-menu-button"><PowerTableMenuIcon name="judges" /><span>Номинации судей</span></Link>
+              <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="flow" /><span>Распределение по потокам и группам</span></Link>
+            </>
+          )}
           {primaryCompetitionId ? (
             <>
               <Link to="/competitions/$id/reports" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="reports" /><span>Отчеты, печатные формы</span></Link>
               <Link to="/competitions/$id/certificates" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="certificate" /><span>Печать грамот</span></Link>
               <Link to="/competitions/$id/awards" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="awards" /><span>Награждение</span></Link>
-              <Link to="/broadcast/competitions/$id" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="operator" /><span>Оператор табло</span></Link>
+              <Link to="/competitions/$id/operator" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="operator" /><span>Оператор табло</span></Link>
             </>
           ) : (
             <>
@@ -344,14 +375,18 @@ export default function FederationDetailFeature() {
               <tr><td>25.04.2026 22:55:06. Задержка</td><td>[283мс] - отлично</td></tr>
             </tbody>
           </table>
-          <a className="pt-link pt-inline-icon" href="#broadcast"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</a>
+          {primaryCompetitionId ? (
+            <Link to="/broadcast/competitions/$id" params={{ id: primaryCompetitionId }} className="pt-link pt-inline-icon"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</Link>
+          ) : (
+            <a className="pt-link pt-inline-icon" href="#broadcast"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</a>
+          )}
         </aside>
 
         <main className="space-y-3">
           <PowerTableToolbar>
             <PowerTableButton icon="info" aria-label="Информация" />
-            <PowerTableButton icon="settings">Обращения, настройки / Feedback, settings</PowerTableButton>
-            <PowerTableButton icon="history">Входы в программу</PowerTableButton>
+            <Link to="/federations/$id/settings" params={{ id }} className="pt-link-button"><PowerTableIcon name="settings" />Обращения, настройки / Feedback, settings</Link>
+            <Link to="/federations/$id/logins" params={{ id }} className="pt-link-button"><PowerTableIcon name="history" />Входы в программу</Link>
           </PowerTableToolbar>
 
           <div className="grid grid-cols-[42px_205px_42px_minmax(160px,1fr)_minmax(160px,1fr)_110px] gap-6 max-xl:grid-cols-1">
@@ -360,7 +395,9 @@ export default function FederationDetailFeature() {
             <div className="pt-lang-badge">EN</div>
             <input className="pt-field" value={f.contactPhone ?? ''} readOnly />
             <input className="pt-field" value={f.telegramHandle ?? ''} readOnly />
-            <PowerTableButton>Тест письмо</PowerTableButton>
+            <PowerTableButton type="button" onClick={() => void sendTestEmail()} disabled={!canEditFederation || testEmail.isPending}>
+              Тест письмо
+            </PowerTableButton>
           </div>
 
           <div className="pt-section-title">Ваши контактные данные. Будут публиковаться на персональной странице федерации</div>
@@ -369,13 +406,13 @@ export default function FederationDetailFeature() {
           <div className="pt-info-green space-y-2">
             <PowerTableCheckbox
               checked={f.notificationsDisabled}
-              disabled={!canManage || update.isPending}
+              disabled={!canEditFederation || update.isPending}
               onChange={(checked) => void toggleSettings({ notificationsDisabled: checked })}
               label="Не отправлять уведомления о новых регистрациях заявок на участие"
             />
             <PowerTableCheckbox
               checked={f.isPublicResultsClosed}
-              disabled={!canManage || update.isPending}
+              disabled={!canEditFederation || update.isPending}
               onChange={(checked) => void toggleSettings({ isPublicResultsClosed: checked })}
               label="Закрыть свободный онлайн доступ к результатам соревнований"
             />
@@ -399,9 +436,9 @@ export default function FederationDetailFeature() {
           </PowerTablePanel>
 
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-            <PowerTablePanel className="p-3">
-              <PowerTableSectionTitle>Членские взносы / поступления</PowerTableSectionTitle>
-              {canManage ? <ReceiptForm federationId={f.id} /> : null}
+              <PowerTablePanel className="p-3">
+                <PowerTableSectionTitle>Членские взносы / поступления</PowerTableSectionTitle>
+              {canManageAccounting ? <ReceiptForm federationId={f.id} /> : null}
               <div className="mt-3 overflow-x-auto">
                 <table className="pt-grid">
                   <thead>
@@ -423,9 +460,9 @@ export default function FederationDetailFeature() {
               </div>
             </PowerTablePanel>
 
-            <PowerTablePanel className="p-3">
-              <PowerTableSectionTitle>Списания номинаций</PowerTableSectionTitle>
-              {canManage ? <WriteoffForm federationId={f.id} dashboard={data} /> : null}
+              <PowerTablePanel className="p-3">
+                <PowerTableSectionTitle>Списания номинаций</PowerTableSectionTitle>
+              {canManageAccounting ? <WriteoffForm federationId={f.id} dashboard={data} /> : null}
               <div className="mt-3 overflow-x-auto">
                 <table className="pt-grid">
                   <thead>
@@ -449,7 +486,10 @@ export default function FederationDetailFeature() {
 
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
             <PowerTablePanel className="p-3">
-              <PowerTableSectionTitle>Файлы федерации</PowerTableSectionTitle>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <PowerTableSectionTitle>Файлы федерации</PowerTableSectionTitle>
+                <Link to="/federations/$id/files" params={{ id }} className="pt-link-button"><PowerTableIcon name="files" />Открыть</Link>
+              </div>
               <table className="pt-grid">
                 <thead><tr><th>Имя файла</th><th>Тип</th><th>Дата</th></tr></thead>
                 <tbody>

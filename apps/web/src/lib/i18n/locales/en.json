@@ -244,6 +244,16 @@
     "exportAccounting": "Accounting CSV",
     "exportAccountingXlsx": "Accounting XLSX",
     "exportsDesc": "Secretary and accounting exports for the current competition state.",
+    "sectionTitles": {
+      "setup": "Competition operations",
+      "nominations": "Athlete nominations",
+      "mandate": "Mandate / weigh-in",
+      "flights": "Flights and groups",
+      "judges": "Judge nominations",
+      "attempts": "Attempts",
+      "scoreboard": "Results",
+      "exports": "Exports and reports"
+    },
     "tabs": {
       "setup": "Setup",
       "nominations": "Nominations",

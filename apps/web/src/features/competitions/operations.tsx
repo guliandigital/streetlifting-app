@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useLocation, useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { JudgeRole } from '@streetlifting/domain';
@@ -157,6 +157,14 @@ function hasSetup(data: CompetitionOpsResponse): boolean {
   return data.divisions.length > 0 && data.divisions.some((division) => division.weightClasses.length > 0);
 }
 
+function tabFromPath(pathname: string): TabKey {
+  const lastSegment = pathname.split('/').filter(Boolean).pop();
+  if (lastSegment === 'nominations') return 'nominations';
+  if (lastSegment === 'judges') return 'judges';
+  if (lastSegment === 'schedule') return 'flights';
+  return 'setup';
+}
+
 function attemptsPerNomination(nomination: NominationDto): number {
   if (nomination.discipline.components.length > 0) {
     return nomination.discipline.components.reduce((total, component) => total + component.attemptCount, 0);
@@ -189,6 +197,30 @@ function nominationMatchesSearch(nomination: NominationDto, search: string): boo
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(normalized));
+}
+
+function SetupRequiredCard({
+  pending,
+  onApply,
+}: {
+  pending: boolean;
+  onApply: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <Card data-testid="ops-setup-required">
+      <CardHeader>
+        <CardTitle>{t('competitionOps.setupTitle')}</CardTitle>
+        <CardDescription>{t('competitionOps.setupDesc')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button data-testid="ops-setup-required-apply" type="button" onClick={onApply} disabled={pending}>
+          {pending ? t('common.saving') : t('competitionOps.applySetup')}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
 function NominationCreateForm({ competitionId, divisions }: { competitionId: string; divisions: DivisionDto[] }) {
@@ -1760,12 +1792,14 @@ function ScoreboardTable({ data }: { data: CompetitionOpsResponse }) {
 
 export default function CompetitionOperationsFeature() {
   const { t } = useTranslation();
-  const { id } = useParams({ from: '/competitions/$id/operations' });
+  const { id } = useParams({ strict: false }) as { id: string };
+  const location = useLocation();
+  const initialTab = tabFromPath(location.pathname);
   const { data, isLoading, error, refetch } = useCompetitionOps(id);
   const applySetup = useApplyDefaultSetup(id);
   const drawNominations = useDrawNominations(id);
   const autoPlanFlights = useAutoPlanFlights(id);
-  const [tab, setTab] = useState<TabKey>('setup');
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [bulkSaving, setBulkSaving] = useState<string | null>(null);
   const [flightSearch, setFlightSearch] = useState('');
@@ -1781,6 +1815,10 @@ export default function CompetitionOperationsFeature() {
   const [nominationStatus, setNominationStatus] = useState<NominationDto['status'] | 'all'>('all');
   const [nominationPaymentStatus, setNominationPaymentStatus] = useState<NominationDto['paymentStatus'] | 'all'>('all');
   const [nominationMandate, setNominationMandate] = useState<MandateFilter>('all');
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   async function exportFile(kind: 'protocol' | 'accounting', format: 'csv' | 'xlsx') {
     setDownloading(kind);
@@ -1805,6 +1843,15 @@ export default function CompetitionOperationsFeature() {
       await api.competitions.updateNomination(nominationId, { flightId, groupId });
       await refetch();
       toast.success(t('competitionOps.flightDropAssigned'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
+  async function applyDefaultSetup() {
+    try {
+      await applySetup.mutateAsync();
+      toast.success(t('competitionOps.setupApplied'));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error');
     }
@@ -1877,7 +1924,7 @@ export default function CompetitionOperationsFeature() {
     <div data-testid="competition-ops" className="max-w-7xl mx-auto px-6 py-8 space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">{t('competitionOps.title')}</h1>
+          <h1 className="text-2xl font-semibold">{t(`competitionOps.sectionTitles.${tab}`)}</h1>
           <p className="text-sm text-muted-foreground">
             {data.competition.nameRu} · {data.competition.federation.nameRu}
           </p>
@@ -1974,7 +2021,7 @@ export default function CompetitionOperationsFeature() {
             <Button
               data-testid="ops-apply-setup"
               type="button"
-              onClick={() => void applySetup.mutateAsync().then(() => toast.success(t('competitionOps.setupApplied')))}
+              onClick={() => void applyDefaultSetup()}
               disabled={applySetup.isPending}
             >
               {applySetup.isPending ? t('common.saving') : t('competitionOps.applySetup')}
@@ -2003,6 +2050,7 @@ export default function CompetitionOperationsFeature() {
 
       {tab === 'nominations' && (
         <div className="space-y-4">
+          {!setupReady && <SetupRequiredCard pending={applySetup.isPending} onApply={() => void applyDefaultSetup()} />}
           {setupReady && <NominationCreateForm competitionId={id} divisions={data.divisions} />}
           <NominationSecretaryGrid
             data={data}
@@ -2032,6 +2080,7 @@ export default function CompetitionOperationsFeature() {
 
       {tab === 'mandate' && (
         <div className="space-y-4">
+          {!setupReady && <SetupRequiredCard pending={applySetup.isPending} onApply={() => void applyDefaultSetup()} />}
           <NominationSecretaryGrid
             data={data}
             nominations={filteredNominationGrid}
@@ -2060,6 +2109,7 @@ export default function CompetitionOperationsFeature() {
 
       {tab === 'flights' && (
         <div className="space-y-4">
+          {!setupReady && <SetupRequiredCard pending={applySetup.isPending} onApply={() => void applyDefaultSetup()} />}
           <div className="flex flex-wrap gap-2">
             <Button
               data-testid="ops-auto-plan-flights"

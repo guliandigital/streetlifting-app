@@ -30,9 +30,12 @@ import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './aut
 import { moduleLogger } from './logger.js';
 import type {
   Federation,
+  FederationAuditEntryDto,
+  FederationAttachmentDto,
   FederationChapterDto,
   FederationDashboardResponse,
   FederationReceiptDto,
+  FederationTestEmailResponse,
   FederationWriteoffDto,
 } from '../features/federations/api.js';
 import type { AthleteDto, AthleteListResponse } from '../features/athletes/api.js';
@@ -273,10 +276,25 @@ export const api = {
       request(`/federations/${id}`),
     dashboard: (id: string): Promise<FederationDashboardResponse> =>
       request(`/federations/${id}/dashboard`),
+    audit: (id: string): Promise<{ audit: FederationAuditEntryDto[] }> =>
+      request(`/federations/${id}/audit`),
     create: (data: FederationCreate): Promise<{ federation: Federation }> =>
       request('/federations', { method: 'POST', body: data }),
     update: (id: string, data: FederationUpdate): Promise<{ federation: Federation }> =>
       request(`/federations/${id}`, { method: 'PATCH', body: data }),
+    testEmail: (id: string): Promise<FederationTestEmailResponse> =>
+      request(`/federations/${id}/test-email`, { method: 'POST' }),
+    createFeedback: (id: string, data: { message: string }): Promise<{ feedback: { author: string; message: string; status: string } }> =>
+      request(`/federations/${id}/feedback`, { method: 'POST', body: data }),
+    uploadAttachment: (
+      id: string,
+      data: { filename: string; mimeType: string; contentBase64: string },
+    ): Promise<{ attachment: FederationAttachmentDto }> =>
+      request(`/federations/${id}/attachments`, { method: 'POST', body: data }),
+    deleteAttachment: (id: string, attachmentId: string): Promise<{ status: 'ok' }> =>
+      request(`/federations/${id}/attachments/${attachmentId}`, { method: 'DELETE' }),
+    downloadAttachment: (id: string, attachmentId: string): Promise<Blob> =>
+      requestBlob(`/federations/${id}/attachments/${attachmentId}/download`),
     createReceipt: (
       id: string,
       data: {
