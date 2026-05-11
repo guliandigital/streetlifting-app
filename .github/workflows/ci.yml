@@ -14,6 +14,8 @@ jobs:
   check:
     name: typecheck + test
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://streetlifting:streetlifting@localhost:5432/streetlifting?schema=public
     steps:
       - uses: actions/checkout@v4
       # pnpm version is read from `packageManager` in package.json
