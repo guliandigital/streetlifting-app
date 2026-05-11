@@ -74,6 +74,9 @@ export default function FederationsListFeature() {
                   <TableHead>{t('federations.cols.name')}</TableHead>
                   <TableHead>{t('federations.cols.country')}</TableHead>
                   <TableHead className="text-right">{t('federations.cols.tariff')}</TableHead>
+                  {isPlatformAdmin ? (
+                    <TableHead className="text-right">{t('federations.cols.workspace')}</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -94,6 +97,15 @@ export default function FederationsListFeature() {
                     <TableCell className="text-right tabular-nums">
                       {formatRub(f.billingTariffKopecksPerNomination)}
                     </TableCell>
+                    {isPlatformAdmin ? (
+                      <TableCell className="text-right">
+                        <Button asChild variant="outline" size="sm">
+                          <Link to="/federations/$id" params={{ id: f.id }}>
+                            {t('federations.openWorkspace')}
+                          </Link>
+                        </Button>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>

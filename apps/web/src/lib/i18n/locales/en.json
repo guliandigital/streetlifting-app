@@ -86,11 +86,13 @@
     "newTitle": "New federation",
     "empty": "No federations registered yet.",
     "created": "Federation created",
+    "openWorkspace": "Open",
     "cols": {
       "code": "Code",
       "name": "Name",
       "country": "Country",
-      "tariff": "Tariff / nomination"
+      "tariff": "Tariff / nomination",
+      "workspace": "Workspace"
     },
     "fields": {
       "code": "Code (short identifier)",
