@@ -871,6 +871,128 @@ function FlightPlanningPanel({ data }: { data: CompetitionOpsResponse }) {
   );
 }
 
+function FlightBulkAssignmentPanel({
+  data,
+  nominations,
+  onDone,
+}: {
+  data: CompetitionOpsResponse;
+  nominations: NominationDto[];
+  onDone: () => Promise<unknown>;
+}) {
+  const { t } = useTranslation();
+  const flights = data.platforms.flatMap((platform) =>
+    platform.flights.map((flight) => ({ ...flight, platformName: platform.name })),
+  );
+  const [flightId, setFlightId] = useState(flights[0]?.id ?? '');
+  const [groupId, setGroupId] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const groups = groupsForFlight(data.platforms, flightId);
+
+  useEffect(() => {
+    if (flights.length === 0) {
+      if (flightId) setFlightId('');
+      return;
+    }
+    if (!flights.some((flight) => flight.id === flightId)) setFlightId(flights[0]?.id ?? '');
+  }, [flightId, flights]);
+
+  useEffect(() => {
+    if (groups.length === 0) {
+      if (groupId) setGroupId('');
+      return;
+    }
+    if (!groups.some((group) => group.id === groupId)) setGroupId(groups[0]?.id ?? '');
+  }, [groupId, groups]);
+
+  async function assignFiltered() {
+    if (!flightId || !groupId || nominations.length === 0) return;
+    setIsSaving(true);
+    try {
+      await Promise.all(
+        nominations.map((nomination) =>
+          api.competitions.updateNomination(nomination.id, {
+            flightId,
+            groupId,
+          }),
+        ),
+      );
+      await onDone();
+      toast.success(t('competitionOps.flightBulkAssigned', { count: nominations.length }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <Card data-testid="flight-bulk-assignment">
+      <CardHeader>
+        <CardTitle>{t('competitionOps.flightBulkAssignTitle')}</CardTitle>
+        <CardDescription>{t('competitionOps.flightBulkAssignDesc')}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+        <div className="space-y-2">
+          <Label htmlFor="flightBulkFlight">{t('competitionOps.fields.flight')}</Label>
+          <select
+            id="flightBulkFlight"
+            data-testid="flight-bulk-flight"
+            value={flightId}
+            onChange={(e) => {
+              setFlightId(e.target.value);
+              setGroupId('');
+            }}
+            className={controlClass}
+            disabled={flights.length === 0}
+          >
+            {flights.length === 0 ? (
+              <option value="">{t('competitionOps.noFlights')}</option>
+            ) : (
+              flights.map((flight) => (
+                <option key={flight.id} value={flight.id}>
+                  {flight.platformName} · {flight.code} · {flight.name}
+                </option>
+              ))
+            )}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="flightBulkGroup">{t('competitionOps.fields.group')}</Label>
+          <select
+            id="flightBulkGroup"
+            data-testid="flight-bulk-group"
+            value={groupId}
+            onChange={(e) => setGroupId(e.target.value)}
+            className={controlClass}
+            disabled={groups.length === 0}
+          >
+            {groups.length === 0 ? (
+              <option value="">{t('competitionOps.fields.noGroup')}</option>
+            ) : (
+              groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))
+            )}
+          </select>
+        </div>
+        <Button
+          data-testid="flight-bulk-assign"
+          type="button"
+          onClick={() => void assignFiltered()}
+          disabled={isSaving || !flightId || !groupId || nominations.length === 0}
+        >
+          {isSaving
+            ? t('common.saving')
+            : t('competitionOps.flightBulkAssignAction', { count: nominations.length })}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 function JudgeAssignmentsPanel({
   competitionId,
   data,
@@ -1561,6 +1683,11 @@ export default function CompetitionOperationsFeature() {
             onWeightClassChange={setFlightWeightClassId}
             onAssignmentChange={setFlightAssignment}
             onStatusChange={setFlightStatus}
+          />
+          <FlightBulkAssignmentPanel
+            data={data}
+            nominations={filteredFlightNominations}
+            onDone={refetch}
           />
           <div>
             <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">

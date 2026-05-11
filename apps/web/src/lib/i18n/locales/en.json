@@ -286,6 +286,10 @@
     "filteredNominations": "Planning nominations",
     "filteredNominationsDesc": "The table below uses the active filters and saves changes through the existing nomination API.",
     "noFilteredNominations": "No nominations match the selected filters.",
+    "flightBulkAssignTitle": "Bulk assignment",
+    "flightBulkAssignDesc": "Assigns every nomination from the current filtered set to the selected flight and group.",
+    "flightBulkAssignAction": "Assign {{count}}",
+    "flightBulkAssigned": "{{count}} nominations assigned",
     "judges": {
       "title": "Judge assignments",
       "desc": "Assign judges to the competition and, when needed, to a specific platform.",

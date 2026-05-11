@@ -147,6 +147,14 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
     page.getByTestId('ops-auto-plan').click(),
   );
 
+  await page.getByTestId('ops-tab-flights').click();
+  await expect(page.getByTestId('flight-bulk-assignment')).toBeVisible();
+  await expect(page.getByTestId('flight-bulk-assign')).toBeEnabled();
+  await clickAndWaitForApi(page, 'PATCH', `/nominations/`, () =>
+    page.getByTestId('flight-bulk-assign').click(),
+  );
+  await expect(page.getByTestId('flight-unassigned-count')).toContainText('0');
+
   await page.getByTestId('ops-tab-mandate').click();
   const row = await nominationRow(page, athleteLastName);
   await row.getByTestId('nomination-row-body-weight').fill('82.4');
