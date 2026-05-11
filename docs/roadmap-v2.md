@@ -64,7 +64,8 @@ Features must not import from each other. Shared shapes live in `packages/domain
 
 ### M3 — Competitions + nominations (Week 5–7)
 - [ ] Competition wizard: create draft → set divisions, classes, disciplines, fees
-- [ ] Online registration: public form per federation page (athlete self-registers, picks disciplines + classes, pays)
+- [x] Online registration MVP: public form per federation page (athlete self-registers, picks discipline + class; payment stays manual for mandate)
+- [ ] Online payment for registration fees
 - [x] Secretary nomination grid: filter, bulk edit, mandate check, weigh-in entry
 - [x] Body weight at weigh-in + automatic class assignment
 - [x] Entry number / lot drawing

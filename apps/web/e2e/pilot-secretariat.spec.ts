@@ -1,17 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-
-const REFRESH_KEY = 'streetlifting.refresh.v1';
+import { installFreshAuth } from './helpers/auth.js';
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript((refreshKey) => {
-    const sessionRefresh = window.sessionStorage.getItem(refreshKey);
-    const storedRefresh = window.localStorage.getItem(refreshKey);
-    if (sessionRefresh) {
-      window.localStorage.setItem(refreshKey, sessionRefresh);
-    } else if (storedRefresh) {
-      window.sessionStorage.setItem(refreshKey, storedRefresh);
-    }
-  }, REFRESH_KEY);
+  await installFreshAuth(page);
 });
 
 function idFromUrl(url: string, segment: string): string {

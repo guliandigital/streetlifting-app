@@ -590,6 +590,53 @@
       "active": "Active"
     }
   },
+  "publicRegistration": {
+    "formTitle": "Online registration",
+    "formDesc": "The nomination will appear for the secretary as unpaid.",
+    "closed": "Online registration for this competition is closed.",
+    "created": "Registration submitted",
+    "successTitle": "Registration accepted",
+    "successDesc": "The secretary will see it in nominations. Payment and mandate checks follow the organizer rules.",
+    "nominationNumber": "Registration number: {{value}}",
+    "submit": "Submit registration",
+    "backToFederation": "Back to federation competitions",
+    "noOpenCompetitions": "No competitions are open for online registration yet.",
+    "entryFee": "Entry fee",
+    "currentNominations": "Nominations",
+    "paymentHint": "Due by organizer rules: {{value}}",
+    "fields": {
+      "lastName": "Last name",
+      "firstName": "First name",
+      "middleName": "Middle name",
+      "dateOfBirth": "Date of birth",
+      "gender": "Gender",
+      "country": "Country ISO-2",
+      "region": "Region",
+      "city": "City",
+      "club": "Club",
+      "coach": "Coach",
+      "phone": "Phone",
+      "email": "Email",
+      "discipline": "Discipline",
+      "division": "Division",
+      "weightClass": "Weight class"
+    },
+    "gender": {
+      "M": "Men",
+      "F": "Women"
+    },
+    "consents": {
+      "dataProcessing": "I consent to personal data processing for competition participation.",
+      "publicResults": "I consent to publication of competition results.",
+      "photoPublication": "I consent to publication of photos and event media."
+    },
+    "errors": {
+      "setupMissing": "Registration is missing a discipline, division, or weight class.",
+      "consentRequired": "Personal data processing consent is required.",
+      "duplicate": "This nomination already exists in the competition.",
+      "closed": "Online registration is closed."
+    }
+  },
   "language": {
     "ru": "RU",
     "en": "EN"

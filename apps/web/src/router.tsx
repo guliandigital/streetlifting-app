@@ -22,6 +22,8 @@ const CompetitionScoreboardFeature = () => <LazyModule module="competition-score
 const CompetitionOperatorFeature = () => <LazyModule module="competition-operator" loader={() => import('./features/competitions/operator.js')} />;
 const CompetitionJudgeFeature = () => <LazyModule module="competition-judge" loader={() => import('./features/competitions/judge.js')} />;
 const CompetitionProtocolPrintFeature = () => <LazyModule module="competition-protocol-print" loader={() => import('./features/competitions/protocol-print.js')} />;
+const PublicCompetitionRegistrationFeature = () => <LazyModule module="public-registration" loader={() => import('./features/public-registration/register.js')} />;
+const PublicFederationRegistrationFeature = () => <LazyModule module="public-federation-registration" loader={() => import('./features/public-registration/federation.js')} />;
 const AthletesListFeature = () => <LazyModule module="athletes" loader={() => import('./features/athletes/index.js')} />;
 const AthleteNewFeature = () => <LazyModule module="athletes-new" loader={() => import('./features/athletes/new.js')} />;
 const AthleteDetailFeature = () => <LazyModule module="athletes-detail" loader={() => import('./features/athletes/detail.js')} />;
@@ -165,6 +167,18 @@ const competitionProtocolPrintRoute = createRoute({
   component: CompetitionProtocolPrintFeature,
 });
 
+const publicCompetitionRegistrationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/register/$competitionId',
+  component: PublicCompetitionRegistrationFeature,
+});
+
+const publicFederationRegistrationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/federations/$code/register',
+  component: PublicFederationRegistrationFeature,
+});
+
 const athletesListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/athletes',
@@ -277,6 +291,8 @@ const routeTree = rootRoute.addChildren([
   competitionOperatorRoute,
   competitionJudgeRoute,
   competitionProtocolPrintRoute,
+  publicCompetitionRegistrationRoute,
+  publicFederationRegistrationRoute,
   athletesListRoute,
   athleteNewRoute,
   athleteDetailRoute,

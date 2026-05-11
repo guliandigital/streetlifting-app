@@ -11,6 +11,7 @@ export * from './division.js';
 export * from './competition.js';
 export * from './competition-input.js';
 export * from './competition-ops-input.js';
+export * from './public-registration-input.js';
 export * from './competition-scoring.js';
 export * from './nomination.js';
 export * from './attempt.js';
