@@ -138,6 +138,9 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
     page.getByTestId('nomination-submit').click(),
   );
   await expect(page.getByTestId('nominations-table')).toContainText(athleteLastName);
+  await page.getByTestId('nomination-filter-search').fill(athleteLastName);
+  await expect(page.getByTestId('nominations-table')).toContainText(athleteLastName);
+  await page.getByTestId('nomination-filter-search').fill('');
 
   await page.getByTestId('ops-tab-setup').click();
   await clickAndWaitForApi(page, 'POST', `/competitions/${competitionId}/nominations/draw`, () =>
@@ -150,10 +153,31 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   await page.getByTestId('ops-tab-flights').click();
   await expect(page.getByTestId('flight-bulk-assignment')).toBeVisible();
   await expect(page.getByTestId('flight-bulk-assign')).toBeEnabled();
+  const selectedGroupId = await page
+    .getByTestId('flight-bulk-group')
+    .evaluate((select) => (select as HTMLSelectElement).value);
   await clickAndWaitForApi(page, 'PATCH', `/nominations/`, () =>
     page.getByTestId('flight-bulk-assign').click(),
   );
   await expect(page.getByTestId('flight-unassigned-count')).toContainText('0');
+  const flightRow = await nominationRow(page, athleteLastName);
+  await expect(page.getByTestId(`flight-group-drop-${selectedGroupId}`)).toBeVisible();
+  const nominationId = await flightRow.getAttribute('data-nomination-id');
+  expect(nominationId).toBeTruthy();
+  await expect(flightRow.getByTestId('nomination-row-drag-handle')).toBeVisible();
+  await clickAndWaitForApi(page, 'PATCH', `/nominations/`, () =>
+    page.evaluate(
+      ({ groupId, nominationId: draggedNominationId }) => {
+        const target = document.querySelector(`[data-testid="flight-group-drop-${groupId}"]`);
+        if (!target) throw new Error(`Drop target not found: ${groupId}`);
+        const dataTransfer = new DataTransfer();
+        dataTransfer.setData('application/x-nomination-id', draggedNominationId);
+        dataTransfer.setData('text/plain', draggedNominationId);
+        target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
+      },
+      { groupId: selectedGroupId, nominationId: nominationId ?? '' },
+    ),
+  );
 
   await page.getByTestId('ops-tab-mandate').click();
   const row = await nominationRow(page, athleteLastName);

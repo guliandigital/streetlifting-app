@@ -65,13 +65,13 @@ Features must not import from each other. Shared shapes live in `packages/domain
 ### M3 — Competitions + nominations (Week 5–7)
 - [ ] Competition wizard: create draft → set divisions, classes, disciplines, fees
 - [ ] Online registration: public form per federation page (athlete self-registers, picks disciplines + classes, pays)
-- [ ] Secretary nomination grid: filter, bulk edit, mandate check, weigh-in entry
+- [x] Secretary nomination grid: filter, bulk edit, mandate check, weigh-in entry
 - [x] Body weight at weigh-in + automatic class assignment
-- [ ] Entry number / lot drawing
+- [x] Entry number / lot drawing
 
 ### M4 — Flights, groups, platforms (Week 8)
-- [ ] "Распределение по потокам и группам" page: drag-drop assignment, automatic ordering
-- [ ] Per-platform timetable
+- [x] "Распределение по потокам и группам" page: drag-drop assignment, automatic ordering
+- [x] Per-platform timetable
 
 ### M5 — Web tournament day operations (Week 9–11)
 - [x] Web/PWA tournament mode with clear online-only status

@@ -57,11 +57,13 @@ const ATTEMPT_RESULTS = ['pending', 'good_lift', 'no_lift', 'withdrawn'] as cons
 const JUDGE_ROLES = ['head', 'side_left', 'side_right', 'technical', 'jury'] as const;
 const TABS = ['setup', 'nominations', 'mandate', 'flights', 'judges', 'attempts', 'scoreboard', 'exports'] as const;
 const ASSIGNMENT_FILTERS = ['all', 'assigned', 'unassigned'] as const;
+const MANDATE_FILTERS = ['all', 'passed', 'missing'] as const;
 const MINUTES_PER_ATTEMPT = 1;
 const BREAK_BETWEEN_FLIGHTS_MINUTES = 5;
 
 type TabKey = (typeof TABS)[number];
 type AssignmentFilter = (typeof ASSIGNMENT_FILTERS)[number];
+type MandateFilter = (typeof MANDATE_FILTERS)[number];
 
 const controlClass =
   'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -366,10 +368,12 @@ function NominationEditorRow({
   nomination,
   divisions,
   platforms,
+  draggable,
 }: {
   nomination: NominationDto;
   divisions: DivisionDto[];
   platforms: PlatformDto[];
+  draggable?: boolean;
 }) {
   const { t } = useTranslation();
   const updateNomination = useUpdateNomination(nomination.competitionId);
@@ -445,8 +449,36 @@ function NominationEditorRow({
   }
 
   return (
-    <TableRow data-testid="nomination-row" data-nomination-id={nomination.id}>
-      <TableCell className="min-w-32">{fullName(nomination.athlete)}</TableCell>
+    <TableRow
+      data-testid="nomination-row"
+      data-nomination-id={nomination.id}
+      draggable={draggable}
+      onDragStart={(event) => {
+        if (!draggable) return;
+        event.dataTransfer.setData('application/x-nomination-id', nomination.id);
+        event.dataTransfer.setData('text/plain', nomination.id);
+        event.dataTransfer.effectAllowed = 'move';
+      }}
+      className={draggable ? 'cursor-move' : undefined}
+    >
+      <TableCell className="min-w-32">
+        {draggable && (
+          <span
+            data-testid="nomination-row-drag-handle"
+            draggable
+            onDragStart={(event) => {
+              event.dataTransfer.setData('application/x-nomination-id', nomination.id);
+              event.dataTransfer.setData('text/plain', nomination.id);
+              event.dataTransfer.effectAllowed = 'move';
+            }}
+            className="mr-2 inline-flex h-6 w-6 cursor-grab select-none items-center justify-center rounded border border-border text-xs text-muted-foreground"
+            title={t('competitionOps.flightDragHandle')}
+          >
+            ::
+          </span>
+        )}
+        {fullName(nomination.athlete)}
+      </TableCell>
       <TableCell className="min-w-56">
         <div>{nomination.discipline.nameRu}</div>
         <div className="text-xs text-muted-foreground">{nomination.division.nameRu}</div>
@@ -665,7 +697,7 @@ function FlightFilters({
         <CardTitle>{t('competitionOps.flightFilters')}</CardTitle>
         <CardDescription>{t('competitionOps.flightFiltersDesc')}</CardDescription>
       </CardHeader>
-      <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
+      <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-8">
         <div className="space-y-2 md:col-span-2 xl:col-span-2">
           <Label htmlFor="flightSearch">{t('common.search')}</Label>
           <Input
@@ -765,7 +797,177 @@ function FlightFilters({
   );
 }
 
-function FlightPlanningPanel({ data }: { data: CompetitionOpsResponse }) {
+function NominationGridFilters({
+  data,
+  search,
+  disciplineId,
+  divisionId,
+  weightClassId,
+  status,
+  paymentStatus,
+  mandate,
+  onSearchChange,
+  onDisciplineChange,
+  onDivisionChange,
+  onWeightClassChange,
+  onStatusChange,
+  onPaymentStatusChange,
+  onMandateChange,
+}: {
+  data: CompetitionOpsResponse;
+  search: string;
+  disciplineId: string;
+  divisionId: string;
+  weightClassId: string;
+  status: NominationDto['status'] | 'all';
+  paymentStatus: NominationDto['paymentStatus'] | 'all';
+  mandate: MandateFilter;
+  onSearchChange: (value: string) => void;
+  onDisciplineChange: (value: string) => void;
+  onDivisionChange: (value: string) => void;
+  onWeightClassChange: (value: string) => void;
+  onStatusChange: (value: NominationDto['status'] | 'all') => void;
+  onPaymentStatusChange: (value: NominationDto['paymentStatus'] | 'all') => void;
+  onMandateChange: (value: MandateFilter) => void;
+}) {
+  const { t } = useTranslation();
+  const disciplines = Array.from(
+    new Map(data.nominations.map((nomination) => [nomination.discipline.id, nomination.discipline])).values(),
+  );
+  const weightClasses = data.divisions
+    .filter((division) => divisionId === 'all' || division.id === divisionId)
+    .flatMap((division) => division.weightClasses);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('competitionOps.nominationFilters')}</CardTitle>
+        <CardDescription>{t('competitionOps.nominationFiltersDesc')}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
+        <div className="space-y-2 md:col-span-2 xl:col-span-2">
+          <Label htmlFor="nominationSearch">{t('common.search')}</Label>
+          <Input
+            id="nominationSearch"
+            data-testid="nomination-filter-search"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={t('competitionOps.nominationSearchPlaceholder')}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="nominationDiscipline">{t('competitionOps.fields.discipline')}</Label>
+          <select
+            id="nominationDiscipline"
+            data-testid="nomination-filter-discipline"
+            value={disciplineId}
+            onChange={(e) => onDisciplineChange(e.target.value)}
+            className={controlClass}
+          >
+            <option value="all">{t('competitionOps.allDisciplines')}</option>
+            {disciplines.map((discipline) => (
+              <option key={discipline.id} value={discipline.id}>
+                {discipline.nameRu}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="nominationDivision">{t('competitionOps.fields.division')}</Label>
+          <select
+            id="nominationDivision"
+            data-testid="nomination-filter-division"
+            value={divisionId}
+            onChange={(e) => onDivisionChange(e.target.value)}
+            className={controlClass}
+          >
+            <option value="all">{t('competitionOps.allDivisions')}</option>
+            {data.divisions.map((division) => (
+              <option key={division.id} value={division.id}>
+                {division.nameRu}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="nominationWeightClass">{t('competitionOps.fields.weightClass')}</Label>
+          <select
+            id="nominationWeightClass"
+            data-testid="nomination-filter-weight-class"
+            value={weightClassId}
+            onChange={(e) => onWeightClassChange(e.target.value)}
+            className={controlClass}
+          >
+            <option value="all">{t('competitionOps.allWeightClasses')}</option>
+            {weightClasses.map((weightClass) => (
+              <option key={weightClass.id} value={weightClass.id}>
+                {weightClass.nameRu}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="nominationStatus">{t('competitionOps.fields.status')}</Label>
+          <select
+            id="nominationStatus"
+            data-testid="nomination-filter-status"
+            value={status}
+            onChange={(e) => onStatusChange(e.target.value as NominationDto['status'] | 'all')}
+            className={controlClass}
+          >
+            <option value="all">{t('competitionOps.allStatuses')}</option>
+            {NOMINATION_STATUSES.map((item) => (
+              <option key={item} value={item}>
+                {t(`competitionOps.status.${item}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="nominationPaymentStatus">{t('competitionOps.fields.paymentStatus')}</Label>
+          <select
+            id="nominationPaymentStatus"
+            data-testid="nomination-filter-payment"
+            value={paymentStatus}
+            onChange={(e) => onPaymentStatusChange(e.target.value as NominationDto['paymentStatus'] | 'all')}
+            className={controlClass}
+          >
+            <option value="all">{t('competitionOps.allPayments')}</option>
+            {PAYMENT_STATUSES.map((item) => (
+              <option key={item} value={item}>
+                {t(`competitionOps.paymentStatus.${item}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="nominationMandate">{t('competitionOps.mandateFilter')}</Label>
+          <select
+            id="nominationMandate"
+            data-testid="nomination-filter-mandate"
+            value={mandate}
+            onChange={(e) => onMandateChange(e.target.value as MandateFilter)}
+            className={controlClass}
+          >
+            {MANDATE_FILTERS.map((item) => (
+              <option key={item} value={item}>
+                {t(`competitionOps.mandate.${item}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FlightPlanningPanel({
+  data,
+  onAssignNomination,
+}: {
+  data: CompetitionOpsResponse;
+  onAssignNomination?: (nominationId: string, flightId: string, groupId: string) => Promise<void>;
+}) {
   const { t } = useTranslation();
   const flights = data.platforms.flatMap((platform) => platform.flights);
   const unassigned = data.nominations.filter((nomination) => !nomination.flightId || !nomination.groupId);
@@ -850,7 +1052,30 @@ function FlightPlanningPanel({ data }: { data: CompetitionOpsResponse }) {
                         {flight.groups.map((group) => {
                           const count = nominationsInFlight.filter((nomination) => nomination.groupId === group.id).length;
                           return (
-                            <span key={group.id} className="rounded border border-border px-2 py-1">
+                            <span
+                              key={group.id}
+                              data-testid={`flight-group-drop-${group.id}`}
+                              title={onAssignNomination ? t('competitionOps.flightDropHint') : undefined}
+                              onDragOver={(event) => {
+                                if (!onAssignNomination) return;
+                                event.preventDefault();
+                                event.dataTransfer.dropEffect = 'move';
+                              }}
+                              onDrop={(event) => {
+                                if (!onAssignNomination) return;
+                                event.preventDefault();
+                                const nominationId =
+                                  event.dataTransfer.getData('application/x-nomination-id') ||
+                                  event.dataTransfer.getData('text/plain');
+                                if (!nominationId) return;
+                                void onAssignNomination(nominationId, flight.id, group.id);
+                              }}
+                              className={`rounded border border-border px-2 py-1 ${
+                                onAssignNomination
+                                  ? 'cursor-copy bg-muted/30 transition-colors hover:border-primary hover:bg-primary/5'
+                                  : ''
+                              }`}
+                            >
                               {group.name}: {count}
                             </span>
                           );
@@ -1189,11 +1414,13 @@ function NominationsTable({
   divisions,
   platforms,
   emptyText,
+  draggableRows,
 }: {
   nominations: NominationDto[];
   divisions: DivisionDto[];
   platforms: PlatformDto[];
   emptyText?: string;
+  draggableRows?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -1230,11 +1457,111 @@ function NominationsTable({
               nomination={nomination}
               divisions={divisions}
               platforms={platforms}
+              draggable={draggableRows ?? false}
             />
           ))}
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+function NominationSecretaryGrid({
+  data,
+  nominations,
+  bulkSaving,
+  search,
+  disciplineId,
+  divisionId,
+  weightClassId,
+  status,
+  paymentStatus,
+  mandate,
+  onSearchChange,
+  onDisciplineChange,
+  onDivisionChange,
+  onWeightClassChange,
+  onStatusChange,
+  onPaymentStatusChange,
+  onMandateChange,
+  onBulkUpdate,
+}: {
+  data: CompetitionOpsResponse;
+  nominations: NominationDto[];
+  bulkSaving: string | null;
+  search: string;
+  disciplineId: string;
+  divisionId: string;
+  weightClassId: string;
+  status: NominationDto['status'] | 'all';
+  paymentStatus: NominationDto['paymentStatus'] | 'all';
+  mandate: MandateFilter;
+  onSearchChange: (value: string) => void;
+  onDisciplineChange: (value: string) => void;
+  onDivisionChange: (value: string) => void;
+  onWeightClassChange: (value: string) => void;
+  onStatusChange: (value: NominationDto['status'] | 'all') => void;
+  onPaymentStatusChange: (value: NominationDto['paymentStatus'] | 'all') => void;
+  onMandateChange: (value: MandateFilter) => void;
+  onBulkUpdate: (kind: 'mandate' | 'paid', nominations: NominationDto[]) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <>
+      <NominationGridFilters
+        data={data}
+        search={search}
+        disciplineId={disciplineId}
+        divisionId={divisionId}
+        weightClassId={weightClassId}
+        status={status}
+        paymentStatus={paymentStatus}
+        mandate={mandate}
+        onSearchChange={onSearchChange}
+        onDisciplineChange={onDisciplineChange}
+        onDivisionChange={onDivisionChange}
+        onWeightClassChange={onWeightClassChange}
+        onStatusChange={onStatusChange}
+        onPaymentStatusChange={onPaymentStatusChange}
+        onMandateChange={onMandateChange}
+      />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            data-testid="nomination-bulk-mandate"
+            type="button"
+            variant="outline"
+            onClick={() => onBulkUpdate('mandate', nominations)}
+            disabled={bulkSaving !== null || nominations.length === 0}
+          >
+            {bulkSaving === 'mandate'
+              ? t('common.saving')
+              : t('competitionOps.markFilteredMandate', { count: nominations.length })}
+          </Button>
+          <Button
+            data-testid="nomination-bulk-paid"
+            type="button"
+            variant="outline"
+            onClick={() => onBulkUpdate('paid', nominations)}
+            disabled={bulkSaving !== null || nominations.length === 0}
+          >
+            {bulkSaving === 'paid'
+              ? t('common.saving')
+              : t('competitionOps.markFilteredPaid', { count: nominations.length })}
+          </Button>
+        </div>
+        <div className="text-sm tabular-nums text-muted-foreground">
+          {nominations.length} / {data.nominations.length}
+        </div>
+      </div>
+      <NominationsTable
+        nominations={nominations}
+        divisions={data.divisions}
+        platforms={data.platforms}
+        emptyText={t('competitionOps.noFilteredNominations')}
+      />
+    </>
   );
 }
 
@@ -1447,6 +1774,13 @@ export default function CompetitionOperationsFeature() {
   const [flightWeightClassId, setFlightWeightClassId] = useState('all');
   const [flightAssignment, setFlightAssignment] = useState<AssignmentFilter>('all');
   const [flightStatus, setFlightStatus] = useState<NominationDto['status'] | 'all'>('all');
+  const [nominationSearch, setNominationSearch] = useState('');
+  const [nominationDisciplineId, setNominationDisciplineId] = useState('all');
+  const [nominationDivisionId, setNominationDivisionId] = useState('all');
+  const [nominationWeightClassId, setNominationWeightClassId] = useState('all');
+  const [nominationStatus, setNominationStatus] = useState<NominationDto['status'] | 'all'>('all');
+  const [nominationPaymentStatus, setNominationPaymentStatus] = useState<NominationDto['paymentStatus'] | 'all'>('all');
+  const [nominationMandate, setNominationMandate] = useState<MandateFilter>('all');
 
   async function exportFile(kind: 'protocol' | 'accounting', format: 'csv' | 'xlsx') {
     setDownloading(kind);
@@ -1466,12 +1800,22 @@ export default function CompetitionOperationsFeature() {
     }
   }
 
-  async function bulkUpdate(kind: 'mandate' | 'paid') {
-    if (!data) return;
+  async function assignNominationToGroup(nominationId: string, flightId: string, groupId: string) {
+    try {
+      await api.competitions.updateNomination(nominationId, { flightId, groupId });
+      await refetch();
+      toast.success(t('competitionOps.flightDropAssigned'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
+  async function bulkUpdate(kind: 'mandate' | 'paid', nominations: NominationDto[]) {
+    if (!data || nominations.length === 0) return;
     setBulkSaving(kind);
     try {
       await Promise.all(
-        data.nominations.map((nomination) =>
+        nominations.map((nomination) =>
           api.competitions.updateNomination(
             nomination.id,
             kind === 'mandate'
@@ -1507,6 +1851,17 @@ export default function CompetitionOperationsFeature() {
   }
 
   const setupReady = hasSetup(data);
+  const filteredNominationGrid = data.nominations.filter((nomination) => {
+    if (!nominationMatchesSearch(nomination, nominationSearch)) return false;
+    if (nominationDisciplineId !== 'all' && nomination.disciplineId !== nominationDisciplineId) return false;
+    if (nominationDivisionId !== 'all' && nomination.divisionId !== nominationDivisionId) return false;
+    if (nominationWeightClassId !== 'all' && nomination.weightClassId !== nominationWeightClassId) return false;
+    if (nominationStatus !== 'all' && nomination.status !== nominationStatus) return false;
+    if (nominationPaymentStatus !== 'all' && nomination.paymentStatus !== nominationPaymentStatus) return false;
+    if (nominationMandate === 'passed' && !nomination.isMandatePassed) return false;
+    if (nominationMandate === 'missing' && nomination.isMandatePassed) return false;
+    return true;
+  });
   const filteredFlightNominations = data.nominations.filter((nomination) => {
     if (!nominationMatchesSearch(nomination, flightSearch)) return false;
     if (flightDisciplineId !== 'all' && nomination.disciplineId !== flightDisciplineId) return false;
@@ -1639,19 +1994,59 @@ export default function CompetitionOperationsFeature() {
       {tab === 'nominations' && (
         <div className="space-y-4">
           {setupReady && <NominationCreateForm competitionId={id} divisions={data.divisions} />}
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => void bulkUpdate('mandate')} disabled={bulkSaving !== null || data.nominations.length === 0}>
-              {bulkSaving === 'mandate' ? t('common.saving') : t('competitionOps.markAllMandate')}
-            </Button>
-            <Button type="button" variant="outline" onClick={() => void bulkUpdate('paid')} disabled={bulkSaving !== null || data.nominations.length === 0}>
-              {bulkSaving === 'paid' ? t('common.saving') : t('competitionOps.markAllPaid')}
-            </Button>
-          </div>
-          <NominationsTable nominations={data.nominations} divisions={data.divisions} platforms={data.platforms} />
+          <NominationSecretaryGrid
+            data={data}
+            nominations={filteredNominationGrid}
+            bulkSaving={bulkSaving}
+            search={nominationSearch}
+            disciplineId={nominationDisciplineId}
+            divisionId={nominationDivisionId}
+            weightClassId={nominationWeightClassId}
+            status={nominationStatus}
+            paymentStatus={nominationPaymentStatus}
+            mandate={nominationMandate}
+            onSearchChange={setNominationSearch}
+            onDisciplineChange={setNominationDisciplineId}
+            onDivisionChange={(value) => {
+              setNominationDivisionId(value);
+              setNominationWeightClassId('all');
+            }}
+            onWeightClassChange={setNominationWeightClassId}
+            onStatusChange={setNominationStatus}
+            onPaymentStatusChange={setNominationPaymentStatus}
+            onMandateChange={setNominationMandate}
+            onBulkUpdate={(kind, nominations) => void bulkUpdate(kind, nominations)}
+          />
         </div>
       )}
 
-      {tab === 'mandate' && <NominationsTable nominations={data.nominations} divisions={data.divisions} platforms={data.platforms} />}
+      {tab === 'mandate' && (
+        <div className="space-y-4">
+          <NominationSecretaryGrid
+            data={data}
+            nominations={filteredNominationGrid}
+            bulkSaving={bulkSaving}
+            search={nominationSearch}
+            disciplineId={nominationDisciplineId}
+            divisionId={nominationDivisionId}
+            weightClassId={nominationWeightClassId}
+            status={nominationStatus}
+            paymentStatus={nominationPaymentStatus}
+            mandate={nominationMandate}
+            onSearchChange={setNominationSearch}
+            onDisciplineChange={setNominationDisciplineId}
+            onDivisionChange={(value) => {
+              setNominationDivisionId(value);
+              setNominationWeightClassId('all');
+            }}
+            onWeightClassChange={setNominationWeightClassId}
+            onStatusChange={setNominationStatus}
+            onPaymentStatusChange={setNominationPaymentStatus}
+            onMandateChange={setNominationMandate}
+            onBulkUpdate={(kind, nominations) => void bulkUpdate(kind, nominations)}
+          />
+        </div>
+      )}
 
       {tab === 'flights' && (
         <div className="space-y-4">
@@ -1665,7 +2060,7 @@ export default function CompetitionOperationsFeature() {
               {autoPlanFlights.isPending ? t('common.saving') : t('competitionOps.autoPlan')}
             </Button>
           </div>
-          <FlightPlanningPanel data={data} />
+          <FlightPlanningPanel data={data} onAssignNomination={assignNominationToGroup} />
           <FlightFilters
             data={data}
             search={flightSearch}
@@ -1704,6 +2099,7 @@ export default function CompetitionOperationsFeature() {
               divisions={data.divisions}
               platforms={data.platforms}
               emptyText={t('competitionOps.noFilteredNominations')}
+              draggableRows
             />
           </div>
         </div>
