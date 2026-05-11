@@ -13,6 +13,7 @@ import type {
   FederationCreate,
   FederationUpdate,
   FlightAutoPlan,
+  JudgeAssignmentCreate,
   JudgeCreate,
   JudgeUpdate,
   LookupValueCreate,
@@ -310,6 +311,10 @@ export const api = {
       request(`/nominations/${nominationId}/attempts/${attemptNumber}`, { method: 'PUT', body: data }),
     upsertComponentAttempt: (nominationId: string, componentId: string, attemptNumber: number, data: Omit<AttemptUpsert, 'attemptNumber'>): Promise<{ attempt: AttemptDto; nomination: NominationDto | null }> =>
       request(`/nominations/${nominationId}/attempts/${componentId}/${attemptNumber}`, { method: 'PUT', body: data }),
+    createJudgeAssignment: (id: string, data: JudgeAssignmentCreate): Promise<{ judgeAssignment: CompetitionOpsResponse['judgeAssignments'][number] }> =>
+      request(`/competitions/${id}/judge-assignments`, { method: 'POST', body: data }),
+    deleteJudgeAssignment: (assignmentId: string): Promise<{ deleted: true }> =>
+      request(`/judge-assignments/${assignmentId}`, { method: 'DELETE' }),
     scoreboard: (id: string): Promise<ScoreboardResponse> => request(`/competitions/${id}/scoreboard`),
     protocolCsv: (id: string): Promise<string> => requestText(`/competitions/${id}/protocol.csv`),
     protocolXlsx: (id: string): Promise<Blob> => requestBlob(`/competitions/${id}/protocol.xlsx`),

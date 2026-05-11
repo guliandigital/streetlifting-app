@@ -2,6 +2,7 @@ import {
   AttemptUpsert,
   CompetitionDefaultSetup,
   FlightAutoPlan,
+  JudgeAssignmentCreate,
   NominationDraw,
   NominationCreate,
   NominationUpdate,
@@ -960,6 +961,153 @@ export const competitionOpsPlugin: FeaturePlugin = {
 
         log.info({ competitionId: competition.id, ...result }, 'default competition setup applied');
         return { setup: result };
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/competitions/:id/judge-assignments',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const competition = await loadCompetition(req.params.id);
+        if (!competition) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+          });
+        }
+        if (!hasScopedRole(req.user, competition, ['federation_admin', 'secretary'])) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'judge assignment role required', requestId: req.requestId },
+          });
+        }
+
+        const parsed = JudgeAssignmentCreate.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          });
+        }
+
+        const [judge, platform, duplicate] = await Promise.all([
+          prisma.judge.findUnique({ where: { id: parsed.data.judgeId }, select: { id: true } }),
+          parsed.data.platformId
+            ? prisma.platform.findUnique({
+                where: { id: parsed.data.platformId },
+                select: { id: true, competitionId: true },
+              })
+            : Promise.resolve(null),
+          prisma.judgeAssignment.findFirst({
+            where: {
+              competitionId: competition.id,
+              judgeId: parsed.data.judgeId,
+              platformId: parsed.data.platformId ?? null,
+              role: parsed.data.role,
+            },
+            select: { id: true },
+          }),
+        ]);
+
+        if (!judge) {
+          return reply.code(404).send({
+            error: { code: 'judge_not_found', message: 'Judge not found', requestId: req.requestId },
+          });
+        }
+        if (parsed.data.platformId && (!platform || platform.competitionId !== competition.id)) {
+          return reply.code(400).send({
+            error: { code: 'platform_out_of_scope', message: 'Platform is not in this competition', requestId: req.requestId },
+          });
+        }
+        if (duplicate) {
+          return reply.code(409).send({
+            error: { code: 'judge_assignment_exists', message: 'Judge assignment already exists', requestId: req.requestId },
+          });
+        }
+
+        try {
+          const judgeAssignment = await prisma.$transaction(async (tx) => {
+            const created = await tx.judgeAssignment.create({
+              data: {
+                competitionId: competition.id,
+                judgeId: parsed.data.judgeId,
+                platformId: parsed.data.platformId ?? null,
+                role: parsed.data.role,
+              },
+              include: { judge: true, platform: true },
+            });
+            await audit.record(
+              {
+                ...audit.fromRequest(req),
+                actorUserId: req.user!.id,
+                action: 'judge_assignment.created',
+                scopeFederationId: competition.federationId,
+                scopeCompetitionId: competition.id,
+                targetType: 'judge_assignment',
+                targetId: created.id,
+                before: null,
+                after: parsed.data,
+                result: 'success',
+              },
+              tx,
+            );
+            return created;
+          });
+
+          return reply.code(201).send({ judgeAssignment });
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            return reply.code(409).send({
+              error: { code: 'judge_assignment_exists', message: 'Judge assignment already exists', requestId: req.requestId },
+            });
+          }
+          throw err;
+        }
+      },
+    );
+
+    app.delete<{ Params: { assignmentId: string } }>(
+      '/judge-assignments/:assignmentId',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const before = await prisma.judgeAssignment.findUnique({
+          where: { id: req.params.assignmentId },
+          include: { competition: { select: { id: true, federationId: true } } },
+        });
+        if (!before) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Judge assignment not found', requestId: req.requestId },
+          });
+        }
+        if (!hasScopedRole(req.user, before.competition, ['federation_admin', 'secretary'])) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'judge assignment role required', requestId: req.requestId },
+          });
+        }
+
+        await prisma.$transaction(async (tx) => {
+          await tx.judgeAssignment.delete({ where: { id: before.id } });
+          await audit.record(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'judge_assignment.deleted',
+              scopeFederationId: before.competition.federationId,
+              scopeCompetitionId: before.competition.id,
+              targetType: 'judge_assignment',
+              targetId: before.id,
+              before: {
+                id: before.id,
+                judgeId: before.judgeId,
+                platformId: before.platformId,
+                role: before.role,
+                assignedAt: before.assignedAt.toISOString(),
+              },
+              after: null,
+              result: 'success',
+            },
+            tx,
+          );
+        });
+
+        return { deleted: true };
       },
     );
 

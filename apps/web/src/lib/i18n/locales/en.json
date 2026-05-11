@@ -247,6 +247,7 @@
       "nominations": "Nominations",
       "mandate": "Mandate / weigh-in",
       "flights": "Flights",
+      "judges": "Judges",
       "attempts": "Attempts",
       "scoreboard": "Scoreboard",
       "exports": "Exports"
@@ -285,6 +286,18 @@
     "filteredNominations": "Planning nominations",
     "filteredNominationsDesc": "The table below uses the active filters and saves changes through the existing nomination API.",
     "noFilteredNominations": "No nominations match the selected filters.",
+    "judges": {
+      "title": "Judge assignments",
+      "desc": "Assign judges to the competition and, when needed, to a specific platform.",
+      "assign": "Assign",
+      "assigned": "Judge assigned",
+      "removed": "Assignment removed",
+      "empty": "No judge assignments yet.",
+      "noJudges": "No judges found",
+      "chooseJudge": "Choose a judge",
+      "allPlatforms": "All platforms",
+      "remove": "Remove"
+    },
     "assignment": {
       "title": "Assignment",
       "all": "All",
@@ -321,6 +334,9 @@
       "paidAmount": "Amount, RUB",
       "paymentMethod": "Method",
       "mandate": "Mandate",
+      "judge": "Judge",
+      "role": "Role",
+      "platform": "Platform",
       "flight": "Flight",
       "group": "Group",
       "noFlight": "No flight",
@@ -332,6 +348,13 @@
       "result": "Decision",
       "placeInClass": "Class place",
       "placeOverall": "Overall"
+    },
+    "judgeRole": {
+      "head": "Head judge",
+      "side_left": "Left side",
+      "side_right": "Right side",
+      "technical": "Technical judge",
+      "jury": "Jury"
     },
     "paymentStatus": {
       "unpaid": "Unpaid",

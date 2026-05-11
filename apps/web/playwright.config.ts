@@ -23,6 +23,7 @@ const webServer = [
   {
     command: `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port ${webPort}`,
     cwd: webDir,
+    env: { ...process.env, VITE_API_PROXY_TARGET: apiBaseUrl },
     url: webBaseUrl,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { AttemptResult, NominationStatus, PaymentMethod, PaymentStatus } from './enums.js';
+import {
+  AttemptResult,
+  JudgeRole,
+  NominationStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from './enums.js';
 
 const Uuid = z.string().uuid();
 const OptionalNullableUuid = Uuid.nullable().optional();
@@ -93,3 +99,12 @@ export const FlightAutoPlan = z
   })
   .strict();
 export type FlightAutoPlan = z.infer<typeof FlightAutoPlan>;
+
+export const JudgeAssignmentCreate = z
+  .object({
+    judgeId: Uuid,
+    platformId: OptionalNullableUuid,
+    role: JudgeRole,
+  })
+  .strict();
+export type JudgeAssignmentCreate = z.infer<typeof JudgeAssignmentCreate>;

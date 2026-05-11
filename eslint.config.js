@@ -14,6 +14,7 @@ export default tseslint.config(
       '**/build/**',
       '**/.turbo/**',
       '**/coverage/**',
+      'output/**',
       'apps/desktop/src-tauri/target/**',
       'apps/desktop/src-tauri/gen/**',
       '_logo_pack_unpack/**',

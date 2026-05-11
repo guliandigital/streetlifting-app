@@ -60,7 +60,7 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [ ] Federations: CRUD, settings page (contact info, security key, accountant/cashier)
 - [ ] Athletes: list with virtualized table, search, profile page, photo upload
 - [ ] Disciplines catalog: editable in admin, locked per competition
-- [ ] Judges: directory + per-competition assignments
+- [x] Judges: directory + per-competition assignments
 
 ### M3 — Competitions + nominations (Week 5–7)
 - [ ] Competition wizard: create draft → set divisions, classes, disciplines, fees

@@ -18,6 +18,8 @@ interface OpsResponse {
     gender: 'M' | 'F';
     weightClasses: Array<{ id: string; nameRu: string }>;
   }>;
+  platforms: Array<{ id: string; name: string }>;
+  judgeAssignments: Array<{ id: string; judgeId: string; platformId: string | null; role: string }>;
   nominations: Array<{ id: string }>;
   scoreboardRows: Array<{ nominationId: string; finalScore: number | null; placeInClass: number | null }>;
   accounting: { paidEntryFeeKopecks: number; weighedInNominations: number };
@@ -210,6 +212,48 @@ const division = ops.divisions.find((item) => item.gender === 'M');
 assert(division, 'male division not found after default setup');
 const weightClass = division.weightClasses[0];
 assert(weightClass, 'weight class not found after default setup');
+const platform = ops.platforms[0];
+assert(platform, 'platform not found after default setup');
+
+const judge = (await requestJson<EntityResponse>(
+  'POST',
+  '/judges',
+  {
+    lastName: `Judge${suffix}`,
+    firstName: 'Smoke',
+    categoryRu: 'РК',
+    cityRegion: 'Yerevan',
+  },
+  auth,
+)).judge;
+
+const tempJudgeAssignment = (await requestJson<{
+  judgeAssignment: { id: string; judgeId: string; platformId: string | null; role: string };
+}>(
+  'POST',
+  `/competitions/${competition.id}/judge-assignments`,
+  { judgeId: judge.id, platformId: null, role: 'side_left' },
+  auth,
+)).judgeAssignment;
+assert(tempJudgeAssignment.role === 'side_left', 'global judge assignment was not created');
+await requestJson<{ deleted: true }>('DELETE', `/judge-assignments/${tempJudgeAssignment.id}`, undefined, auth);
+
+const judgeAssignment = (await requestJson<{
+  judgeAssignment: { id: string; judgeId: string; platformId: string | null; role: string };
+}>(
+  'POST',
+  `/competitions/${competition.id}/judge-assignments`,
+  { judgeId: judge.id, platformId: platform.id, role: 'head' },
+  auth,
+)).judgeAssignment;
+assert(judgeAssignment.platformId === platform.id, 'platform judge assignment was not scoped to platform');
+const duplicateJudgeAssignmentStatus = await requestStatus(
+  'POST',
+  `/competitions/${competition.id}/judge-assignments`,
+  { judgeId: judge.id, platformId: platform.id, role: 'head' },
+  auth,
+);
+assert(duplicateJudgeAssignmentStatus === 409, 'duplicate judge assignment was accepted');
 
 const discipline = (await requestJson<DisciplinesResponse>('GET', '/disciplines', undefined, auth)).disciplines.find(
   (item) => item.code === 'classic_pu',
@@ -322,6 +366,8 @@ assert(scoreboard.nominations.length === 1, 'scoreboard nominations count mismat
 assert(scoreboard.rows.length === 1, 'scoreboard rows count mismatch');
 assert(finalOps.accounting.weighedInNominations === 1, 'accounting weighed-in count mismatch');
 assert(finalOps.accounting.paidEntryFeeKopecks === 150000, 'accounting paid amount mismatch');
+assert(finalOps.judgeAssignments.length === 1, 'judge assignment count mismatch');
+assert(finalOps.judgeAssignments[0]?.judgeId === judge.id, 'judge assignment judge mismatch');
 
 const protocol = await requestText('GET', `/competitions/${competition.id}/protocol.csv`, auth);
 const accounting = await requestText('GET', `/competitions/${competition.id}/accounting.csv`, auth);
@@ -337,6 +383,7 @@ console.log(
       nominations: scoreboard.nominations.length,
       scoreboardRows: scoreboard.rows.length,
       finalScore: attempt.nomination.finalScore,
+      judgeAssignments: finalOps.judgeAssignments.length,
       passwordChange: 'ok',
       protocolBytes: protocol.length,
       accountingBytes: accounting.length,

@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AttemptUpsert,
   FlightAutoPlan,
+  JudgeAssignmentCreate,
+  JudgeRole,
   NominationCreate,
   NominationDraw,
   NominationUpdate,
@@ -100,7 +102,14 @@ export interface NominationDto {
   entryNumber: number | null;
   flightId: string | null;
   groupId: string | null;
-  status: 'draft' | 'paid' | 'weighed_in' | 'on_platform' | 'finished' | 'disqualified' | 'withdrawn';
+  status:
+    | 'draft'
+    | 'paid'
+    | 'weighed_in'
+    | 'on_platform'
+    | 'finished'
+    | 'disqualified'
+    | 'withdrawn';
   isEntryFeePaid: boolean;
   paymentStatus: 'unpaid' | 'partial' | 'paid' | 'waived' | 'refunded';
   paidAmountKopecks: string | number;
@@ -170,6 +179,30 @@ export interface ScoreboardRowDto {
   status: NominationDto['status'];
 }
 
+export interface JudgeAssignmentDto {
+  id: string;
+  competitionId: string;
+  judgeId: string;
+  platformId: string | null;
+  role: JudgeRole;
+  assignedAt: string;
+  judge: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    middleName: string | null;
+    categoryRu: string | null;
+    categoryEn: string | null;
+    cardNumber: string | null;
+    cityRegion: string | null;
+  };
+  platform: {
+    id: string;
+    name: string;
+    order: number;
+  } | null;
+}
+
 export interface CompetitionOpsResponse {
   competition: {
     id: string;
@@ -189,6 +222,7 @@ export interface CompetitionOpsResponse {
   };
   divisions: DivisionDto[];
   platforms: PlatformDto[];
+  judgeAssignments: JudgeAssignmentDto[];
   nominations: NominationDto[];
   scoreboardRows: ScoreboardRowDto[];
   accounting: {
@@ -267,6 +301,28 @@ export function useCreateNomination(id: string) {
       void qc.invalidateQueries({ queryKey: ['competitions', id] });
       void qc.invalidateQueries({ queryKey: ['competitions', id, 'ops'] });
       void qc.invalidateQueries({ queryKey: ['competitions', id, 'scoreboard'] });
+    },
+  });
+}
+
+export function useCreateJudgeAssignment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: JudgeAssignmentCreate) => api.competitions.createJudgeAssignment(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['competitions', id] });
+      void qc.invalidateQueries({ queryKey: ['competitions', id, 'ops'] });
+    },
+  });
+}
+
+export function useDeleteJudgeAssignment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (assignmentId: string) => api.competitions.deleteJudgeAssignment(assignmentId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['competitions', id] });
+      void qc.invalidateQueries({ queryKey: ['competitions', id, 'ops'] });
     },
   });
 }

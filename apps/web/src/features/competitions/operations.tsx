@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import type { JudgeRole } from '@streetlifting/domain';
 import {
   Button,
   Card,
@@ -31,8 +32,10 @@ import {
   type WeightClassDto,
   useApplyDefaultSetup,
   useAutoPlanFlights,
+  useCreateJudgeAssignment,
   useCompetitionOps,
   useCreateNomination,
+  useDeleteJudgeAssignment,
   useDrawNominations,
   useUpdateNomination,
   useUpsertAttempt,
@@ -51,7 +54,8 @@ const NOMINATION_STATUSES = [
 const PAYMENT_STATUSES = ['unpaid', 'partial', 'paid', 'waived', 'refunded'] as const;
 const PAYMENT_METHODS = ['bank_transfer', 'card', 'sbp', 'cash', 'other'] as const;
 const ATTEMPT_RESULTS = ['pending', 'good_lift', 'no_lift', 'withdrawn'] as const;
-const TABS = ['setup', 'nominations', 'mandate', 'flights', 'attempts', 'scoreboard', 'exports'] as const;
+const JUDGE_ROLES = ['head', 'side_left', 'side_right', 'technical', 'jury'] as const;
+const TABS = ['setup', 'nominations', 'mandate', 'flights', 'judges', 'attempts', 'scoreboard', 'exports'] as const;
 const ASSIGNMENT_FILTERS = ['all', 'assigned', 'unassigned'] as const;
 const MINUTES_PER_ATTEMPT = 1;
 const BREAK_BETWEEN_FLIGHTS_MINUTES = 5;
@@ -828,6 +832,197 @@ function FlightPlanningPanel({ data }: { data: CompetitionOpsResponse }) {
   );
 }
 
+function JudgeAssignmentsPanel({
+  competitionId,
+  data,
+}: {
+  competitionId: string;
+  data: CompetitionOpsResponse;
+}) {
+  const { t } = useTranslation();
+  const createAssignment = useCreateJudgeAssignment(competitionId);
+  const deleteAssignment = useDeleteJudgeAssignment(competitionId);
+  const [judgeSearch, setJudgeSearch] = useState('');
+  const judgeSearchTerm = judgeSearch.trim();
+  const { data: judgesData, isLoading } = useQuery({
+    queryKey: ['judges', { assignmentPanel: true, limit: 200, search: judgeSearchTerm }],
+    queryFn: () =>
+      api.judges.list(
+        judgeSearchTerm ? { limit: 200, search: judgeSearchTerm } : { limit: 200 },
+      ),
+  });
+  const judges = useMemo(() => judgesData?.judges ?? [], [judgesData?.judges]);
+  const [judgeId, setJudgeId] = useState('');
+  const [role, setRole] = useState<JudgeRole>('head');
+  const [platformId, setPlatformId] = useState('global');
+
+  useEffect(() => {
+    const firstJudge = judges[0];
+    if (!firstJudge) {
+      if (judgeId) setJudgeId('');
+      return;
+    }
+    if (!judges.some((judge) => judge.id === judgeId)) setJudgeId(firstJudge.id);
+  }, [judgeId, judges]);
+
+  async function assignJudge() {
+    if (!judgeId) {
+      toast.error(t('competitionOps.judges.chooseJudge'));
+      return;
+    }
+    try {
+      await createAssignment.mutateAsync({
+        judgeId,
+        role,
+        platformId: platformId === 'global' ? null : platformId,
+      });
+      toast.success(t('competitionOps.judges.assigned'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
+  async function removeAssignment(assignmentId: string) {
+    try {
+      await deleteAssignment.mutateAsync(assignmentId);
+      toast.success(t('competitionOps.judges.removed'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
+  return (
+    <Card data-testid="judge-assignment-panel">
+      <CardHeader>
+        <CardTitle>{t('competitionOps.judges.title')}</CardTitle>
+        <CardDescription>{t('competitionOps.judges.desc')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+          <div className="space-y-2">
+            <Label htmlFor="judgeAssignmentJudge">{t('competitionOps.fields.judge')}</Label>
+            <Input
+              id="judgeAssignmentSearch"
+              data-testid="judge-assignment-search"
+              value={judgeSearch}
+              onChange={(e) => setJudgeSearch(e.target.value)}
+              placeholder={t('common.search')}
+            />
+            <select
+              id="judgeAssignmentJudge"
+              data-testid="judge-assignment-judge"
+              value={judgeId}
+              onChange={(e) => setJudgeId(e.target.value)}
+              className={controlClass}
+              disabled={isLoading || judges.length === 0}
+            >
+              {judges.length === 0 ? (
+                <option value="">{t('competitionOps.judges.noJudges')}</option>
+              ) : (
+                judges.map((judge) => (
+                  <option key={judge.id} value={judge.id}>
+                    {fullName(judge)}
+                    {judge.categoryRu ? ` · ${judge.categoryRu}` : ''}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="judgeAssignmentRole">{t('competitionOps.fields.role')}</Label>
+            <select
+              id="judgeAssignmentRole"
+              data-testid="judge-assignment-role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as JudgeRole)}
+              className={controlClass}
+            >
+              {JUDGE_ROLES.map((item) => (
+                <option key={item} value={item}>
+                  {t(`competitionOps.judgeRole.${item}`)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="judgeAssignmentPlatform">{t('competitionOps.fields.platform')}</Label>
+            <select
+              id="judgeAssignmentPlatform"
+              data-testid="judge-assignment-platform"
+              value={platformId}
+              onChange={(e) => setPlatformId(e.target.value)}
+              className={controlClass}
+            >
+              <option value="global">{t('competitionOps.judges.allPlatforms')}</option>
+              {data.platforms.map((platform) => (
+                <option key={platform.id} value={platform.id}>
+                  {platform.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button
+            data-testid="judge-assignment-create"
+            type="button"
+            onClick={() => void assignJudge()}
+            disabled={createAssignment.isPending || judges.length === 0}
+          >
+            {createAssignment.isPending ? t('common.saving') : t('competitionOps.judges.assign')}
+          </Button>
+        </div>
+
+        {judges.length === 0 && !isLoading && (
+          <Button asChild variant="outline" size="sm">
+            <Link to="/judges/new">{t('judges.create')}</Link>
+          </Button>
+        )}
+
+        {data.judgeAssignments.length === 0 ? (
+          <p className="text-sm italic text-muted-foreground">{t('competitionOps.judges.empty')}</p>
+        ) : (
+          <div className="overflow-x-auto rounded-md border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('competitionOps.fields.judge')}</TableHead>
+                  <TableHead>{t('competitionOps.fields.role')}</TableHead>
+                  <TableHead>{t('competitionOps.fields.platform')}</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.judgeAssignments.map((assignment) => (
+                  <TableRow key={assignment.id} data-testid="judge-assignment-row">
+                    <TableCell>
+                      <div>{fullName(assignment.judge)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {assignment.judge.categoryRu ?? assignment.judge.cardNumber ?? '—'}
+                      </div>
+                    </TableCell>
+                    <TableCell>{t(`competitionOps.judgeRole.${assignment.role}`)}</TableCell>
+                    <TableCell>{assignment.platform?.name ?? t('competitionOps.judges.allPlatforms')}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void removeAssignment(assignment.id)}
+                        disabled={deleteAssignment.isPending}
+                      >
+                        {deleteAssignment.isPending ? t('common.saving') : t('competitionOps.judges.remove')}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function NominationsTable({
   nominations,
   divisions,
@@ -1347,6 +1542,8 @@ export default function CompetitionOperationsFeature() {
           </div>
         </div>
       )}
+
+      {tab === 'judges' && <JudgeAssignmentsPanel competitionId={id} data={data} />}
 
       {tab === 'attempts' && (
         <div className="overflow-x-auto rounded-md border border-border">

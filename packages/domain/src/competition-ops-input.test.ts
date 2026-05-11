@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { AttemptUpsert, NominationCreate, NominationUpdate } from './competition-ops-input.js';
+import {
+  AttemptUpsert,
+  JudgeAssignmentCreate,
+  NominationCreate,
+  NominationUpdate,
+} from './competition-ops-input.js';
 
 const uuid = '00000000-0000-0000-0000-000000000001';
 
@@ -50,7 +55,18 @@ describe('competition operations input schemas', () => {
   });
 
   it('bounds attempt numbers and defaults undecided attempts to pending', () => {
-    expect(AttemptUpsert.parse({ componentId: uuid, attemptNumber: 1, weightKg: 42.5 }).result).toBe('pending');
+    expect(
+      AttemptUpsert.parse({ componentId: uuid, attemptNumber: 1, weightKg: 42.5 }).result,
+    ).toBe('pending');
     expect(AttemptUpsert.safeParse({ attemptNumber: 6, weightKg: 42.5 }).success).toBe(false);
+  });
+
+  it('validates judge assignments for a competition platform', () => {
+    expect(JudgeAssignmentCreate.parse({ judgeId: uuid, platformId: null, role: 'head' })).toEqual({
+      judgeId: uuid,
+      platformId: null,
+      role: 'head',
+    });
+    expect(JudgeAssignmentCreate.safeParse({ judgeId: uuid, role: 'speaker' }).success).toBe(false);
   });
 });

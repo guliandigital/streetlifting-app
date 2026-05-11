@@ -255,6 +255,7 @@
       "nominations": "Номинации",
       "mandate": "Мандат / взвешивание",
       "flights": "Потоки",
+      "judges": "Судьи",
       "attempts": "Попытки",
       "scoreboard": "Scoreboard",
       "exports": "Экспорт"
@@ -293,6 +294,18 @@
     "filteredNominations": "Заявки для планирования",
     "filteredNominationsDesc": "Таблица ниже использует текущие фильтры и сохраняет изменения через существующий API заявок.",
     "noFilteredNominations": "По выбранным фильтрам заявок нет.",
+    "judges": {
+      "title": "Назначения судей",
+      "desc": "Привязка судей к соревнованию и, при необходимости, к конкретному помосту.",
+      "assign": "Назначить",
+      "assigned": "Судья назначен",
+      "removed": "Назначение удалено",
+      "empty": "Назначений судей пока нет.",
+      "noJudges": "Судьи не найдены",
+      "chooseJudge": "Выберите судью",
+      "allPlatforms": "Все помосты",
+      "remove": "Удалить"
+    },
     "assignment": {
       "title": "Назначение",
       "all": "Все",
@@ -329,6 +342,9 @@
       "paidAmount": "Сумма, ₽",
       "paymentMethod": "Метод",
       "mandate": "Мандат",
+      "judge": "Судья",
+      "role": "Роль",
+      "platform": "Помост",
       "flight": "Поток",
       "group": "Группа",
       "noFlight": "Без потока",
@@ -340,6 +356,13 @@
       "result": "Решение",
       "placeInClass": "Место ВК",
       "placeOverall": "Абсолютка"
+    },
+    "judgeRole": {
+      "head": "Главный судья",
+      "side_left": "Боковой левый",
+      "side_right": "Боковой правый",
+      "technical": "Технический судья",
+      "jury": "Жюри"
     },
     "paymentStatus": {
       "unpaid": "Не оплачено",

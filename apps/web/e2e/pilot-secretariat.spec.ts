@@ -37,7 +37,9 @@ async function clickAndWaitForApi(
   click: () => Promise<void>,
 ): Promise<void> {
   const [response] = await Promise.all([
-    page.waitForResponse((item) => item.request().method() === method && item.url().includes(urlPart)),
+    page.waitForResponse(
+      (item) => item.request().method() === method && item.url().includes(urlPart),
+    ),
     click(),
   ]);
   expect(response.ok()).toBe(true);
@@ -54,6 +56,7 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   const federationCode = `PW${suffix}`;
   const competitionCode = `PWE2E${suffix}`;
   const athleteLastName = `E2E${suffix}`;
+  const judgeLastName = `Judge${suffix}`;
 
   await page.goto('/federations/new');
   await fillText(page, '#code', federationCode);
@@ -83,7 +86,14 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   await fillText(page, '#clubName', 'E2E Club');
   const athleteId = await submitAndReadId(page, 'athletes');
 
-  const opsLoad = page.waitForResponse((item) => item.url().includes(`/competitions/${competitionId}/ops`));
+  await page.goto('/judges/new');
+  await fillText(page, '#lastName', judgeLastName);
+  await fillText(page, '#firstName', 'Secretary');
+  const judgeId = await submitAndReadId(page, 'judges');
+
+  const opsLoad = page.waitForResponse((item) =>
+    item.url().includes(`/competitions/${competitionId}/ops`),
+  );
   await page.goto(`/competitions/${competitionId}/operations`);
   const opsLoadResponse = await opsLoad;
   expect(opsLoadResponse.ok(), await opsLoadResponse.text()).toBe(true);
@@ -93,6 +103,26 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
     page.getByTestId('ops-apply-setup').click(),
   );
 
+  const judgesList = page.waitForResponse((item) => item.url().includes('/judges?limit=200'));
+  await page.getByTestId('ops-tab-judges').click();
+  const judgesListResponse = await judgesList;
+  expect(judgesListResponse.ok(), await judgesListResponse.text()).toBe(true);
+  await expect(page.getByTestId('judge-assignment-panel')).toBeVisible();
+  const judgesSearch = page.waitForResponse(
+    (item) => item.url().includes('/judges?') && item.url().includes(`search=${judgeLastName}`),
+  );
+  await page.getByTestId('judge-assignment-search').fill(judgeLastName);
+  const judgesSearchResponse = await judgesSearch;
+  const judgesSearchText = await judgesSearchResponse.text();
+  expect(judgesSearchResponse.ok(), judgesSearchText).toBe(true);
+  expect(judgesSearchText).toContain(judgeId);
+  await page.getByTestId('judge-assignment-judge').selectOption(judgeId);
+  await page.getByTestId('judge-assignment-role').selectOption('head');
+  await clickAndWaitForApi(page, 'POST', `/competitions/${competitionId}/judge-assignments`, () =>
+    page.getByTestId('judge-assignment-create').click(),
+  );
+  await expect(page.getByTestId('judge-assignment-row')).toContainText(judgeLastName);
+
   const athletesList = page.waitForResponse((item) => item.url().includes('/athletes?limit=200'));
   await page.getByTestId('ops-tab-nominations').click();
   const athletesListResponse = await athletesList;
@@ -101,7 +131,9 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   expect(athletesListText).toContain(athleteId);
   await expect(page.getByTestId('nomination-create-form')).toBeVisible();
   await page.getByTestId('nomination-athlete').selectOption(athleteId);
-  await page.getByTestId('nomination-discipline').selectOption({ label: 'Классическое подтягивание' });
+  await page
+    .getByTestId('nomination-discipline')
+    .selectOption({ label: 'Классическое подтягивание' });
   await clickAndWaitForApi(page, 'POST', `/competitions/${competitionId}/nominations`, () =>
     page.getByTestId('nomination-submit').click(),
   );
