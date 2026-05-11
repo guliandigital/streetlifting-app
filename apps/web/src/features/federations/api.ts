@@ -4,6 +4,8 @@ import type {
   FederationChapterUpdate,
   FederationCreate,
   FederationUpdate,
+  PlateSetCreate,
+  PlateSetUpdate,
 } from '@streetlifting/domain';
 import { api } from '../../lib/api-client.js';
 
@@ -215,6 +217,39 @@ export function useDeleteFederationAttachment(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (attachmentId: string) => api.federations.deleteAttachment(id, attachmentId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useCreateFederationPlateSet(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: PlateSetCreate) => api.federations.createPlateSet(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useUpdateFederationPlateSet(id: string, plateSetId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: PlateSetUpdate) => api.federations.updatePlateSet(id, plateSetId, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useDeleteFederationPlateSet(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (plateSetId: string) => api.federations.deletePlateSet(id, plateSetId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
       void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });

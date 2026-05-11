@@ -1,4 +1,4 @@
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
@@ -37,6 +37,7 @@ function auditComment(entry: FederationAuditEntryDto): string {
 export default function FederationNotificationsFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/federations/$id/notifications' });
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const { data, isLoading, error } = useFederationDashboard(id);
   const { data: auditData, isLoading: auditLoading } = useFederationAudit(id);
@@ -83,8 +84,10 @@ export default function FederationNotificationsFeature() {
       ),
     ) ?? [];
 
-  async function submit(e: FormEvent) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const closeAfterSave =
+      ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.dataset.intent === 'save-close';
     try {
       await update.mutateAsync({
         contactPhone: nullableText(contactPhone),
@@ -94,6 +97,7 @@ export default function FederationNotificationsFeature() {
         isPublicResultsClosed,
       });
       toast.success('Настройки уведомлений сохранены');
+      if (closeAfterSave) await navigate({ to: '/federations/$id', params: { id } });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error');
     }
@@ -137,7 +141,7 @@ export default function FederationNotificationsFeature() {
       subtitle={data.federation.nameRu}
       actions={(
         <>
-          <PowerTableButton tone="danger" form="federationNotificationsForm" type="submit" disabled={!canManage || update.isPending}>
+          <PowerTableButton tone="danger" form="federationNotificationsForm" type="submit" data-intent="save-close" disabled={!canManage || update.isPending}>
             Записать и закрыть
           </PowerTableButton>
           <PowerTableButton form="federationNotificationsForm" type="submit" disabled={!canManage || update.isPending}>

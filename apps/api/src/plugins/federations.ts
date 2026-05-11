@@ -2,7 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { FederationCreate, FederationUpdate } from '@streetlifting/domain';
+import {
+  FederationCreate,
+  FederationUpdate,
+  PlateSetCreate,
+  PlateSetUpdate,
+} from '@streetlifting/domain';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
@@ -309,6 +314,164 @@ export const federationsPlugin: FeaturePlugin = {
             notes: row.notes,
           })),
         };
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/federations/:id/plate-sets',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+          });
+        }
+        const parsed = PlateSetCreate.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          });
+        }
+        const federation = await prisma.federation.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+
+        const plateSet = await prisma.$transaction(async (tx) => {
+          const created = await tx.plateSet.create({
+            data: {
+              federationId: req.params.id,
+              competitionId: null,
+              name: parsed.data.name.trim(),
+              incrementKg: parsed.data.incrementKg,
+              barWeightKg: parsed.data.barWeightKg,
+              collarWeightKg: parsed.data.collarWeightKg,
+              plates: parsed.data.plates as Prisma.InputJsonValue,
+            },
+          });
+          await audit.record(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'federation.plate_set.created',
+              result: 'success',
+              scopeFederationId: req.params.id,
+              scopeCompetitionId: null,
+              targetType: 'plate_set',
+              targetId: created.id,
+              before: null,
+              after: parsed.data,
+            },
+            tx,
+          );
+          return created;
+        });
+        return reply.code(201).send({ plateSet });
+      },
+    );
+
+    app.patch<{ Params: { id: string; plateSetId: string } }>(
+      '/federations/:id/plate-sets/:plateSetId',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+          });
+        }
+        const parsed = PlateSetUpdate.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          });
+        }
+        const before = await prisma.plateSet.findFirst({
+          where: {
+            id: req.params.plateSetId,
+            federationId: req.params.id,
+            competitionId: null,
+          },
+        });
+        if (!before) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Plate set not found', requestId: req.requestId },
+          });
+        }
+
+        const updateData: Prisma.PlateSetUpdateInput = {};
+        if (parsed.data.name !== undefined) updateData.name = parsed.data.name.trim();
+        if (parsed.data.incrementKg !== undefined) updateData.incrementKg = parsed.data.incrementKg;
+        if (parsed.data.barWeightKg !== undefined) updateData.barWeightKg = parsed.data.barWeightKg;
+        if (parsed.data.collarWeightKg !== undefined) updateData.collarWeightKg = parsed.data.collarWeightKg;
+        if (parsed.data.plates !== undefined) updateData.plates = parsed.data.plates as Prisma.InputJsonValue;
+
+        const plateSet = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.plate_set.updated',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'plate_set',
+            targetId: req.params.plateSetId,
+            before,
+            after: parsed.data,
+          },
+          (tx) =>
+            tx.plateSet.update({
+              where: { id: req.params.plateSetId },
+              data: updateData,
+            }),
+        );
+        return { plateSet };
+      },
+    );
+
+    app.delete<{ Params: { id: string; plateSetId: string } }>(
+      '/federations/:id/plate-sets/:plateSetId',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+          });
+        }
+        const before = await prisma.plateSet.findFirst({
+          where: {
+            id: req.params.plateSetId,
+            federationId: req.params.id,
+            competitionId: null,
+          },
+        });
+        if (!before) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Plate set not found', requestId: req.requestId },
+          });
+        }
+
+        await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.plate_set.deleted',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'plate_set',
+            targetId: req.params.plateSetId,
+            before,
+            after: null,
+          },
+          (tx) =>
+            tx.plateSet.delete({
+              where: { id: req.params.plateSetId },
+            }),
+        );
+        return { status: 'ok' };
       },
     );
 

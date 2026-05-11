@@ -21,6 +21,8 @@ import type {
   NominationDraw,
   NominationCreate,
   NominationUpdate,
+  PlateSetCreate,
+  PlateSetUpdate,
   RegionCreate,
   RegionUpdate,
   AttemptUpsert,
@@ -34,6 +36,7 @@ import type {
   FederationAttachmentDto,
   FederationChapterDto,
   FederationDashboardResponse,
+  FederationPlateSetDto,
   FederationReceiptDto,
   FederationTestEmailResponse,
   FederationWriteoffDto,
@@ -295,6 +298,12 @@ export const api = {
       request(`/federations/${id}/attachments/${attachmentId}`, { method: 'DELETE' }),
     downloadAttachment: (id: string, attachmentId: string): Promise<Blob> =>
       requestBlob(`/federations/${id}/attachments/${attachmentId}/download`),
+    createPlateSet: (id: string, data: PlateSetCreate): Promise<{ plateSet: FederationPlateSetDto }> =>
+      request(`/federations/${id}/plate-sets`, { method: 'POST', body: data }),
+    updatePlateSet: (id: string, plateSetId: string, data: PlateSetUpdate): Promise<{ plateSet: FederationPlateSetDto }> =>
+      request(`/federations/${id}/plate-sets/${plateSetId}`, { method: 'PATCH', body: data }),
+    deletePlateSet: (id: string, plateSetId: string): Promise<{ status: 'ok' }> =>
+      request(`/federations/${id}/plate-sets/${plateSetId}`, { method: 'DELETE' }),
     createReceipt: (
       id: string,
       data: {

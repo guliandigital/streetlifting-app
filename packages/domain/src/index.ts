@@ -32,6 +32,7 @@ export * from './billing.js';
 export * from './event.js';
 export * from './record.js';
 export * from './plate.js';
+export * from './plate-input.js';
 export * from './veteran-coefficient.js';
 export * from './consent.js';
 export * from './attachment.js';

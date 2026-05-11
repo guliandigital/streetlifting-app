@@ -1,4 +1,4 @@
-import { Link, useLocation, useParams } from '@tanstack/react-router';
+import { Link, useLocation, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
@@ -35,6 +35,9 @@ function auditLabel(action: string): string {
     'federation.feedback.created': 'Обращение',
     'federation.attachment.uploaded': 'Файл загружен',
     'federation.attachment.deleted': 'Файл удален',
+    'federation.plate_set.created': 'Комплект создан',
+    'federation.plate_set.updated': 'Комплект обновлен',
+    'federation.plate_set.deleted': 'Комплект удален',
     'federation.receipt.created': 'Поступление',
     'federation.writeoff.created': 'Списание',
   };
@@ -90,6 +93,7 @@ export default function FederationSettingsFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ strict: false }) as { id: string };
   const location = useLocation();
+  const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const { data, isLoading, error } = useFederationDashboard(id);
   const { data: auditData, isLoading: auditLoading } = useFederationAudit(id);
@@ -151,8 +155,10 @@ export default function FederationSettingsFeature() {
   const canManage = isFederationManager(user, id);
   const showLogins = location.pathname.endsWith('/logins');
 
-  async function submit(e: FormEvent) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const closeAfterSave =
+      ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.dataset.intent === 'save-close';
     try {
       await update.mutateAsync({
         contactPhone: nullableText(contactPhone),
@@ -166,6 +172,7 @@ export default function FederationSettingsFeature() {
         isPublicResultsClosed,
       });
       toast.success('Настройки федерации сохранены');
+      if (closeAfterSave) await navigate({ to: '/federations/$id', params: { id } });
     } catch (err) {
       if (err instanceof ApiClientError && err.code === 'validation_error') {
         toast.error('Проверьте email и ссылки: URL должен начинаться с https://');
@@ -215,7 +222,7 @@ export default function FederationSettingsFeature() {
         <>
           {!showLogins ? (
             <>
-              <PowerTableButton tone="danger" form="federationSettingsForm" type="submit" disabled={!canManage || update.isPending}>
+              <PowerTableButton tone="danger" form="federationSettingsForm" type="submit" data-intent="save-close" disabled={!canManage || update.isPending}>
                 Записать и закрыть
               </PowerTableButton>
               <PowerTableButton form="federationSettingsForm" type="submit" disabled={!canManage || update.isPending}>
