@@ -37,6 +37,8 @@ interface DisciplinesResponse {
 interface NominationResponse {
   nomination: {
     id: string;
+    weightClassId: string;
+    weightClass: { id: string; nameRu: string; weightMin: number | null; weightMax: number | null };
     discipline: { components: Array<{ id: string }> };
     finalScore: number | null;
     placeInClass: number | null;
@@ -331,6 +333,12 @@ const patched = (await requestJson<NominationResponse>(
   auth,
 )).nomination;
 assert(patched.discipline.components[0], 'nomination response has no discipline component');
+assert(patched.weightClassId !== weightClass.id, 'bodyweight did not auto-assign actual weight class');
+assert(
+  (patched.weightClass.weightMin === null || 82.4 > patched.weightClass.weightMin) &&
+    (patched.weightClass.weightMax === null || 82.4 <= patched.weightClass.weightMax),
+  'auto-assigned weight class does not match bodyweight',
+);
 
 const plan = await requestJson<{ plan: { flights: Array<{ estimatedMinutes: number }> } }>(
   'POST',

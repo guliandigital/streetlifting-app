@@ -316,6 +316,7 @@
     "createNominationDesc": "Заявка связывает спортсмена, дисциплину, дивизион и весовую категорию.",
     "nominationCreated": "Заявка создана",
     "nominationUpdated": "Заявка обновлена",
+    "autoWeightClass": "Авто: {{value}}",
     "attemptSaved": "Попытка сохранена",
     "saveAttempt": "Сохранить попытку",
     "noAttempts": "Попыток пока нет.",

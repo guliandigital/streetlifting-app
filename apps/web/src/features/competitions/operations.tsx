@@ -106,6 +106,26 @@ function weightClassesForDivision(divisions: DivisionDto[], divisionId: string):
   return divisions.find((division) => division.id === divisionId)?.weightClasses ?? [];
 }
 
+function weightClassesForNomination(divisions: DivisionDto[], nomination: NominationDto): WeightClassDto[] {
+  return weightClassesForDivision(divisions, nomination.divisionId).filter(
+    (weightClass) => !weightClass.disciplineId || weightClass.disciplineId === nomination.disciplineId,
+  );
+}
+
+function findWeightClassForBodyWeight(
+  weightClasses: WeightClassDto[],
+  bodyWeightKg: number | null,
+): WeightClassDto | null {
+  if (bodyWeightKg === null) return null;
+  return (
+    weightClasses.find((weightClass) => {
+      const aboveMin = weightClass.weightMin === null || bodyWeightKg > weightClass.weightMin;
+      const belowMax = weightClass.weightMax === null || bodyWeightKg <= weightClass.weightMax;
+      return aboveMin && belowMax;
+    }) ?? null
+  );
+}
+
 function groupsForFlight(platforms: PlatformDto[], flightId: string): GroupDto[] {
   for (const platform of platforms) {
     const flight = platform.flights.find((item) => item.id === flightId);
@@ -358,6 +378,7 @@ function NominationEditorRow({
   const [status, setStatus] = useState<NominationDto['status']>(nomination.status);
   const [declaredWeightClassId, setDeclaredWeightClassId] = useState(nomination.declaredWeightClassId ?? nomination.weightClassId);
   const [weightClassId, setWeightClassId] = useState(nomination.weightClassId);
+  const [weightClassTouched, setWeightClassTouched] = useState(false);
   const [flightId, setFlightId] = useState(nomination.flightId ?? '');
   const [groupId, setGroupId] = useState(nomination.groupId ?? '');
   const [paymentStatus, setPaymentStatus] = useState<NominationDto['paymentStatus']>(nomination.paymentStatus);
@@ -373,6 +394,7 @@ function NominationEditorRow({
     setStatus(nomination.status);
     setDeclaredWeightClassId(nomination.declaredWeightClassId ?? nomination.weightClassId);
     setWeightClassId(nomination.weightClassId);
+    setWeightClassTouched(false);
     setFlightId(nomination.flightId ?? '');
     setGroupId(nomination.groupId ?? '');
     setPaymentStatus(nomination.paymentStatus);
@@ -383,8 +405,17 @@ function NominationEditorRow({
     setNotes(nomination.notes ?? '');
   }, [nomination]);
 
-  const weightClasses = weightClassesForDivision(divisions, nomination.divisionId);
+  const weightClasses = weightClassesForNomination(divisions, nomination);
   const groups = groupsForFlight(platforms, flightId);
+  const autoWeightClass = findWeightClassForBodyWeight(weightClasses, nullableNumber(bodyWeight));
+
+  function updateBodyWeight(value: string) {
+    setBodyWeight(value);
+    if (!weightClassTouched) {
+      const match = findWeightClassForBodyWeight(weightClasses, nullableNumber(value));
+      if (match) setWeightClassId(match.id);
+    }
+  }
 
   async function save() {
     try {
@@ -436,7 +467,7 @@ function NominationEditorRow({
           min="0"
           step="0.01"
           value={bodyWeight}
-          onChange={(e) => setBodyWeight(e.target.value)}
+          onChange={(e) => updateBodyWeight(e.target.value)}
         />
       </TableCell>
       <TableCell className="min-w-36">
@@ -457,7 +488,10 @@ function NominationEditorRow({
         <select
           data-testid="nomination-row-weight-class"
           value={weightClassId}
-          onChange={(e) => setWeightClassId(e.target.value)}
+          onChange={(e) => {
+            setWeightClassTouched(true);
+            setWeightClassId(e.target.value);
+          }}
           className={controlClass}
         >
           {weightClasses.map((weightClass) => (
@@ -466,6 +500,11 @@ function NominationEditorRow({
             </option>
           ))}
         </select>
+        {autoWeightClass && autoWeightClass.id === weightClassId && (
+          <div data-testid="nomination-row-auto-weight-class" className="mt-1 text-xs text-muted-foreground">
+            {t('competitionOps.autoWeightClass', { value: autoWeightClass.nameRu })}
+          </div>
+        )}
       </TableCell>
       <TableCell className="min-w-32">
         <select

@@ -308,6 +308,7 @@
     "createNominationDesc": "A nomination links an athlete, discipline, division, and weight class.",
     "nominationCreated": "Nomination created",
     "nominationUpdated": "Nomination updated",
+    "autoWeightClass": "Auto: {{value}}",
     "attemptSaved": "Attempt saved",
     "saveAttempt": "Save attempt",
     "noAttempts": "No attempts yet.",

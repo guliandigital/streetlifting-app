@@ -66,7 +66,7 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [ ] Competition wizard: create draft → set divisions, classes, disciplines, fees
 - [ ] Online registration: public form per federation page (athlete self-registers, picks disciplines + classes, pays)
 - [ ] Secretary nomination grid: filter, bulk edit, mandate check, weigh-in entry
-- [ ] Body weight at weigh-in + automatic class assignment
+- [x] Body weight at weigh-in + automatic class assignment
 - [ ] Entry number / lot drawing
 
 ### M4 — Flights, groups, platforms (Week 8)

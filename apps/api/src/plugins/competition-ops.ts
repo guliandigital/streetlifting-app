@@ -1427,11 +1427,21 @@ export const competitionOpsPlugin: FeaturePlugin = {
         }
         const data: NominationUpdate = { ...parsed.data };
         if (data.bodyWeightAtWeighIn !== undefined && data.bodyWeightAtWeighIn !== null && data.weightClassId === undefined) {
-          data.weightClassId = await findWeightClassForBodyWeight(
+          const autoWeightClassId = await findWeightClassForBodyWeight(
             before.divisionId,
             before.disciplineId,
             data.bodyWeightAtWeighIn,
           );
+          if (!autoWeightClassId) {
+            return reply.code(400).send({
+              error: {
+                code: 'weight_class_not_found_for_body_weight',
+                message: 'No weight class matches body weight',
+                requestId: req.requestId,
+              },
+            });
+          }
+          data.weightClassId = autoWeightClassId;
         }
         const refCheck = await validateNominationOperationalRefs(before.competition.id, before.divisionId, before.disciplineId, data);
         if (!refCheck.ok) {

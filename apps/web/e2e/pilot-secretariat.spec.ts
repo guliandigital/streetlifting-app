@@ -150,6 +150,11 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   await page.getByTestId('ops-tab-mandate').click();
   const row = await nominationRow(page, athleteLastName);
   await row.getByTestId('nomination-row-body-weight').fill('82.4');
+  await expect(row.getByTestId('nomination-row-auto-weight-class')).toContainText('82.5');
+  const selectedWeightClass = await row
+    .getByTestId('nomination-row-weight-class')
+    .evaluate((select) => (select as HTMLSelectElement).selectedOptions[0]?.textContent ?? '');
+  expect(selectedWeightClass).toContain('82.5');
   await row.getByTestId('nomination-row-payment-status').selectOption('paid');
   await row.getByTestId('nomination-row-paid-amount').fill('1500');
   await row.getByTestId('nomination-row-payment-method').selectOption('cash');
