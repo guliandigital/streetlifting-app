@@ -14,6 +14,15 @@ import { formatRub } from '../../lib/money.js';
 import { nominationGenderStats } from './gender-stats.js';
 import { useCompetitionOps } from './operations-api.js';
 
+function isPastCompetition(endDate: string): boolean {
+  const end = new Date(endDate);
+  if (Number.isNaN(end.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return end < today;
+}
+
 function downloadText(filename: string, text: string): void {
   const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
   downloadBlob(filename, blob);
@@ -36,11 +45,15 @@ export default function CompetitionReportsFeature() {
   const { data, isLoading, error, isFetching, refetch } = useCompetitionOps(id);
   const [query, setQuery] = useState('');
   const [showMore, setShowMore] = useState(false);
+  const [hidePastCompetitions, setHidePastCompetitions] = useState(true);
+  const [competitionSelected, setCompetitionSelected] = useState(true);
   const competitionGenderStats = useMemo(
     () => nominationGenderStats(data?.nominations ?? []),
     [data?.nominations],
   );
+  const showCompetitionRow = data ? (!hidePastCompetitions || !isPastCompetition(data.competition.endDate)) : false;
   const visibleRows = useMemo(() => {
+    if (!competitionSelected || !showCompetitionRow) return [];
     const normalized = query.trim().toLowerCase();
     if (!data || !normalized) return data?.scoreboardRows ?? [];
     return data.scoreboardRows.filter((row) =>
@@ -53,7 +66,7 @@ export default function CompetitionReportsFeature() {
         t(`competitionOps.status.${row.status}`),
       ].some((value) => value.toLowerCase().includes(normalized)),
     );
-  }, [data, query, t]);
+  }, [competitionSelected, data, query, showCompetitionRow, t]);
 
   async function refreshReport() {
     const result = await refetch();
@@ -115,7 +128,7 @@ export default function CompetitionReportsFeature() {
     >
       <PowerTableSectionTitle>Соревнования</PowerTableSectionTitle>
       <label className="pt-checkline mb-2">
-        <input type="checkbox" defaultChecked />
+        <input type="checkbox" checked={hidePastCompetitions} onChange={(event) => setHidePastCompetitions(event.target.checked)} />
         <span>Скрыть прошедшие соревнования</span>
       </label>
       <table className="pt-grid">
@@ -123,14 +136,18 @@ export default function CompetitionReportsFeature() {
           <tr><th>Вкл</th><th>Начало</th><th>Соревнование</th><th>Н.Всего</th><th>Н.Жен.</th><th>Н.Муж.</th></tr>
         </thead>
         <tbody>
-          <tr className="is-green">
-            <td><input type="checkbox" defaultChecked /></td>
-            <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
-            <td>{data.competition.nameRu}</td>
-            <td className="text-right">{competitionGenderStats.total}</td>
-            <td className="text-right">{competitionGenderStats.women}</td>
-            <td className="text-right">{competitionGenderStats.men}</td>
-          </tr>
+          {showCompetitionRow ? (
+            <tr className="is-green">
+              <td><input type="checkbox" checked={competitionSelected} onChange={(event) => setCompetitionSelected(event.target.checked)} /></td>
+              <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
+              <td>{data.competition.nameRu}</td>
+              <td className="text-right">{competitionGenderStats.total}</td>
+              <td className="text-right">{competitionGenderStats.women}</td>
+              <td className="text-right">{competitionGenderStats.men}</td>
+            </tr>
+          ) : (
+            <tr><td colSpan={6} className="italic">Соревнование скрыто фильтром прошедших.</td></tr>
+          )}
         </tbody>
       </table>
 

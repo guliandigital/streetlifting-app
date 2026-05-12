@@ -15,8 +15,33 @@ type CeremonyPlayer = {
   stop: () => void;
 };
 
-function groupKey(row: ScoreboardRowDto): string {
+type AwardVariant = 'class' | 'overall' | 'teams';
+
+interface AthleteAwardRow {
+  kind: 'athlete';
+  key: string;
+  row: ScoreboardRowDto;
+  place: number;
+}
+
+interface TeamAwardRow {
+  kind: 'team';
+  key: string;
+  teamName: string;
+  nominations: number;
+  points: number;
+  bestScore: number;
+  place: number;
+}
+
+type AwardRow = AthleteAwardRow | TeamAwardRow;
+
+function classGroupKey(row: ScoreboardRowDto): string {
   return `${row.discipline} / ${row.division} / ${row.weightClass}`;
+}
+
+function overallGroupKey(row: ScoreboardRowDto): string {
+  return `${row.discipline} / Абсолютный зачет`;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -91,6 +116,9 @@ export default function CompetitionAwardsFeature() {
   const playerRef = useRef<CeremonyPlayer | null>(null);
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [currentAwardIndex, setCurrentAwardIndex] = useState(0);
+  const [competitionSelected, setCompetitionSelected] = useState(true);
+  const [awardVariant, setAwardVariant] = useState<AwardVariant>('class');
+  const [firstPlaceFirst, setFirstPlaceFirst] = useState(true);
   const [selectedWeights, setSelectedWeights] = useState<string[]>([]);
   const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
   const allWeights = useMemo(
@@ -104,6 +132,10 @@ export default function CompetitionAwardsFeature() {
   const nominationById = useMemo(
     () => new Map((data?.nominations ?? []).map((nomination) => [nomination.id, nomination])),
     [data?.nominations],
+  );
+  const scoreboardRowByNominationId = useMemo(
+    () => new Map((data?.scoreboardRows ?? []).map((row) => [row.nominationId, row])),
+    [data?.scoreboardRows],
   );
   const competitionGenderStats = useMemo(
     () => nominationGenderStats(data?.nominations ?? []),
@@ -123,28 +155,70 @@ export default function CompetitionAwardsFeature() {
   const rightWeights = allWeights.slice(Math.ceil(allWeights.length / 2));
   const filteredScoreboardRows = useMemo(
     () =>
-      data?.scoreboardRows.filter(
+      competitionSelected ? data?.scoreboardRows.filter(
         (row) =>
           selectedWeights.includes(row.weightClass) &&
           selectedDisciplines.includes(row.discipline),
-      ) ?? [],
-    [data?.scoreboardRows, selectedDisciplines, selectedWeights],
+      ) ?? [] : [],
+    [competitionSelected, data?.scoreboardRows, selectedDisciplines, selectedWeights],
   );
   const awardRows = useMemo(
     () => {
-      const groups = new Map<string, ScoreboardRowDto[]>();
-      for (const row of filteredScoreboardRows) {
-        if (!row.placeInClass || row.placeInClass > 3) continue;
-        groups.set(groupKey(row), [...(groups.get(groupKey(row)) ?? []), row]);
+      if (awardVariant === 'teams') {
+        const teams = new Map<string, { nominations: number; points: number; bestScore: number }>();
+        for (const nomination of data?.nominations ?? []) {
+          if (!competitionSelected) continue;
+          if (!selectedWeights.includes(nomination.weightClass.nameRu)) continue;
+          if (!selectedDisciplines.includes(nomination.discipline.nameRu)) continue;
+          const row = scoreboardRowByNominationId.get(nomination.id);
+          const score = Number(row?.finalScore ?? 0);
+          const teamName = nomination.athlete.clubName?.trim() || 'Без команды';
+          const current = teams.get(teamName) ?? { nominations: 0, points: 0, bestScore: 0 };
+          teams.set(teamName, {
+            nominations: current.nominations + 1,
+            points: current.points + score,
+            bestScore: Math.max(current.bestScore, score),
+          });
+        }
+
+        return [...teams.entries()]
+          .sort((a, b) => b[1].points - a[1].points || b[1].bestScore - a[1].bestScore || a[0].localeCompare(b[0]))
+          .slice(0, 3)
+          .map<AwardRow>(([teamName, team], index) => ({
+            kind: 'team',
+            key: teamName,
+            teamName,
+            nominations: team.nominations,
+            points: team.points,
+            bestScore: team.bestScore,
+            place: index + 1,
+          }));
       }
 
-      return [...groups.entries()].flatMap(([key, rows]) =>
-        [...rows]
-          .sort((a, b) => (a.placeInClass ?? 99) - (b.placeInClass ?? 99))
-          .map((row) => ({ key, row })),
+      const getPlace = (row: ScoreboardRowDto) => (awardVariant === 'overall' ? row.placeOverall : row.placeInClass);
+      const getKey = awardVariant === 'overall' ? overallGroupKey : classGroupKey;
+      const groups = new Map<string, AthleteAwardRow[]>();
+      for (const row of filteredScoreboardRows) {
+        const place = getPlace(row);
+        if (!place || place > 3) continue;
+        const key = getKey(row);
+        groups.set(key, [...(groups.get(key) ?? []), { kind: 'athlete', key, row, place }]);
+      }
+
+      return [...groups.entries()].flatMap(([, rows]) =>
+        [...rows].sort((a, b) => firstPlaceFirst ? a.place - b.place : b.place - a.place),
       );
     },
-    [filteredScoreboardRows],
+    [
+      awardVariant,
+      competitionSelected,
+      data?.nominations,
+      filteredScoreboardRows,
+      firstPlaceFirst,
+      scoreboardRowByNominationId,
+      selectedDisciplines,
+      selectedWeights,
+    ],
   );
   const nextAward = useCallback(() => {
     setCurrentAwardIndex((index) => (awardRows.length > 0 ? (index + 1) % awardRows.length : 0));
@@ -237,7 +311,7 @@ export default function CompetitionAwardsFeature() {
             <thead><tr><th>Вкл</th><th>Соревнование</th><th>Начало</th><th>Н.Всего</th><th>Н.Жен.</th><th>Н.Муж.</th></tr></thead>
             <tbody>
               <tr className="is-selected">
-                <td><input type="checkbox" defaultChecked /></td>
+                <td><input type="checkbox" checked={competitionSelected} onChange={(event) => setCompetitionSelected(event.target.checked)} /></td>
                 <td>{data.competition.nameRu}</td>
                 <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
                 <td className="text-right">{competitionGenderStats.total}</td>
@@ -249,11 +323,11 @@ export default function CompetitionAwardsFeature() {
 
           <div className="flex items-center gap-4">
             <span>Вариант:</span>
-            <label><input type="radio" name="awardVariant" defaultChecked /> Весовые</label>
-            <label><input type="radio" name="awardVariant" /> Абсолютка</label>
-            <label><input type="radio" name="awardVariant" /> Команды</label>
+            <label><input type="radio" name="awardVariant" checked={awardVariant === 'class'} onChange={() => setAwardVariant('class')} /> Весовые</label>
+            <label><input type="radio" name="awardVariant" checked={awardVariant === 'overall'} onChange={() => setAwardVariant('overall')} /> Абсолютка</label>
+            <label><input type="radio" name="awardVariant" checked={awardVariant === 'teams'} onChange={() => setAwardVariant('teams')} /> Команды</label>
           </div>
-          <label className="pt-checkline"><input type="checkbox" defaultChecked /> Награждение с первого места</label>
+          <label className="pt-checkline"><input type="checkbox" checked={firstPlaceFirst} onChange={(event) => setFirstPlaceFirst(event.target.checked)} /> Награждение с первого места</label>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <PowerTablePanel className="p-2">
@@ -344,16 +418,31 @@ export default function CompetitionAwardsFeature() {
               <tr><th>Дисциплина</th><th>Возраст</th><th>Пол</th><th>Упражнение</th><th>ВК</th><th>Спортсмен</th><th>Место</th><th>Команда</th></tr>
             </thead>
             <tbody>
-              {awardRows.map(({ key, row }, index) => (
-                <tr key={`${row.nominationId}-${key}`} className={index === currentAwardIndex ? 'is-selected' : index % 4 === 0 ? 'is-gray' : undefined}>
-                  <td>{row.discipline}</td>
-                  <td>{row.division}</td>
-                  <td>{genderShortLabel(nominationById.get(row.nominationId)?.division.gender)}</td>
-                  <td>{key.split(' / ')[0]}</td>
-                  <td className="font-bold">{row.weightClass}</td>
-                  <td>{row.athleteName}</td>
-                  <td className={row.placeInClass === 1 ? 'pt-row-yellow text-right' : 'pt-row-gray text-right'}>{row.placeInClass}</td>
-                  <td>-</td>
+              {awardRows.map((award, index) => (
+                <tr key={award.kind === 'athlete' ? `${award.row.nominationId}-${award.key}` : award.key} className={index === currentAwardIndex ? 'is-selected' : index % 4 === 0 ? 'is-gray' : undefined}>
+                  {award.kind === 'athlete' ? (
+                    <>
+                      <td>{award.row.discipline}</td>
+                      <td>{award.row.division}</td>
+                      <td>{genderShortLabel(nominationById.get(award.row.nominationId)?.division.gender)}</td>
+                      <td>{award.key.split(' / ')[0]}</td>
+                      <td className="font-bold">{awardVariant === 'overall' ? 'ABS' : award.row.weightClass}</td>
+                      <td>{award.row.athleteName}</td>
+                      <td className={award.place === 1 ? 'pt-row-yellow text-right' : 'pt-row-gray text-right'}>{award.place}</td>
+                      <td>{nominationById.get(award.row.nominationId)?.athlete.clubName ?? '-'}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td>Командный зачет</td>
+                      <td>Все</td>
+                      <td>Все</td>
+                      <td>Очки команды</td>
+                      <td className="font-bold">{award.nominations}</td>
+                      <td>{award.teamName}</td>
+                      <td className={award.place === 1 ? 'pt-row-yellow text-right' : 'pt-row-gray text-right'}>{award.place}</td>
+                      <td className="text-right tabular-nums">{award.points.toFixed(2)}</td>
+                    </>
+                  )}
                 </tr>
               ))}
               {awardRows.length === 0 ? (

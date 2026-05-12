@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@streetlifting/ui';
@@ -9,10 +9,25 @@ import { PowerTableIcon } from './powertable.js';
 type StreetliftingTheme = 'dark' | 'light';
 
 const THEME_STORAGE_KEY = 'streetlifting.theme.v1';
+const FAVORITES_STORAGE_KEY = 'streetlifting.favoritePaths.v1';
 
 function readInitialTheme(): StreetliftingTheme {
   if (typeof window === 'undefined') return 'dark';
   return window.localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+}
+
+function readFavoritePaths(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(FAVORITES_STORAGE_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeSearch(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 export function RootLayout() {
@@ -22,6 +37,9 @@ export function RootLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [theme, setTheme] = useState<StreetliftingTheme>(readInitialTheme);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [favoritePaths, setFavoritePaths] = useState<string[]>(readFavoritePaths);
 
   async function handleLogout() {
     await logout();
@@ -33,21 +51,89 @@ export function RootLayout() {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
 
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const currentLocale = (i18n.resolvedLanguage ?? 'ru') as SupportedLocale;
   const nextTheme = theme === 'dark' ? 'light' : 'dark';
   const themeToggleLabel = theme === 'dark' ? 'Светлая тема' : 'Темная тема';
 
-  const rootTabs = [
-    { to: '/', label: 'Начальная страница' },
-    { to: '/federations', label: t('header.federations') },
-    { to: '/athletes', label: t('header.athletes') },
-    { to: '/competitions', label: t('header.competitions') },
-    { to: '/disciplines', label: t('header.disciplines') },
-    { to: '/judges', label: t('header.judges') },
-    { to: '/lookups', label: t('header.lookups') },
-  ] as const;
+  const rootTabs = useMemo(
+    () => [
+      { to: '/', label: 'Начальная страница' },
+      { to: '/federations', label: t('header.federations') },
+      { to: '/athletes', label: t('header.athletes') },
+      { to: '/competitions', label: t('header.competitions') },
+      { to: '/disciplines', label: t('header.disciplines') },
+      { to: '/judges', label: t('header.judges') },
+      { to: '/lookups', label: t('header.lookups') },
+    ] as const,
+    [t],
+  );
+  const searchCommands = useMemo(
+    () => [
+      ...rootTabs.map((tab) => ({ to: tab.to, label: tab.label })),
+      { to: '/me', label: user?.displayName ? `${user.displayName} профиль аккаунт` : 'Профиль аккаунт' },
+    ],
+    [rootTabs, user?.displayName],
+  );
+  const currentPath = location.pathname;
+  const isCurrentFavorite = favoritePaths.includes(currentPath);
 
   const shouldUsePowerTableShell = (isAuthenticated && user) || location.pathname.startsWith('/broadcast');
+
+  function submitSearch() {
+    const query = normalizeSearch(searchQuery);
+    if (!query) return;
+    const command = searchCommands.find((item) => normalizeSearch(item.label).includes(query));
+    if (command) {
+      void navigate({ to: command.to as never });
+      return;
+    }
+    const visibleText = document.body.innerText.toLowerCase();
+    if (visibleText.includes(query)) {
+      (window as Window & { find?: (text: string) => boolean }).find?.(searchQuery);
+    }
+  }
+
+  function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submitSearch();
+    }
+    if (event.key === 'Escape') {
+      setSearchQuery('');
+      searchRef.current?.blur();
+    }
+  }
+
+  function toggleFavoritePath() {
+    setFavoritePaths((paths) => {
+      const next = paths.includes(currentPath)
+        ? paths.filter((path) => path !== currentPath)
+        : [...paths, currentPath];
+      window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function openNotifications() {
+    const federationMatch = currentPath.match(/^\/federations\/([^/]+)/);
+    if (federationMatch?.[1]) {
+      void navigate({ to: '/federations/$id/notifications', params: { id: federationMatch[1] } });
+      return;
+    }
+    void navigate({ to: '/me' });
+  }
 
   if (shouldUsePowerTableShell) {
     return (
@@ -60,7 +146,15 @@ export function RootLayout() {
           />
           <div className="pt-burger"><PowerTableIcon name="menu" /></div>
           <div className="pt-title">Соревнования (Streetlifting)</div>
-          <input className="pt-search" placeholder="Поиск Ctrl+Shift+F" aria-label="Поиск" />
+          <input
+            ref={searchRef}
+            className="pt-search"
+            placeholder="Поиск Ctrl+Shift+F"
+            aria-label="Поиск"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
+          />
           <div className="pt-title-actions">
             <button
               type="button"
@@ -73,9 +167,18 @@ export function RootLayout() {
               <PowerTableIcon name={theme === 'dark' ? 'sun' : 'moon'} />
               <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
             </button>
-            <span className="pt-title-action-icon"><PowerTableIcon name="notifications" /></span>
-            <span className="pt-title-action-icon"><PowerTableIcon name="refresh" /></span>
-            <span className="pt-title-action-icon"><PowerTableIcon name="star" /></span>
+            <button type="button" className="pt-title-action-icon" onClick={openNotifications} title="Уведомления" aria-label="Уведомления"><PowerTableIcon name="notifications" /></button>
+            <button type="button" className="pt-title-action-icon" onClick={() => window.location.reload()} title="Обновить страницу" aria-label="Обновить страницу"><PowerTableIcon name="refresh" /></button>
+            <button
+              type="button"
+              className={`pt-title-action-icon${isCurrentFavorite ? ' is-active' : ''}`}
+              onClick={toggleFavoritePath}
+              title={isCurrentFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+              aria-label={isCurrentFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+              aria-pressed={isCurrentFavorite}
+            >
+              <PowerTableIcon name="star" />
+            </button>
             <span>{user?.displayName ?? 'Публичное табло'}</span>
             {user ? (
               <button type="button" className="pt-logout" onClick={() => void handleLogout()}>

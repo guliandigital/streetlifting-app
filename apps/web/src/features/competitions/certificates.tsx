@@ -12,6 +12,15 @@ import {
 import { nominationGenderStats } from './gender-stats.js';
 import { useCompetitionOps } from './operations-api.js';
 
+function isPastCompetition(endDate: string): boolean {
+  const end = new Date(endDate);
+  if (Number.isNaN(end.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return end < today;
+}
+
 function uniqueValues(values: string[]): string[] {
   return [...new Set(values)].filter(Boolean);
 }
@@ -30,10 +39,13 @@ export default function CompetitionCertificatesFeature() {
   const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
   const [selectedPlaces, setSelectedPlaces] = useState<number[]>([1, 2, 3]);
   const [showAllPlaces, setShowAllPlaces] = useState(false);
+  const [hidePastCompetitions, setHidePastCompetitions] = useState(true);
+  const [competitionSelected, setCompetitionSelected] = useState(true);
   const competitionGenderStats = useMemo(
     () => nominationGenderStats(data?.nominations ?? []),
     [data?.nominations],
   );
+  const showCompetitionRow = data ? (!hidePastCompetitions || !isPastCompetition(data.competition.endDate)) : false;
   const weights = useMemo(
     () => (data ? uniqueValues(data.scoreboardRows.map((row) => row.weightClass)) : []),
     [data],
@@ -50,13 +62,15 @@ export default function CompetitionCertificatesFeature() {
     () =>
       data?.scoreboardRows.filter(
         (row) =>
+          competitionSelected &&
+          showCompetitionRow &&
           row.placeInClass !== null &&
           (showAllPlaces || selectedPlaces.includes(row.placeInClass)) &&
           selectedWeights.includes(row.weightClass) &&
           selectedDivisions.includes(row.division) &&
           selectedDisciplines.includes(row.discipline),
       ) ?? [],
-    [data?.scoreboardRows, selectedDisciplines, selectedDivisions, selectedPlaces, selectedWeights, showAllPlaces],
+    [competitionSelected, data?.scoreboardRows, selectedDisciplines, selectedDivisions, selectedPlaces, selectedWeights, showAllPlaces, showCompetitionRow],
   );
 
   useEffect(() => {
@@ -114,18 +128,22 @@ export default function CompetitionCertificatesFeature() {
     >
       <div className="print:hidden">
         <PowerTableSectionTitle>Соревнования</PowerTableSectionTitle>
-        <label className="pt-checkline mb-2"><input type="checkbox" defaultChecked /> Скрыть прошедшие соревнования</label>
+        <label className="pt-checkline mb-2"><input type="checkbox" checked={hidePastCompetitions} onChange={(event) => setHidePastCompetitions(event.target.checked)} /> Скрыть прошедшие соревнования</label>
         <table className="pt-grid">
           <thead><tr><th>Вкл</th><th>Начало</th><th>Соревнование</th><th>Н.Всего</th><th>Н.Жен.</th><th>Н.Муж.</th></tr></thead>
           <tbody>
-            <tr className="is-selected">
-              <td><input type="checkbox" defaultChecked /></td>
-              <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
-              <td>{data.competition.nameRu}</td>
-              <td className="text-right">{competitionGenderStats.total}</td>
-              <td className="text-right">{competitionGenderStats.women}</td>
-              <td className="text-right">{competitionGenderStats.men}</td>
-            </tr>
+            {showCompetitionRow ? (
+              <tr className="is-selected">
+                <td><input type="checkbox" checked={competitionSelected} onChange={(event) => setCompetitionSelected(event.target.checked)} /></td>
+                <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
+                <td>{data.competition.nameRu}</td>
+                <td className="text-right">{competitionGenderStats.total}</td>
+                <td className="text-right">{competitionGenderStats.women}</td>
+                <td className="text-right">{competitionGenderStats.men}</td>
+              </tr>
+            ) : (
+              <tr><td colSpan={6} className="italic">Соревнование скрыто фильтром прошедших.</td></tr>
+            )}
           </tbody>
         </table>
 

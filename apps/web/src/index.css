@@ -986,12 +986,23 @@ body {
 
 .pt-object-icon,
 .pt-title-action-icon {
+  border: 0;
+  background: transparent;
   color: #a1a1aa;
+  padding: 0;
   transition: color 160ms ease;
 }
 
 .pt-object-icon:hover,
 .pt-title-action-icon:hover {
+  color: #99cd14;
+}
+
+.pt-title-action-icon {
+  cursor: pointer;
+}
+
+.pt-title-action-icon.is-active {
   color: #99cd14;
 }
 

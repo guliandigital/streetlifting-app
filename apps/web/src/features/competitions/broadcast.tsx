@@ -9,13 +9,133 @@ import {
   PowerTablePanel,
 } from '../../components/powertable.js';
 import { nominationGenderStats } from './gender-stats.js';
-import { usePublicScoreboard } from './operations-api.js';
+import { usePublicScoreboard, type NominationDto, type ScoreboardRowDto } from './operations-api.js';
+
+type BroadcastSortMode = 'name' | 'weight' | 'division' | 'score';
+type BroadcastColumnKey =
+  | 'weightClass'
+  | 'bodyWeight'
+  | 'rankTitle'
+  | 'birthYear'
+  | 'coefficient'
+  | 'place'
+  | 'teamPoints'
+  | 'status'
+  | 'warnings';
+
+const broadcastColumns: Array<{ key: BroadcastColumnKey; label: string }> = [
+  { key: 'weightClass', label: 'Весовая категория' },
+  { key: 'bodyWeight', label: 'Собственный вес' },
+  { key: 'rankTitle', label: 'Спортивный разряд / звание' },
+  { key: 'birthYear', label: 'Год рождения' },
+  { key: 'coefficient', label: 'Коэффициент' },
+  { key: 'place', label: 'Место' },
+  { key: 'teamPoints', label: 'Командные очки' },
+  { key: 'status', label: 'Статус номинации' },
+  { key: 'warnings', label: 'Предупреждения' },
+];
+
+function defaultColumnVisibility(): Record<BroadcastColumnKey, boolean> {
+  return {
+    weightClass: true,
+    bodyWeight: true,
+    rankTitle: true,
+    birthYear: true,
+    coefficient: false,
+    place: true,
+    teamPoints: false,
+    status: true,
+    warnings: true,
+  };
+}
+
+function isCompetitionInBroadcastWindow(startDate: string, endDate: string): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const windowEnd = new Date(today);
+  windowEnd.setDate(windowEnd.getDate() + 30);
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return true;
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return end >= today && start <= windowEnd;
+}
+
+function fullName(person: NominationDto['athlete']): string {
+  return [person.lastName, person.firstName, person.middleName].filter(Boolean).join(' ');
+}
+
+function birthYear(value: string | null | undefined): string {
+  if (!value) return '-';
+  const year = new Date(value).getFullYear();
+  return Number.isFinite(year) ? String(year) : '-';
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+function sortBroadcastRows(
+  rows: ScoreboardRowDto[],
+  nominationsById: Map<string, NominationDto>,
+  mode: BroadcastSortMode,
+): ScoreboardRowDto[] {
+  return [...rows].sort((a, b) => {
+    if (mode === 'weight') {
+      return a.weightClass.localeCompare(b.weightClass) || a.athleteName.localeCompare(b.athleteName);
+    }
+    if (mode === 'division') {
+      return (
+        a.division.localeCompare(b.division) ||
+        a.weightClass.localeCompare(b.weightClass) ||
+        a.athleteName.localeCompare(b.athleteName)
+      );
+    }
+    if (mode === 'score') {
+      return (
+        Number(b.finalScore ?? 0) - Number(a.finalScore ?? 0) ||
+        a.weightClass.localeCompare(b.weightClass) ||
+        a.athleteName.localeCompare(b.athleteName)
+      );
+    }
+    return fullName(nominationsById.get(a.nominationId)?.athlete ?? {
+      id: '',
+      firstName: a.athleteName,
+      lastName: '',
+      middleName: null,
+      dateOfBirth: '',
+      clubName: null,
+      federationCardNumber: null,
+      photoUrl: null,
+    }).localeCompare(fullName(nominationsById.get(b.nominationId)?.athlete ?? {
+      id: '',
+      firstName: b.athleteName,
+      lastName: '',
+      middleName: null,
+      dateOfBirth: '',
+      clubName: null,
+      federationCardNumber: null,
+      photoUrl: null,
+    }));
+  });
+}
 
 export default function CompetitionBroadcastFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/broadcast/competitions/$id' });
   const { data, isLoading, error, isFetching, refetch } = usePublicScoreboard(id);
   const [selectedPlatform, setSelectedPlatform] = useState<'1' | 'admin'>('1');
+  const [showAllCompetitions, setShowAllCompetitions] = useState(false);
+  const [competitionSelected, setCompetitionSelected] = useState(true);
+  const [sortMode, setSortMode] = useState<BroadcastSortMode>('name');
+  const [visibleColumns, setVisibleColumns] = useState(defaultColumnVisibility);
+  const [hideAthletePhoto, setHideAthletePhoto] = useState(true);
   const [timerSeconds, setTimerSeconds] = useState(60);
   const [timerRunning, setTimerRunning] = useState(false);
   const [localDecision, setLocalDecision] = useState<'good_lift' | 'no_lift' | null>(null);
@@ -23,14 +143,24 @@ export default function CompetitionBroadcastFeature() {
     () => nominationGenderStats(data?.nominations ?? []),
     [data?.nominations],
   );
-
-  const current = useMemo(
-    () => data?.nominations.find((nomination) => nomination.status === 'on_platform') ?? data?.nominations[0] ?? null,
+  const nominationsById = useMemo(
+    () => new Map((data?.nominations ?? []).map((nomination) => [nomination.id, nomination])),
     [data?.nominations],
   );
-  const athleteName = current
-    ? [current.athlete.lastName, current.athlete.firstName, current.athlete.middleName].filter(Boolean).join(' ')
-    : '';
+  const showCompetitionRow = data
+    ? showAllCompetitions || isCompetitionInBroadcastWindow(data.competition.startDate, data.competition.endDate)
+    : false;
+  const visibleRows = useMemo(
+    () => sortBroadcastRows(competitionSelected && showCompetitionRow ? data?.rows ?? [] : [], nominationsById, sortMode),
+    [competitionSelected, data?.rows, nominationsById, showCompetitionRow, sortMode],
+  );
+
+  const current = useMemo(
+    () => visibleRows[0] ? nominationsById.get(visibleRows[0].nominationId) ?? null : null,
+    [nominationsById, visibleRows],
+  );
+  const athleteName = current ? fullName(current.athlete) : '';
+  const visibleColumnCount = 2 + broadcastColumns.filter((column) => visibleColumns[column.key]).length;
 
   useEffect(() => {
     if (!timerRunning) return undefined;
@@ -70,6 +200,23 @@ export default function CompetitionBroadcastFeature() {
     toast.success(decision === 'good_lift' ? 'На табло отмечен зачет' : 'На табло отмечен не зачет');
   }
 
+  function setColumnVisibility(key: BroadcastColumnKey, checked: boolean) {
+    setVisibleColumns((columns) => ({ ...columns, [key]: checked }));
+  }
+
+  function renderColumn(row: ScoreboardRowDto, key: BroadcastColumnKey) {
+    const nomination = nominationsById.get(row.nominationId);
+    if (key === 'weightClass') return <td key={key} className="font-bold">{row.weightClass}</td>;
+    if (key === 'bodyWeight') return <td key={key} className="text-right">{nomination?.bodyWeightAtWeighIn ?? '-'}</td>;
+    if (key === 'rankTitle') return <td key={key}>{nomination?.athlete.federationCardNumber ?? '-'}</td>;
+    if (key === 'birthYear') return <td key={key} className="text-right">{birthYear(nomination?.athlete.dateOfBirth)}</td>;
+    if (key === 'coefficient') return <td key={key} className="text-right">{row.finalScore && row.bestSuccessfulAttemptKg ? (row.finalScore / row.bestSuccessfulAttemptKg).toFixed(3) : '-'}</td>;
+    if (key === 'place') return <td key={key} className="text-right">{row.placeInClass ?? '-'}</td>;
+    if (key === 'teamPoints') return <td key={key} className="text-right">{row.finalScore ?? '-'}</td>;
+    if (key === 'status') return <td key={key}>{t(`competitionOps.status.${row.status}`)}</td>;
+    return <td key={key}>{row.status === 'finished' ? '-' : t(`competitionOps.status.${row.status}`)}</td>;
+  }
+
   if (isLoading) {
     return <div className="pt-page p-6 text-sm text-gray-600">{t('common.loading')}</div>;
   }
@@ -100,7 +247,7 @@ export default function CompetitionBroadcastFeature() {
     >
       <div className="pt-info-gray mb-2 flex items-center justify-between">
         <span className="pt-inline-icon"><PowerTableIcon name="warning" />В списке отображаются соревнования + 30 дней от текущей даты</span>
-        <label className="pt-checkline"><span>Отобразить все соревнования:</span><input type="checkbox" /></label>
+        <label className="pt-checkline"><span>Отобразить все соревнования:</span><input type="checkbox" checked={showAllCompetitions} onChange={(event) => setShowAllCompetitions(event.target.checked)} /></label>
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_370px]">
@@ -129,19 +276,32 @@ export default function CompetitionBroadcastFeature() {
           <table className="pt-grid">
             <thead><tr><th></th><th></th><th><PowerTableIcon name="timer" className="mx-auto" /></th><th>Начало</th><th>Ном</th><th>Жен</th><th>Муж</th></tr></thead>
             <tbody>
-              <tr className="is-selected">
-                <td><input type="checkbox" defaultChecked /></td>
-                <td>{data.competition.nameRu}</td>
-                <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
-                <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
-                <td className="text-right">{competitionGenderStats.total}</td>
-                <td className="text-right">{competitionGenderStats.women}</td>
-                <td className="text-right">{competitionGenderStats.men}</td>
-              </tr>
+              {showCompetitionRow ? (
+                <tr className="is-selected">
+                  <td><input type="checkbox" checked={competitionSelected} onChange={(event) => setCompetitionSelected(event.target.checked)} /></td>
+                  <td>{data.competition.nameRu}</td>
+                  <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
+                  <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
+                  <td className="text-right">{competitionGenderStats.total}</td>
+                  <td className="text-right">{competitionGenderStats.women}</td>
+                  <td className="text-right">{competitionGenderStats.men}</td>
+                </tr>
+              ) : (
+                <tr><td colSpan={7} className="italic">Соревнование скрыто 30-дневным фильтром.</td></tr>
+              )}
             </tbody>
           </table>
 
           <div className="pt-live-controls mt-2">
+            {!hideAthletePhoto && current ? (
+              current.athlete.photoUrl ? (
+                <img src={current.athlete.photoUrl} alt="" className="h-16 w-16 rounded border border-gray-700 object-cover" />
+              ) : (
+                <div className="flex h-16 w-16 items-center justify-center rounded border border-gray-700 bg-black text-lg font-bold text-[#98e400]">
+                  {initials(athleteName) || 'SL'}
+                </div>
+              )
+            ) : null}
             <div className="pt-black-display">
               {athleteName || '-'}
               {localDecision ? (
@@ -162,32 +322,44 @@ export default function CompetitionBroadcastFeature() {
 
           <table className="pt-grid">
             <thead>
-              <tr><th>Спортсмен</th><th>Дисц.</th><th>ВК</th><th>Вес</th><th>Разряд</th><th>Год</th><th>Рез-т</th><th>М</th><th>АБС</th><th>Статус</th></tr>
+              <tr>
+                <th>Спортсмен</th>
+                <th>Дисц.</th>
+                {broadcastColumns.filter((column) => visibleColumns[column.key]).map((column) => (
+                  <th key={column.key}>{column.label}</th>
+                ))}
+              </tr>
             </thead>
             <tbody>
-              {data.rows.map((row, index) => (
+              {visibleRows.map((row, index) => (
                 <tr key={row.nominationId} className={index === 0 ? 'is-selected' : index % 2 ? 'is-yellow' : 'is-green'}>
                   <td>{row.athleteName}</td>
                   <td>{row.discipline}</td>
-                  <td className="font-bold">{row.weightClass}</td>
-                  <td className="text-right">{row.bestSuccessfulAttemptKg ?? '-'}</td>
-                  <td>-</td>
-                  <td>-</td>
-                  <td className="text-right">{row.finalScore ?? '-'}</td>
-                  <td className="text-right">{row.placeInClass ?? '-'}</td>
-                  <td>-</td>
-                  <td>{t(`competitionOps.status.${row.status}`)}</td>
+                  {broadcastColumns.filter((column) => visibleColumns[column.key]).map((column) => renderColumn(row, column.key))}
                 </tr>
               ))}
+              {visibleRows.length === 0 ? (
+                <tr><td colSpan={visibleColumnCount} className="italic">Номинации скрыты настройками отображения.</td></tr>
+              ) : null}
             </tbody>
           </table>
         </div>
 
         <PowerTablePanel className="p-3">
           <div className="font-bold text-blue-900">Упорядочивание номинаций:</div>
-          {['по ФИО', 'по весовой категории, ФИО', 'по возрастной, ВК, ФИО', 'по сумме прогноза, ВК, ФИО'].map((label, index) => (
+          {[
+            ['name', 'по ФИО'],
+            ['weight', 'по весовой категории, ФИО'],
+            ['division', 'по возрастной, ВК, ФИО'],
+            ['score', 'по сумме прогноза, ВК, ФИО'],
+          ].map(([value, label]) => (
             <label key={label} className="pt-checkline mt-2">
-              <input name="sort" type="radio" defaultChecked={index === 0} />
+              <input
+                name="sort"
+                type="radio"
+                checked={sortMode === value}
+                onChange={() => setSortMode(value as BroadcastSortMode)}
+              />
               <span>{label}</span>
             </label>
           ))}
@@ -196,25 +368,21 @@ export default function CompetitionBroadcastFeature() {
           <table className="pt-grid mt-1">
             <thead><tr><th>Вкл</th><th>Название колонки</th></tr></thead>
             <tbody>
-              {[
-                'Весовая категория',
-                'Собственный вес',
-                'Спортивный разряд / звание',
-                'Год рождения',
-                'Коэффициент',
-                'Место',
-                'Командные очки',
-                'Статус номинации',
-                'Предупреждения',
-              ].map((name, index) => (
-                <tr key={name} className={index === 0 ? 'is-selected' : undefined}>
-                  <td><input type="checkbox" defaultChecked={index < 4 || index === 5 || index > 6} /></td>
-                  <td>{name}</td>
+              {broadcastColumns.map((column, index) => (
+                <tr key={column.key} className={index === 0 ? 'is-selected' : undefined}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={visibleColumns[column.key]}
+                      onChange={(event) => setColumnVisibility(column.key, event.target.checked)}
+                    />
+                  </td>
+                  <td>{column.label}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <label className="pt-checkline mt-3"><span>Не отображать фото спортсмена:</span><input type="checkbox" defaultChecked /></label>
+          <label className="pt-checkline mt-3"><span>Не отображать фото спортсмена:</span><input type="checkbox" checked={hideAthletePhoto} onChange={(event) => setHideAthletePhoto(event.target.checked)} /></label>
         </PowerTablePanel>
       </div>
     </PowerTablePage>
