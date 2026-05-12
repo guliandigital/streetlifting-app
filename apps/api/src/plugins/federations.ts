@@ -13,6 +13,12 @@ import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
+import {
+  MailerDeliveryError,
+  MailerNotConfiguredError,
+  mailerConfigured,
+  sendMail,
+} from '../lib/mailer.js';
 
 const log = moduleLogger('federations');
 const MAX_FEDERATION_ATTACHMENT_BYTES = 5 * 1024 * 1024;
@@ -500,28 +506,82 @@ export const federationsPlugin: FeaturePlugin = {
           });
         }
 
-        const smtpConfigured = Boolean(process.env.SMTP_HOST || process.env.MAILER_ENDPOINT);
-        await audit.record({
-          ...audit.fromRequest(req),
-          actorUserId: req.user!.id,
-          action: 'federation.test_email.requested',
-          result: 'success',
-          scopeFederationId: req.params.id,
-          scopeCompetitionId: null,
-          targetType: 'federation',
-          targetId: req.params.id,
-          before: null,
-          after: { recipient: federation.contactEmail, smtpConfigured },
-          ...(!smtpConfigured && {
-            notes: 'SMTP delivery is not configured; contact email validation only',
-          }),
-        });
+        try {
+          const delivery = await sendMail({
+            to: federation.contactEmail,
+            subject: 'Тестовое письмо Streetlifting App',
+            text: [
+              'Streetlifting App: тестовая доставка уведомлений федерации работает.',
+              '',
+              `Федерация ID: ${federation.id}`,
+              `Время: ${new Date().toISOString()}`,
+            ].join('\n'),
+            html: [
+              '<p>Streetlifting App: тестовая доставка уведомлений федерации работает.</p>',
+              `<p><strong>Федерация ID:</strong> ${federation.id}</p>`,
+              `<p><strong>Время:</strong> ${new Date().toISOString()}</p>`,
+            ].join(''),
+          });
 
-        return {
-          status: smtpConfigured ? 'queued' : 'configuration_checked',
-          recipient: federation.contactEmail,
-          smtpConfigured,
-        };
+          await audit.record({
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.test_email.sent',
+            result: 'success',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'federation',
+            targetId: req.params.id,
+            before: null,
+            after: {
+              recipient: federation.contactEmail,
+              provider: delivery.provider,
+              messageId: delivery.messageId,
+            },
+          });
+
+          return {
+            status: 'sent',
+            recipient: federation.contactEmail,
+            smtpConfigured: mailerConfigured(),
+            provider: delivery.provider,
+            messageId: delivery.messageId,
+          };
+        } catch (err) {
+          const isNotConfigured = err instanceof MailerNotConfiguredError;
+          const isDeliveryError = err instanceof MailerDeliveryError;
+          await audit.record({
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.test_email.failed',
+            result: 'failure',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'federation',
+            targetId: req.params.id,
+            before: null,
+            after: { recipient: federation.contactEmail },
+            notes: err instanceof Error ? err.message : 'unknown mailer error',
+          });
+
+          if (isNotConfigured) {
+            return reply.code(503).send({
+              error: {
+                code: 'mailer_not_configured',
+                message: 'Mail delivery is not configured',
+                requestId: req.requestId,
+              },
+            });
+          }
+          log.error({ err, federationId: req.params.id }, 'test email delivery failed');
+          return reply.code(502).send({
+            error: {
+              code: isDeliveryError ? 'mailer_delivery_failed' : 'mailer_error',
+              message: 'Mail delivery failed',
+              requestId: req.requestId,
+            },
+          });
+        }
       },
     );
 

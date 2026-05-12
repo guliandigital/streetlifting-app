@@ -85,9 +85,11 @@ export interface FederationAuditEntryDto {
 }
 
 export interface FederationTestEmailResponse {
-  status: 'queued' | 'configuration_checked';
+  status: 'sent';
   recipient: string;
   smtpConfigured: boolean;
+  provider: 'endpoint' | 'smtp';
+  messageId: string | null;
 }
 
 export interface FederationPlateSetDto {

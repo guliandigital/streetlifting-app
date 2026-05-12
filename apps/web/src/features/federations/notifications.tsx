@@ -107,14 +107,14 @@ export default function FederationNotificationsFeature() {
   async function sendTestEmail() {
     try {
       const result = await testEmail.mutateAsync();
-      toast.success(
-        result.smtpConfigured
-          ? `Тестовое письмо поставлено в очередь: ${result.recipient}`
-          : `Email заполнен: ${result.recipient}. SMTP-доставка пока не настроена.`,
-      );
+      toast.success(`Тестовое письмо отправлено: ${result.recipient}`);
     } catch (err) {
       if (err instanceof ApiClientError && err.code === 'contact_email_missing') {
         toast.error('Заполните email федерации');
+      } else if (err instanceof ApiClientError && err.code === 'mailer_not_configured') {
+        toast.error('Почтовая доставка не настроена на сервере');
+      } else if (err instanceof ApiClientError && err.code === 'mailer_delivery_failed') {
+        toast.error('Почтовый сервер отклонил тестовое письмо');
       } else {
         toast.error(err instanceof Error ? err.message : 'Error');
       }
