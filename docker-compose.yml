@@ -4,13 +4,12 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: streetlifting-pg
     environment:
       POSTGRES_USER: streetlifting
       POSTGRES_PASSWORD: streetlifting
       POSTGRES_DB: streetlifting
     ports:
-      - '5432:5432'
+      - '${STREETLIFTING_POSTGRES_PORT:-55432}:5432'
     volumes:
       - pg-data:/var/lib/postgresql/data
     healthcheck:
@@ -21,10 +20,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: streetlifting-redis
     command: ['redis-server', '--appendonly', 'yes']
     ports:
-      - '6379:6379'
+      - '${STREETLIFTING_REDIS_PORT:-56379}:6379'
     volumes:
       - redis-data:/data
     healthcheck:

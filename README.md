@@ -34,11 +34,26 @@ docs/
 
 ```bash
 pnpm install
-docker compose up -d # local Postgres + Redis
-pnpm dev            # web + api in parallel
+pnpm dev            # starts Docker Desktop/compose, prepares DB, runs API + web
 pnpm dev --filter=@streetlifting/web
 pnpm build
 ```
+
+On Windows, use the same command from PowerShell:
+
+```powershell
+cd C:\PROJECTS\streetlifting-app
+pnpm dev
+```
+
+The dev launcher opens the app at `http://127.0.0.1:1420/login` and the API
+health check at `http://127.0.0.1:3000/health`. Local root credentials are read
+from `apps/api/.env`; if the file is missing, the launcher creates it from
+`apps/api/.env.example` and fills local-only defaults.
+
+Local Docker ports default to `55432` for Postgres and `56379` for Redis to avoid
+conflicts with other projects. Override them with `STREETLIFTING_POSTGRES_PORT`
+and `STREETLIFTING_REDIS_PORT` if needed.
 
 ## Production launch
 
