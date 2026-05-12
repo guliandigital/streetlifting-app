@@ -84,6 +84,33 @@ export interface FederationAuditEntryDto {
   notes: string | null;
 }
 
+export type SupportTicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+
+export interface SupportTicketMessageDto {
+  id: string;
+  ticketId: string;
+  authorUserId: string;
+  body: string;
+  isInternal: boolean;
+  createdAt: string;
+  author: { id: string; email: string; displayName: string };
+}
+
+export interface SupportTicketDto {
+  id: string;
+  federationId: string;
+  authorUserId: string;
+  subject: string;
+  status: SupportTicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt: string;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  author: { id: string; email: string; displayName: string };
+  messages: SupportTicketMessageDto[];
+}
+
 export interface FederationTestEmailResponse {
   status: 'sent';
   recipient: string;
@@ -162,6 +189,13 @@ export function useFederationAudit(id: string) {
   });
 }
 
+export function useFederationSupportTickets(id: string) {
+  return useQuery<{ tickets: SupportTicketDto[] }>({
+    queryKey: ['federations', id, 'support-tickets'],
+    queryFn: () => api.federations.supportTickets.list(id),
+  });
+}
+
 export function useCreateFederation() {
   const qc = useQueryClient();
   return useMutation({
@@ -198,6 +232,45 @@ export function useCreateFederationFeedback(id: string) {
   return useMutation({
     mutationFn: (data: { message: string }) => api.federations.createFeedback(id, data),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useCreateFederationSupportTicket(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { subject?: string; message: string }) =>
+      api.federations.supportTickets.create(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'support-tickets'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useCreateFederationSupportTicketMessage(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { ticketId: string; message: string; isInternal?: boolean }) => {
+      const payload: { message: string; isInternal?: boolean } = { message: data.message };
+      if (data.isInternal !== undefined) payload.isInternal = data.isInternal;
+      return api.federations.supportTickets.createMessage(id, data.ticketId, payload);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'support-tickets'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useUpdateFederationSupportTicket(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { ticketId: string; status: SupportTicketStatus }) =>
+      api.federations.supportTickets.update(id, data.ticketId, { status: data.status }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'support-tickets'] });
       void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
     },
   });

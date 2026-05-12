@@ -274,6 +274,11 @@ function ComparisonBars({ rows }: { rows: FederationDashboardResponse['regionalC
   );
 }
 
+function competitionOptionLabel(competition: FederationDashboardResponse['competitions'][number]): string {
+  const startDate = formatDate(competition.startDate);
+  return `${competition.code} · ${competition.nameRu} · ${startDate} · ${competition.status}`;
+}
+
 export default function FederationDetailFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/federations/$id' });
@@ -285,6 +290,7 @@ export default function FederationDetailFeature() {
   const update = useUpdateFederation(id);
   const testEmail = useTestFederationEmail(id);
   const [connectionSamples, setConnectionSamples] = useState<ConnectionSample[]>([]);
+  const [selectedCompetitionId, setSelectedCompetitionId] = useState('');
   const averageLatencyMs = useMemo(() => {
     const healthySamples = connectionSamples.filter(
       (sample): sample is ConnectionSample & { latencyMs: number } => sample.ok && sample.latencyMs !== null,
@@ -324,6 +330,17 @@ export default function FederationDetailFeature() {
     };
   }, []);
 
+  useEffect(() => {
+    const competitions = data?.competitions ?? [];
+    if (competitions.length === 0) {
+      if (selectedCompetitionId) setSelectedCompetitionId('');
+      return;
+    }
+    if (!competitions.some((competition) => competition.id === selectedCompetitionId)) {
+      setSelectedCompetitionId(competitions[0]?.id ?? '');
+    }
+  }, [data?.competitions, selectedCompetitionId]);
+
   if (isLoading) {
     return <div className="pt-page p-6 text-sm text-gray-600">{t('common.loading')}</div>;
   }
@@ -343,7 +360,8 @@ export default function FederationDetailFeature() {
   const regionLabel = regionRow ? regionRow.nameRu : f.regionCode;
   const canEditFederation = canManageFederation(user, f.id, ['federation_admin']);
   const canManageAccounting = canManageFederation(user, f.id, ['federation_admin', 'accountant']);
-  const primaryCompetitionId = data.competitions[0]?.id;
+  const selectedCompetition = data.competitions.find((competition) => competition.id === selectedCompetitionId);
+  const activeCompetitionId = selectedCompetition?.id;
 
   async function toggleSettings(next: { notificationsDisabled?: boolean; isPublicResultsClosed?: boolean }) {
     try {
@@ -407,32 +425,53 @@ export default function FederationDetailFeature() {
           <Link className="pt-link" to="/lookups">Справочники</Link>
           <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="competition" /><span>Соревнования</span></Link>
           <Link to="/athletes" className="pt-menu-button"><PowerTableMenuIcon name="athletes" /><span>Спортсмены</span></Link>
-          {primaryCompetitionId ? (
+          {data.competitions.length > 0 ? (
+            <label className="pt-label block space-y-1 rounded border border-[var(--pt-border)] bg-[var(--pt-panel)] p-2">
+              Рабочее соревнование
+              <select
+                className="pt-select w-full"
+                value={selectedCompetitionId}
+                onChange={(event) => setSelectedCompetitionId(event.target.value)}
+              >
+                {data.competitions.map((competition) => (
+                  <option key={competition.id} value={competition.id}>{competitionOptionLabel(competition)}</option>
+                ))}
+              </select>
+              <span className="block text-xs text-[var(--pt-muted)]">
+                Все разделы ниже откроются для выбранного соревнования.
+              </span>
+            </label>
+          ) : (
+            <div className="pt-info-yellow">
+              У федерации пока нет соревнований. Создайте соревнование, чтобы открыть номинации, отчеты и табло.
+            </div>
+          )}
+          {activeCompetitionId ? (
             <>
-              <Link to="/competitions/$id/nominations" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="nomination" /><span>Номинации спортсменов</span></Link>
-              <Link to="/competitions/$id/judges" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="judges" /><span>Номинации судей</span></Link>
-              <Link to="/competitions/$id/schedule" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="flow" /><span>Распределение по потокам и группам</span></Link>
+              <Link to="/competitions/$id/nominations" params={{ id: activeCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="nomination" /><span>Номинации спортсменов</span></Link>
+              <Link to="/competitions/$id/judges" params={{ id: activeCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="judges" /><span>Номинации судей</span></Link>
+              <Link to="/competitions/$id/schedule" params={{ id: activeCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="flow" /><span>Распределение по потокам и группам</span></Link>
             </>
           ) : (
             <>
-              <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="nomination" /><span>Номинации спортсменов</span></Link>
-              <Link to="/judges" className="pt-menu-button"><PowerTableMenuIcon name="judges" /><span>Номинации судей</span></Link>
-              <Link to="/competitions" className="pt-menu-button"><PowerTableMenuIcon name="flow" /><span>Распределение по потокам и группам</span></Link>
+              <Link to="/competitions/new" className="pt-menu-button"><PowerTableMenuIcon name="nomination" /><span>Номинации спортсменов</span></Link>
+              <Link to="/competitions/new" className="pt-menu-button"><PowerTableMenuIcon name="judges" /><span>Номинации судей</span></Link>
+              <Link to="/competitions/new" className="pt-menu-button"><PowerTableMenuIcon name="flow" /><span>Распределение по потокам и группам</span></Link>
             </>
           )}
-          {primaryCompetitionId ? (
+          {activeCompetitionId ? (
             <>
-              <Link to="/competitions/$id/reports" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="reports" /><span>Отчеты, печатные формы</span></Link>
-              <Link to="/competitions/$id/certificates" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="certificate" /><span>Печать грамот</span></Link>
-              <Link to="/competitions/$id/awards" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="awards" /><span>Награждение</span></Link>
-              <Link to="/competitions/$id/operator" params={{ id: primaryCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="operator" /><span>Оператор табло</span></Link>
+              <Link to="/competitions/$id/reports" params={{ id: activeCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="reports" /><span>Отчеты, печатные формы</span></Link>
+              <Link to="/competitions/$id/certificates" params={{ id: activeCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="certificate" /><span>Печать грамот</span></Link>
+              <Link to="/competitions/$id/awards" params={{ id: activeCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="awards" /><span>Награждение</span></Link>
+              <Link to="/competitions/$id/operator" params={{ id: activeCompetitionId }} className="pt-menu-button"><PowerTableMenuIcon name="operator" /><span>Оператор табло</span></Link>
             </>
           ) : (
             <>
-              <div className="pt-menu-button"><PowerTableMenuIcon name="reports" /><span>Отчеты, печатные формы</span></div>
-              <div className="pt-menu-button"><PowerTableMenuIcon name="certificate" /><span>Печать грамот</span></div>
-              <div className="pt-menu-button"><PowerTableMenuIcon name="awards" /><span>Награждение</span></div>
-              <div className="pt-menu-button"><PowerTableMenuIcon name="operator" /><span>Оператор табло</span></div>
+              <Link to="/competitions/new" className="pt-menu-button"><PowerTableMenuIcon name="reports" /><span>Отчеты, печатные формы</span></Link>
+              <Link to="/competitions/new" className="pt-menu-button"><PowerTableMenuIcon name="certificate" /><span>Печать грамот</span></Link>
+              <Link to="/competitions/new" className="pt-menu-button"><PowerTableMenuIcon name="awards" /><span>Награждение</span></Link>
+              <Link to="/competitions/new" className="pt-menu-button"><PowerTableMenuIcon name="operator" /><span>Оператор табло</span></Link>
             </>
           )}
           <Link to="/federations/$id/inventory" params={{ id }} className="pt-menu-button"><PowerTableMenuIcon name="inventory" /><span>Склад</span></Link>
@@ -459,10 +498,10 @@ export default function FederationDetailFeature() {
               ) : null}
             </tbody>
           </table>
-          {primaryCompetitionId ? (
-            <Link to="/broadcast/competitions/$id" params={{ id: primaryCompetitionId }} className="pt-link pt-inline-icon"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</Link>
+          {activeCompetitionId ? (
+            <Link to="/broadcast/competitions/$id" params={{ id: activeCompetitionId }} className="pt-link pt-inline-icon"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</Link>
           ) : (
-            <Link className="pt-link pt-inline-icon" to="/competitions"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</Link>
+            <Link className="pt-link pt-inline-icon" to="/competitions/new"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</Link>
           )}
         </aside>
 

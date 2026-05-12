@@ -15,12 +15,12 @@ import { useAuthStore } from '../../lib/auth/store.js';
 import { setLocale } from '../../lib/i18n/index.js';
 import {
   type FederationAuditEntryDto,
-  useCreateFederationFeedback,
   useFederationAudit,
   useFederationDashboard,
   useTestFederationEmail,
   useUpdateFederation,
 } from './api.js';
+import { SupportTicketsPanel } from './support-tickets-panel.js';
 
 function nullableText(value: string): string | null {
   const trimmed = value.trim();
@@ -31,8 +31,10 @@ function auditComment(entry: FederationAuditEntryDto): string {
   if (!entry.after || typeof entry.after !== 'object') return entry.notes ?? '-';
   const payload = entry.after as Record<string, unknown>;
   const message = typeof payload.message === 'string' ? payload.message : null;
+  const subject = typeof payload.subject === 'string' ? payload.subject : null;
   const recipient = typeof payload.recipient === 'string' ? payload.recipient : null;
-  return message ?? recipient ?? entry.notes ?? '-';
+  const status = typeof payload.status === 'string' ? payload.status : null;
+  return message ?? subject ?? recipient ?? status ?? entry.notes ?? '-';
 }
 
 export default function FederationNotificationsFeature() {
@@ -44,13 +46,11 @@ export default function FederationNotificationsFeature() {
   const { data: auditData, isLoading: auditLoading } = useFederationAudit(id);
   const update = useUpdateFederation(id);
   const testEmail = useTestFederationEmail(id);
-  const createFeedback = useCreateFederationFeedback(id);
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [telegramHandle, setTelegramHandle] = useState('');
   const [notificationsDisabled, setNotificationsDisabled] = useState(false);
   const [isPublicResultsClosed, setIsPublicResultsClosed] = useState(false);
-  const [feedbackMessage, setFeedbackMessage] = useState('');
 
   useEffect(() => {
     if (!data) return;
@@ -80,9 +80,15 @@ export default function FederationNotificationsFeature() {
     ) ?? false;
   const notificationHistory =
     auditData?.audit.filter((entry) =>
-      ['federation.feedback.created', 'federation.updated', 'federation.test_email.requested'].includes(
-        entry.action,
-      ),
+      [
+        'federation.feedback.created',
+        'federation.updated',
+        'federation.test_email.sent',
+        'federation.test_email.failed',
+        'federation.support_ticket.created',
+        'federation.support_ticket.message_created',
+        'federation.support_ticket.status_updated',
+      ].includes(entry.action),
     ) ?? [];
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -118,21 +124,6 @@ export default function FederationNotificationsFeature() {
       } else {
         toast.error(err instanceof Error ? err.message : 'Error');
       }
-    }
-  }
-
-  async function submitFeedback() {
-    const message = feedbackMessage.trim();
-    if (message.length < 3) {
-      toast.error('Напишите текст обращения');
-      return;
-    }
-    try {
-      await createFeedback.mutateAsync({ message });
-      setFeedbackMessage('');
-      toast.success('Обращение сохранено в истории');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error');
     }
   }
 
@@ -216,16 +207,8 @@ export default function FederationNotificationsFeature() {
 
             <PowerTableToolbar>
               <PowerTableButton type="submit" tone="green" icon="refresh" disabled={!canManage || update.isPending}>Обновить</PowerTableButton>
-              <PowerTableButton type="button" icon="add" onClick={() => void submitFeedback()} disabled={createFeedback.isPending}>Добавить обращение</PowerTableButton>
               <PowerTableButton type="button" icon="mail" onClick={() => void sendTestEmail()} disabled={!canManage || testEmail.isPending}>Тест письмо</PowerTableButton>
             </PowerTableToolbar>
-            <textarea
-              className="pt-textarea w-full"
-              value={feedbackMessage}
-              onChange={(event) => setFeedbackMessage(event.target.value)}
-              rows={3}
-              placeholder="Текст обращения"
-            />
           </form>
 
           <table className="pt-grid mt-2">
@@ -261,6 +244,10 @@ export default function FederationNotificationsFeature() {
             </tbody>
           </table>
         </PowerTablePanel>
+      </div>
+
+      <div className="mt-3">
+        <SupportTicketsPanel federationId={id} />
       </div>
     </PowerTablePage>
   );

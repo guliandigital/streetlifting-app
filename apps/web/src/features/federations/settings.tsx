@@ -14,12 +14,12 @@ import { ApiClientError } from '../../lib/api-client.js';
 import { useAuthStore } from '../../lib/auth/store.js';
 import {
   type FederationAuditEntryDto,
-  useCreateFederationFeedback,
   useFederationAudit,
   useFederationDashboard,
   useTestFederationEmail,
   useUpdateFederation,
 } from './api.js';
+import { SupportTicketsPanel } from './support-tickets-panel.js';
 
 function nullableText(value: string): string | null {
   const trimmed = value.trim();
@@ -31,8 +31,11 @@ function auditLabel(action: string): string {
     'auth.login.succeeded': 'Вход выполнен',
     'auth.login.failed': 'Неудачный вход',
     'federation.updated': 'Настройки изменены',
-    'federation.test_email.requested': 'Тест письма',
-    'federation.feedback.created': 'Обращение',
+    'federation.test_email.sent': 'Тест письма отправлен',
+    'federation.test_email.failed': 'Тест письма: ошибка',
+    'federation.support_ticket.created': 'Обращение создано',
+    'federation.support_ticket.message_created': 'Сообщение в обращении',
+    'federation.support_ticket.status_updated': 'Статус обращения',
     'federation.attachment.uploaded': 'Файл загружен',
     'federation.attachment.deleted': 'Файл удален',
     'federation.plate_set.created': 'Комплект создан',
@@ -99,7 +102,6 @@ export default function FederationSettingsFeature() {
   const { data: auditData, isLoading: auditLoading } = useFederationAudit(id);
   const update = useUpdateFederation(id);
   const testEmail = useTestFederationEmail(id);
-  const createFeedback = useCreateFederationFeedback(id);
 
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
@@ -110,7 +112,6 @@ export default function FederationSettingsFeature() {
   const [cashierName, setCashierName] = useState('');
   const [notificationsDisabled, setNotificationsDisabled] = useState(false);
   const [isPublicResultsClosed, setIsPublicResultsClosed] = useState(false);
-  const [feedbackMessage, setFeedbackMessage] = useState('');
 
   useEffect(() => {
     if (!data) return;
@@ -133,7 +134,14 @@ export default function FederationSettingsFeature() {
   const supportRows = useMemo(
     () =>
       auditRows.filter((entry) =>
-        ['federation.feedback.created', 'federation.updated', 'federation.test_email.requested'].includes(
+        [
+          'federation.updated',
+          'federation.test_email.sent',
+          'federation.test_email.failed',
+          'federation.support_ticket.created',
+          'federation.support_ticket.message_created',
+          'federation.support_ticket.status_updated',
+        ].includes(
           entry.action,
         ),
       ),
@@ -199,21 +207,6 @@ export default function FederationSettingsFeature() {
     }
   }
 
-  async function submitFeedback() {
-    const message = feedbackMessage.trim();
-    if (message.length < 3) {
-      toast.error('Напишите текст обращения');
-      return;
-    }
-    try {
-      await createFeedback.mutateAsync({ message });
-      setFeedbackMessage('');
-      toast.success('Обращение сохранено в истории');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error');
-    }
-  }
-
   return (
     <PowerTablePage
       title={showLogins ? 'Входы в программу' : 'Обращения, настройки / Feedback, settings'}
@@ -256,69 +249,58 @@ export default function FederationSettingsFeature() {
           {auditLoading ? <p className="pt-muted">Загружаем...</p> : <AuditTable rows={loginRows} emptyText="Входов пока нет." />}
         </PowerTablePanel>
       ) : (
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <PowerTablePanel className="p-3">
-            <form id="federationSettingsForm" onSubmit={(event) => void submit(event)} className="space-y-3">
-              <PowerTableSectionTitle>Ваши контактные данные. Будут публиковаться на персональной странице федерации</PowerTableSectionTitle>
-              <div className="pt-form-grid max-w-5xl">
-                <label htmlFor="contactPhone">Телефон:</label>
-                <input id="contactPhone" className="pt-field" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} disabled={!canManage} />
-                <label htmlFor="contactEmail">Email:</label>
-                <input id="contactEmail" className="pt-field" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} disabled={!canManage} />
-                <label htmlFor="telegramHandle">Telegram:</label>
-                <input id="telegramHandle" className="pt-field" value={telegramHandle} onChange={(event) => setTelegramHandle(event.target.value)} disabled={!canManage} />
-                <label htmlFor="vkUrl">VK:</label>
-                <input id="vkUrl" className="pt-field" value={vkUrl} onChange={(event) => setVkUrl(event.target.value)} disabled={!canManage} />
-                <label htmlFor="websiteUrl">Сайт:</label>
-                <input id="websiteUrl" className="pt-field" value={websiteUrl} onChange={(event) => setWebsiteUrl(event.target.value)} disabled={!canManage} />
-                <label htmlFor="chiefAccountantName">Главный бухгалтер:</label>
-                <input id="chiefAccountantName" className="pt-field" value={chiefAccountantName} onChange={(event) => setChiefAccountantName(event.target.value)} disabled={!canManage} />
-                <label htmlFor="cashierName">Кассир:</label>
-                <input id="cashierName" className="pt-field" value={cashierName} onChange={(event) => setCashierName(event.target.value)} disabled={!canManage} />
-                <label>Ключ защиты:</label>
-                <input className="pt-field font-mono" value={f.securityKey} readOnly />
-              </div>
+        <div className="space-y-3">
+          <SupportTicketsPanel federationId={id} />
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
+            <PowerTablePanel className="p-3">
+              <form id="federationSettingsForm" onSubmit={(event) => void submit(event)} className="space-y-3">
+                <PowerTableSectionTitle>Ваши контактные данные. Будут публиковаться на персональной странице федерации</PowerTableSectionTitle>
+                <div className="pt-form-grid max-w-5xl">
+                  <label htmlFor="contactPhone">Телефон:</label>
+                  <input id="contactPhone" className="pt-field" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} disabled={!canManage} />
+                  <label htmlFor="contactEmail">Email:</label>
+                  <input id="contactEmail" className="pt-field" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} disabled={!canManage} />
+                  <label htmlFor="telegramHandle">Telegram:</label>
+                  <input id="telegramHandle" className="pt-field" value={telegramHandle} onChange={(event) => setTelegramHandle(event.target.value)} disabled={!canManage} />
+                  <label htmlFor="vkUrl">VK:</label>
+                  <input id="vkUrl" className="pt-field" value={vkUrl} onChange={(event) => setVkUrl(event.target.value)} disabled={!canManage} />
+                  <label htmlFor="websiteUrl">Сайт:</label>
+                  <input id="websiteUrl" className="pt-field" value={websiteUrl} onChange={(event) => setWebsiteUrl(event.target.value)} disabled={!canManage} />
+                  <label htmlFor="chiefAccountantName">Главный бухгалтер:</label>
+                  <input id="chiefAccountantName" className="pt-field" value={chiefAccountantName} onChange={(event) => setChiefAccountantName(event.target.value)} disabled={!canManage} />
+                  <label htmlFor="cashierName">Кассир:</label>
+                  <input id="cashierName" className="pt-field" value={cashierName} onChange={(event) => setCashierName(event.target.value)} disabled={!canManage} />
+                  <label>Ключ защиты:</label>
+                  <input className="pt-field font-mono" value={f.securityKey} readOnly />
+                </div>
 
-              <div className="pt-info-green space-y-2">
-                <PowerTableCheckbox
-                  checked={notificationsDisabled}
-                  disabled={!canManage}
-                  onChange={setNotificationsDisabled}
-                  label="Не отправлять уведомления о новых регистрациях заявок на участие"
-                />
-                <PowerTableCheckbox
-                  checked={isPublicResultsClosed}
-                  disabled={!canManage}
-                  onChange={setIsPublicResultsClosed}
-                  label="Закрыть свободный онлайн доступ к результатам соревнований"
-                />
-              </div>
+                <div className="pt-info-green space-y-2">
+                  <PowerTableCheckbox
+                    checked={notificationsDisabled}
+                    disabled={!canManage}
+                    onChange={setNotificationsDisabled}
+                    label="Не отправлять уведомления о новых регистрациях заявок на участие"
+                  />
+                  <PowerTableCheckbox
+                    checked={isPublicResultsClosed}
+                    disabled={!canManage}
+                    onChange={setIsPublicResultsClosed}
+                    label="Закрыть свободный онлайн доступ к результатам соревнований"
+                  />
+                </div>
 
-              <PowerTableToolbar>
-                <PowerTableButton type="submit" tone="green" icon="save" disabled={!canManage || update.isPending}>Сохранить настройки</PowerTableButton>
-                <PowerTableButton type="button" icon="mail" onClick={() => void sendTestEmail()} disabled={!canManage || testEmail.isPending}>Тест письмо</PowerTableButton>
-              </PowerTableToolbar>
-            </form>
+                <PowerTableToolbar>
+                  <PowerTableButton type="submit" tone="green" icon="save" disabled={!canManage || update.isPending}>Сохранить настройки</PowerTableButton>
+                  <PowerTableButton type="button" icon="mail" onClick={() => void sendTestEmail()} disabled={!canManage || testEmail.isPending}>Тест письмо</PowerTableButton>
+                </PowerTableToolbar>
+              </form>
+            </PowerTablePanel>
 
-            <div className="mt-4">
-              <PowerTableSectionTitle>Обращение в поддержку</PowerTableSectionTitle>
-              <textarea
-                className="pt-textarea mb-2 w-full"
-                value={feedbackMessage}
-                onChange={(event) => setFeedbackMessage(event.target.value)}
-                rows={4}
-                placeholder="Опишите вопрос или доработку"
-              />
-              <PowerTableButton type="button" icon="add" onClick={() => void submitFeedback()} disabled={createFeedback.isPending}>
-                Добавить обращение
-              </PowerTableButton>
-            </div>
-          </PowerTablePanel>
-
-          <PowerTablePanel className="p-3">
-            <PowerTableSectionTitle>История обращений и настроек</PowerTableSectionTitle>
-            {auditLoading ? <p className="pt-muted">Загружаем...</p> : <AuditTable rows={supportRows} emptyText="История пока пуста." />}
-          </PowerTablePanel>
+            <PowerTablePanel className="p-3">
+              <PowerTableSectionTitle>История настроек, писем и обращений</PowerTableSectionTitle>
+              {auditLoading ? <p className="pt-muted">Загружаем...</p> : <AuditTable rows={supportRows} emptyText="История пока пуста." />}
+            </PowerTablePanel>
+          </div>
         </div>
       )}
     </PowerTablePage>
