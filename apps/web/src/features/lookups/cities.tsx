@@ -17,6 +17,7 @@ import {
   TableRow,
   toast,
 } from '@streetlifting/ui';
+import { WorkspacePage } from '../../components/workspace.js';
 import {
   useCities,
   useCountries,
@@ -52,12 +53,10 @@ export default function LookupsCitiesFeature() {
   }, [regionsData]);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{t('lookups.cards.cities.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('lookups.cards.cities.desc')}</p>
-      </div>
-
+    <WorkspacePage
+      title={t('lookups.cards.cities.title')}
+      subtitle={t('lookups.cards.cities.desc')}
+    >
       <Card>
         <CardHeader>
           <CardTitle>{t('lookups.cities.filterTitle')}</CardTitle>
@@ -70,11 +69,16 @@ export default function LookupsCitiesFeature() {
                 id="countryFilter"
                 className="w-full border rounded px-2 py-1 text-sm bg-background"
                 value={countryId}
-                onChange={(e) => { setCountryId(e.target.value); setRegionId(''); }}
+                onChange={(e) => {
+                  setCountryId(e.target.value);
+                  setRegionId('');
+                }}
               >
                 <option value="">{t('lookups.regions.defaultCountry')}</option>
                 {countriesData?.countries.map((c) => (
-                  <option key={c.id} value={c.id}>{c.nameRu} ({c.codeIso2})</option>
+                  <option key={c.id} value={c.id}>
+                    {c.nameRu} ({c.codeIso2})
+                  </option>
                 ))}
               </select>
             </div>
@@ -89,7 +93,9 @@ export default function LookupsCitiesFeature() {
               >
                 <option value="">{t('lookups.cities.allRegions')}</option>
                 {regionsData?.regions.map((r) => (
-                  <option key={r.id} value={r.id}>{r.nameRu}</option>
+                  <option key={r.id} value={r.id}>
+                    {r.nameRu}
+                  </option>
                 ))}
               </select>
             </div>
@@ -138,14 +144,18 @@ export default function LookupsCitiesFeature() {
               </TableHeader>
               <TableBody>
                 {data.cities.map((c) => (
-                  <CityRow key={c.id} city={c} regionLabel={regionsById.get(c.regionId)?.nameRu ?? '—'} />
+                  <CityRow
+                    key={c.id}
+                    city={c}
+                    regionLabel={regionsById.get(c.regionId)?.nameRu ?? '—'}
+                  />
                 ))}
               </TableBody>
             </Table>
           )}
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }
 
@@ -183,8 +193,14 @@ function CityRow({ city, regionLabel }: { city: CityDto; regionLabel: string }) 
         <TableCell className="text-muted-foreground">{regionLabel}</TableCell>
         <TableCell className="text-right">
           <label className="flex items-center justify-end gap-1 text-xs">
-            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-            <span className="text-muted-foreground">{isActive ? t('common.yes') : t('common.no')}</span>
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+            />
+            <span className="text-muted-foreground">
+              {isActive ? t('common.yes') : t('common.no')}
+            </span>
           </label>
           <div className="flex gap-1 mt-2 justify-end">
             <Button size="sm" variant="outline" onClick={() => setEditing(false)} type="button">
@@ -204,7 +220,9 @@ function CityRow({ city, regionLabel }: { city: CityDto; regionLabel: string }) 
       <TableCell>{city.nameRu}</TableCell>
       <TableCell className="text-muted-foreground">{city.nameEn}</TableCell>
       <TableCell className="text-muted-foreground">{regionLabel}</TableCell>
-      <TableCell className="text-right">{city.isActive ? t('common.yes') : t('common.no')}</TableCell>
+      <TableCell className="text-right">
+        {city.isActive ? t('common.yes') : t('common.no')}
+      </TableCell>
     </TableRow>
   );
 }
@@ -225,7 +243,9 @@ function CreateCityCard({ regionId }: { regionId: string }) {
         nameEn: nameEn.trim(),
       });
       toast.success(t('lookups.created'));
-      setNameRu(''); setNameEn(''); setOpen(false);
+      setNameRu('');
+      setNameEn('');
+      setOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiClientError ? err.message : 'Error');
     }
@@ -245,17 +265,32 @@ function CreateCityCard({ regionId }: { regionId: string }) {
         <CardTitle>{t('lookups.cards.cities.create')}</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={(e) => void onSubmit(e)} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <form
+          onSubmit={(e) => void onSubmit(e)}
+          className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end"
+        >
           <div className="space-y-2">
             <Label htmlFor="nameRu">{t('lookups.fields.nameRu')}</Label>
-            <Input id="nameRu" value={nameRu} onChange={(e) => setNameRu(e.target.value)} required />
+            <Input
+              id="nameRu"
+              value={nameRu}
+              onChange={(e) => setNameRu(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="nameEn">{t('lookups.fields.nameEn')}</Label>
-            <Input id="nameEn" value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+            <Input
+              id="nameEn"
+              value={nameEn}
+              onChange={(e) => setNameEn(e.target.value)}
+              required
+            />
           </div>
           <div className="md:col-span-3 flex gap-2 justify-end">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              {t('common.cancel')}
+            </Button>
             <Button type="submit" disabled={create.isPending}>
               {create.isPending ? t('common.saving') : t('common.save')}
             </Button>

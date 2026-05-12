@@ -15,6 +15,7 @@ import {
   TableRow,
 } from '@streetlifting/ui';
 import { useAuthStore } from '../../lib/auth/store.js';
+import { WorkspacePage } from '../../components/workspace.js';
 import { formatRub } from '../../lib/money.js';
 import { useCompetitions } from './api.js';
 import { formatDate } from './format.js';
@@ -27,19 +28,17 @@ export default function CompetitionsListFeature() {
   const { data, isLoading, error } = useCompetitions();
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-10 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{t('competitions.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('competitions.subtitle')}</p>
-        </div>
-        {canCreate && (
+    <WorkspacePage
+      title={t('competitions.title')}
+      subtitle={t('competitions.subtitle')}
+      actions={
+        canCreate ? (
           <Button asChild>
             <Link to="/competitions/new">{t('competitions.create')}</Link>
           </Button>
-        )}
-      </div>
-
+        ) : null
+      }
+    >
       <Card>
         <CardHeader>
           <CardTitle>{t('competitions.listTitle')}</CardTitle>
@@ -106,6 +105,6 @@ export default function CompetitionsListFeature() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

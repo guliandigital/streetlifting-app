@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@streetlifting/ui';
+import { WorkspacePage } from '../../components/workspace.js';
 import { useDisciplines, type DisciplineDto } from './api.js';
 
 interface Section {
@@ -21,11 +22,23 @@ interface Section {
 }
 
 const SECTION_ORDER: ReadonlyArray<Section> = [
-  { key: 'classic',        match: (d) => d.family === 'streetlifting' && d.format === 'three_attempts_max' },
-  { key: 'multirepTotal',  match: (d) => d.family === 'streetlifting' && d.code.startsWith('multirep_total_') },
-  { key: 'multirepPu',     match: (d) => d.family === 'streetlifting' && d.code.startsWith('multirep_pu_') },
-  { key: 'multirepDi',     match: (d) => d.family === 'streetlifting' && d.code.startsWith('multirep_di_') },
-  { key: 'wc',             match: (d) => d.family === 'weighted_calisthenics' },
+  {
+    key: 'classic',
+    match: (d) => d.family === 'streetlifting' && d.format === 'three_attempts_max',
+  },
+  {
+    key: 'multirepTotal',
+    match: (d) => d.family === 'streetlifting' && d.code.startsWith('multirep_total_'),
+  },
+  {
+    key: 'multirepPu',
+    match: (d) => d.family === 'streetlifting' && d.code.startsWith('multirep_pu_'),
+  },
+  {
+    key: 'multirepDi',
+    match: (d) => d.family === 'streetlifting' && d.code.startsWith('multirep_di_'),
+  },
+  { key: 'wc', match: (d) => d.family === 'weighted_calisthenics' },
 ];
 
 function partition(disciplines: DisciplineDto[]): Map<string, DisciplineDto[]> {
@@ -48,12 +61,7 @@ export default function DisciplinesListFeature() {
   const groups = data ? partition(data.disciplines) : new Map<string, DisciplineDto[]>();
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{t('disciplines.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('disciplines.subtitle')}</p>
-      </div>
-
+    <WorkspacePage title={t('disciplines.title')} subtitle={t('disciplines.subtitle')}>
       <Card>
         <CardHeader>
           <CardTitle>{t('disciplines.listTitle')}</CardTitle>
@@ -70,7 +78,8 @@ export default function DisciplinesListFeature() {
             <p className="text-sm text-muted-foreground italic">{t('disciplines.empty')}</p>
           )}
 
-          {data && total > 0 &&
+          {data &&
+            total > 0 &&
             SECTION_ORDER.map(({ key }) => {
               const items = groups.get(key) ?? [];
               if (items.length === 0) return null;
@@ -84,8 +93,12 @@ export default function DisciplinesListFeature() {
                       <TableRow>
                         <TableHead className="w-[180px]">{t('disciplines.cols.code')}</TableHead>
                         <TableHead>{t('disciplines.cols.name')}</TableHead>
-                        <TableHead className="text-right w-[120px]">{t('disciplines.cols.attemptCount')}</TableHead>
-                        <TableHead className="text-right w-[100px]">{t('disciplines.cols.fixedWeight')}</TableHead>
+                        <TableHead className="text-right w-[120px]">
+                          {t('disciplines.cols.attemptCount')}
+                        </TableHead>
+                        <TableHead className="text-right w-[100px]">
+                          {t('disciplines.cols.fixedWeight')}
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -104,9 +117,13 @@ export default function DisciplinesListFeature() {
                             {d.nameRu}
                             <div className="text-xs text-muted-foreground">{d.nameEn}</div>
                           </TableCell>
-                          <TableCell className="text-right tabular-nums">{d.attemptCount}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {d.attemptCount}
+                          </TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">
-                            {d.fixedWeightKg !== null ? `${d.fixedWeightKg} ${t('common.kg')}` : '—'}
+                            {d.fixedWeightKg !== null
+                              ? `${d.fixedWeightKg} ${t('common.kg')}`
+                              : '—'}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -117,6 +134,6 @@ export default function DisciplinesListFeature() {
             })}
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

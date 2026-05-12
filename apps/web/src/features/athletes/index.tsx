@@ -17,6 +17,7 @@ import {
   TableRow,
 } from '@streetlifting/ui';
 import { useAuthStore } from '../../lib/auth/store.js';
+import { WorkspacePage } from '../../components/workspace.js';
 import { useAthletes } from './api.js';
 import { formatDateOfBirth } from './format.js';
 
@@ -29,19 +30,17 @@ export default function AthletesListFeature() {
   const { data, isLoading, error } = useAthletes(search);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{t('athletes.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('athletes.subtitle')}</p>
-        </div>
-        {isPlatformAdmin && (
+    <WorkspacePage
+      title={t('athletes.title')}
+      subtitle={t('athletes.subtitle')}
+      actions={
+        isPlatformAdmin ? (
           <Button asChild>
             <Link to="/athletes/new">{t('athletes.create')}</Link>
           </Button>
-        )}
-      </div>
-
+        ) : null
+      }
+    >
       <Card>
         <CardHeader>
           <CardTitle>{t('athletes.listTitle')}</CardTitle>
@@ -93,7 +92,9 @@ export default function AthletesListFeature() {
                         <span className="text-muted-foreground"> {a.middleName}</span>
                       )}
                     </TableCell>
-                    <TableCell className="tabular-nums">{formatDateOfBirth(a.dateOfBirth)}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatDateOfBirth(a.dateOfBirth)}
+                    </TableCell>
                     <TableCell>{a.gender}</TableCell>
                     <TableCell className="font-mono text-xs">{a.countryCode}</TableCell>
                     <TableCell className="text-muted-foreground">
@@ -106,6 +107,6 @@ export default function AthletesListFeature() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

@@ -17,6 +17,7 @@ import {
   TableRow,
 } from '@streetlifting/ui';
 import { useAuthStore } from '../../lib/auth/store.js';
+import { WorkspacePage } from '../../components/workspace.js';
 import { useJudges } from './api.js';
 
 export default function JudgesListFeature() {
@@ -28,25 +29,21 @@ export default function JudgesListFeature() {
   const { data, isLoading, error } = useJudges(search);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{t('judges.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('judges.subtitle')}</p>
-        </div>
-        {isPlatformAdmin && (
+    <WorkspacePage
+      title={t('judges.title')}
+      subtitle={t('judges.subtitle')}
+      actions={
+        isPlatformAdmin ? (
           <Button asChild>
             <Link to="/judges/new">{t('judges.create')}</Link>
           </Button>
-        )}
-      </div>
-
+        ) : null
+      }
+    >
       <Card>
         <CardHeader>
           <CardTitle>{t('judges.listTitle')}</CardTitle>
-          <CardDescription>
-            {data ? t('judges.count', { count: data.total }) : '…'}
-          </CardDescription>
+          <CardDescription>{data ? t('judges.count', { count: data.total }) : '…'}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Input
@@ -107,6 +104,6 @@ export default function JudgesListFeature() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

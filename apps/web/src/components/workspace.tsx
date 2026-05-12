@@ -629,6 +629,20 @@ export function WorkspacePanel({ className, ...props }: HTMLAttributes<HTMLDivEl
   return <div className={cn('pt-panel', className)} {...props} />;
 }
 
+export function WorkspaceState({
+  children,
+  tone = 'muted',
+  className,
+}: HTMLAttributes<HTMLDivElement> & { tone?: 'muted' | 'danger' | 'success' }) {
+  return (
+    <section className="pt-page">
+      <div className="pt-workspace">
+        <div className={cn('pt-state', `pt-state-${tone}`, className)}>{children}</div>
+      </div>
+    </section>
+  );
+}
+
 export function WorkspaceSectionTitle({ children }: { children: ReactNode }) {
   return <div className="pt-section-title">{children}</div>;
 }

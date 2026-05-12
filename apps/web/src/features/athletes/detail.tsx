@@ -1,12 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useParams } from '@tanstack/react-router';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@streetlifting/ui';
+import { Card, CardContent } from '@streetlifting/ui';
+import { WorkspacePage, WorkspaceState } from '../../components/workspace.js';
 import { useAthlete } from './api.js';
 import { calculateAge, formatDateOfBirth } from './format.js';
 import { useCountries, useRegions } from '../../lib/references-api.js';
@@ -20,17 +15,13 @@ export default function AthleteDetailFeature() {
   const { data: regionsData } = useRegions(countryRow?.id);
 
   if (isLoading) {
-    return (
-      <div className="max-w-3xl mx-auto px-6 py-10 text-sm text-muted-foreground">
-        {t('common.loading')}
-      </div>
-    );
+    return <WorkspaceState>{t('common.loading')}</WorkspaceState>;
   }
   if (error || !data) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-10 text-sm text-destructive">
+      <WorkspaceState tone="danger">
         {t('common.error')}: {error instanceof Error ? error.message : 'not found'}
-      </div>
+      </WorkspaceState>
     );
   }
   const a = data.athlete;
@@ -50,14 +41,11 @@ export default function AthleteDetailFeature() {
   );
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10">
+    <WorkspacePage
+      title={fullName}
+      subtitle={`${t('athletes.gender.' + a.gender)} · ${age} ${t('athletes.yearsShort')} · ${countryLabel}`}
+    >
       <Card>
-        <CardHeader>
-          <CardTitle>{fullName}</CardTitle>
-          <CardDescription>
-            {t('athletes.gender.' + a.gender)} · {age} {t('athletes.yearsShort')} · {countryLabel}
-          </CardDescription>
-        </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-[200px_1fr] gap-y-3 gap-x-6 text-sm">
             <Field label={t('athletes.fields.dob')} value={formatDateOfBirth(a.dateOfBirth)} />
@@ -72,6 +60,6 @@ export default function AthleteDetailFeature() {
           </dl>
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

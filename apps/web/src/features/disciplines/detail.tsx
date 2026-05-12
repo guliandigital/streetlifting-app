@@ -1,12 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useParams } from '@tanstack/react-router';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@streetlifting/ui';
+import { Card, CardContent } from '@streetlifting/ui';
+import { WorkspacePage, WorkspaceState } from '../../components/workspace.js';
 import { useDiscipline } from './api.js';
 
 export default function DisciplineDetailFeature() {
@@ -15,17 +10,13 @@ export default function DisciplineDetailFeature() {
   const { data, isLoading, error } = useDiscipline(id);
 
   if (isLoading) {
-    return (
-      <div className="max-w-3xl mx-auto px-6 py-10 text-sm text-muted-foreground">
-        {t('common.loading')}
-      </div>
-    );
+    return <WorkspaceState>{t('common.loading')}</WorkspaceState>;
   }
   if (error || !data) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-10 text-sm text-destructive">
+      <WorkspaceState tone="danger">
         {t('common.error')}: {error instanceof Error ? error.message : 'not found'}
-      </div>
+      </WorkspaceState>
     );
   }
   const d = data.discipline;
@@ -38,14 +29,15 @@ export default function DisciplineDetailFeature() {
   );
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10">
+    <WorkspacePage
+      title={d.nameRu}
+      subtitle={
+        <>
+          {d.nameEn} · <code className="text-primary">{d.code}</code>
+        </>
+      }
+    >
       <Card>
-        <CardHeader>
-          <CardTitle>{d.nameRu}</CardTitle>
-          <CardDescription>
-            {d.nameEn} · <code className="text-primary">{d.code}</code>
-          </CardDescription>
-        </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-[200px_1fr] gap-y-3 gap-x-6 text-sm">
             <Field label={t('disciplines.fields.family')} value={d.family} />
@@ -64,6 +56,6 @@ export default function DisciplineDetailFeature() {
           </dl>
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

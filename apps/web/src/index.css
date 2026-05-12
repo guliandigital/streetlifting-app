@@ -884,6 +884,7 @@ body {
   --pt-pink-row: rgba(239, 68, 68, 0.14);
   --pt-gray-row: rgba(255, 255, 255, 0.06);
   --pt-border: #262d3a;
+  --pt-panel: #0d1219;
   background: #10151d;
   color: #fafafa;
   font-family: var(--font-sans);
@@ -1141,6 +1142,136 @@ body {
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
 }
 
+.pt-state {
+  border: 1px solid #262d3a;
+  border-radius: 8px;
+  background: #0d1219;
+  color: #a1a1aa;
+  font-size: 14px;
+  padding: 14px;
+}
+
+.pt-state-danger {
+  border-color: rgba(239, 68, 68, 0.42);
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+}
+
+.pt-state-success {
+  border-color: rgba(153, 205, 20, 0.55);
+  background: rgba(153, 205, 20, 0.12);
+  color: #d9f99d;
+}
+
+.pt-app .sl-card {
+  border-color: #262d3a;
+  border-radius: 8px;
+  background: rgba(13, 18, 25, 0.92);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+  color: #fafafa;
+}
+
+.pt-app .sl-card-header {
+  padding: 12px 14px 8px;
+}
+
+.pt-app .sl-card-content,
+.pt-app .sl-card-footer {
+  padding: 12px 14px;
+}
+
+.pt-app .sl-card-header + .sl-card-content {
+  padding-top: 4px;
+}
+
+.pt-app .sl-card-title {
+  color: #99cd14;
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.pt-app .sl-card-description {
+  color: #a1a1aa;
+  font-size: 12px;
+}
+
+.pt-app .sl-button {
+  min-height: 28px;
+  border: 1px solid #262d3a;
+  border-radius: 6px;
+  background: #1a1f29;
+  color: #fafafa;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.pt-app .sl-button:hover {
+  border-color: rgba(153, 205, 20, 0.6);
+  background: #222936;
+  color: #99cd14;
+}
+
+.pt-app .sl-button.bg-primary,
+.pt-app
+  .sl-button:not(.bg-transparent):not([class*='hover:bg-accent']):not(
+    [class*='hover:bg-destructive']
+  ) {
+  border-color: #99cd14;
+  background: #99cd14;
+  color: #10151d;
+}
+
+.pt-app .sl-input,
+.pt-app .sl-label + select,
+.pt-app select.flex,
+.pt-app textarea {
+  border-color: #262d3a;
+  border-radius: 6px;
+  background: #10151d;
+  color: #fafafa;
+  box-shadow: none;
+}
+
+.pt-app .sl-input::placeholder {
+  color: #71717a;
+}
+
+.pt-app .sl-label {
+  color: #d4d4d8;
+  font-size: 13px;
+}
+
+.pt-app .sl-table-wrap {
+  border: 1px solid #262d3a;
+  border-radius: 8px;
+}
+
+.pt-app .sl-table {
+  border-collapse: collapse;
+  color: #fafafa;
+  font-size: 13px;
+}
+
+.pt-app .sl-table-row {
+  border-color: #262d3a;
+}
+
+.pt-app .sl-table-head {
+  height: 30px;
+  border-color: #303848;
+  background: #1a1f29;
+  color: #d4d4d8;
+  font-weight: 700;
+}
+
+.pt-app .sl-table-cell {
+  border-top: 1px solid #262d3a;
+}
+
+.pt-app .sl-table-row:hover {
+  background: rgba(153, 205, 20, 0.16);
+}
+
 .pt-section-title,
 .pt-link {
   color: #99cd14;
@@ -1382,6 +1513,7 @@ input[type='radio'] {
   --pt-pink-row: rgba(239, 68, 68, 0.12);
   --pt-gray-row: rgba(16, 21, 29, 0.05);
   --pt-border: #dbe4d2;
+  --pt-panel: #ffffff;
   background: #f5f8f1;
   color: #10151d;
 }
@@ -1528,6 +1660,100 @@ input[type='radio'] {
   border-color: #dbe4d2;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 16px 36px rgba(16, 21, 29, 0.08);
+}
+
+.pt-app.pt-theme-light .pt-state {
+  border-color: #dbe4d2;
+  background: #ffffff;
+  color: #65705e;
+}
+
+.pt-app.pt-theme-light .pt-state-danger {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.1);
+  color: #991b1b;
+}
+
+.pt-app.pt-theme-light .pt-state-success {
+  border-color: rgba(153, 205, 20, 0.65);
+  background: rgba(153, 205, 20, 0.16);
+  color: #3f6212;
+}
+
+.pt-app.pt-theme-light .sl-card {
+  border-color: #dbe4d2;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 36px rgba(16, 21, 29, 0.08);
+  color: #10151d;
+}
+
+.pt-app.pt-theme-light .sl-card-title {
+  color: #6f9707;
+}
+
+.pt-app.pt-theme-light .sl-card-description {
+  color: #65705e;
+}
+
+.pt-app.pt-theme-light .sl-button {
+  border-color: #dbe4d2;
+  background: #ffffff;
+  color: #10151d;
+}
+
+.pt-app.pt-theme-light .sl-button:hover {
+  border-color: rgba(153, 205, 20, 0.75);
+  background: #f7faef;
+  color: #567800;
+}
+
+.pt-app.pt-theme-light .sl-button.bg-primary,
+.pt-app.pt-theme-light
+  .sl-button:not(.bg-transparent):not([class*='hover:bg-accent']):not(
+    [class*='hover:bg-destructive']
+  ) {
+  border-color: #99cd14;
+  background: #99cd14;
+  color: #10151d;
+}
+
+.pt-app.pt-theme-light .sl-input,
+.pt-app.pt-theme-light .sl-label + select,
+.pt-app.pt-theme-light select.flex,
+.pt-app.pt-theme-light textarea {
+  border-color: #dbe4d2;
+  background: #ffffff;
+  color: #10151d;
+}
+
+.pt-app.pt-theme-light .sl-label {
+  color: #26301f;
+}
+
+.pt-app.pt-theme-light .sl-table-wrap {
+  border-color: #dbe4d2;
+}
+
+.pt-app.pt-theme-light .sl-table {
+  color: #10151d;
+}
+
+.pt-app.pt-theme-light .sl-table-row {
+  border-color: #dbe4d2;
+}
+
+.pt-app.pt-theme-light .sl-table-head {
+  border-color: #cbd7c1;
+  background: #eef3e8;
+  color: #26301f;
+}
+
+.pt-app.pt-theme-light .sl-table-cell {
+  border-top-color: #dbe4d2;
+}
+
+.pt-app.pt-theme-light .sl-table-row:hover {
+  background: rgba(153, 205, 20, 0.2);
 }
 
 .pt-app.pt-theme-light .pt-form-grid label,

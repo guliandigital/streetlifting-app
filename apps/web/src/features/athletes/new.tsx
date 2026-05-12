@@ -1,16 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  toast,
-} from '@streetlifting/ui';
+import { Button, Card, CardContent, Input, Label, toast } from '@streetlifting/ui';
+import { WorkspacePage } from '../../components/workspace.js';
 import { useCreateAthlete } from './api.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import { useCities, useCountries, useRegions } from '../../lib/references-api.js';
@@ -72,27 +64,38 @@ export default function AthleteNewFeature() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-10">
+    <WorkspacePage title={t('athletes.newTitle')} subtitle={t('athletes.subtitle')}>
       <Card>
-        <CardHeader>
-          <CardTitle>{t('athletes.newTitle')}</CardTitle>
-        </CardHeader>
         <CardContent>
           <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="lastName">{t('athletes.fields.lastName')}</Label>
-                <Input id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+                <Input
+                  id="lastName"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="firstName">{t('athletes.fields.firstName')}</Label>
-                <Input id="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+                <Input
+                  id="firstName"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="middleName">{t('athletes.fields.middleName')}</Label>
-              <Input id="middleName" value={middleName} onChange={(e) => setMiddleName(e.target.value)} />
+              <Input
+                id="middleName"
+                value={middleName}
+                onChange={(e) => setMiddleName(e.target.value)}
+              />
             </div>
 
             <div className="grid grid-cols-3 gap-4">
@@ -123,7 +126,11 @@ export default function AthleteNewFeature() {
                 <select
                   id="countryCode"
                   value={countryCode}
-                  onChange={(e) => { setCountryCode(e.target.value); setRegionCode(''); setCity(''); }}
+                  onChange={(e) => {
+                    setCountryCode(e.target.value);
+                    setRegionCode('');
+                    setCity('');
+                  }}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   required
                 >
@@ -142,7 +149,10 @@ export default function AthleteNewFeature() {
                 <select
                   id="regionCode"
                   value={regionCode}
-                  onChange={(e) => { setRegionCode(e.target.value); setCity(''); }}
+                  onChange={(e) => {
+                    setRegionCode(e.target.value);
+                    setCity('');
+                  }}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   disabled={!country}
                 >
@@ -174,16 +184,28 @@ export default function AthleteNewFeature() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="clubName">{t('athletes.fields.club')}</Label>
-                <Input id="clubName" value={clubName} onChange={(e) => setClubName(e.target.value)} />
+                <Input
+                  id="clubName"
+                  value={clubName}
+                  onChange={(e) => setClubName(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="coachName">{t('athletes.fields.coach')}</Label>
-                <Input id="coachName" value={coachName} onChange={(e) => setCoachName(e.target.value)} />
+                <Input
+                  id="coachName"
+                  value={coachName}
+                  onChange={(e) => setCoachName(e.target.value)}
+                />
               </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => void navigate({ to: '/athletes' })}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void navigate({ to: '/athletes' })}
+              >
                 {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={create.isPending}>
@@ -193,6 +215,6 @@ export default function AthleteNewFeature() {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

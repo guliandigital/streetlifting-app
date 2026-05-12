@@ -17,6 +17,7 @@ import {
   TableRow,
   toast,
 } from '@streetlifting/ui';
+import { WorkspacePage } from '../../components/workspace.js';
 import {
   useCreateLookup,
   useLookups,
@@ -26,11 +27,11 @@ import {
 import { ApiClientError } from '../../lib/api-client.js';
 
 const KIND_OPTIONS = [
-  { value: '',                   labelKey: 'lookups.values.allKinds' },
-  { value: 'judge_category',     labelKey: 'lookups.kinds.judge_category' },
-  { value: 'sport_rank',         labelKey: 'lookups.kinds.sport_rank' },
-  { value: 'club_type',          labelKey: 'lookups.kinds.club_type' },
-  { value: 'federation_tag',     labelKey: 'lookups.kinds.federation_tag' },
+  { value: '', labelKey: 'lookups.values.allKinds' },
+  { value: 'judge_category', labelKey: 'lookups.kinds.judge_category' },
+  { value: 'sport_rank', labelKey: 'lookups.kinds.sport_rank' },
+  { value: 'club_type', labelKey: 'lookups.kinds.club_type' },
+  { value: 'federation_tag', labelKey: 'lookups.kinds.federation_tag' },
 ] as const;
 
 type LookupKindValue = 'judge_category' | 'sport_rank' | 'club_type' | 'federation_tag';
@@ -42,12 +43,10 @@ export default function LookupsValuesFeature() {
   const { data, isLoading, error } = useLookups(kind || undefined);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{t('lookups.cards.values.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('lookups.cards.values.desc')}</p>
-      </div>
-
+    <WorkspacePage
+      title={t('lookups.cards.values.title')}
+      subtitle={t('lookups.cards.values.desc')}
+    >
       <Card>
         <CardHeader>
           <CardTitle>{t('lookups.values.filterTitle')}</CardTitle>
@@ -98,18 +97,22 @@ export default function LookupsValuesFeature() {
                   <TableHead className="w-[160px]">{t('lookups.cols.code')}</TableHead>
                   <TableHead>{t('lookups.cols.nameRu')}</TableHead>
                   <TableHead>{t('lookups.cols.nameEn')}</TableHead>
-                  <TableHead className="text-right w-[80px]">{t('lookups.cols.sortOrder')}</TableHead>
+                  <TableHead className="text-right w-[80px]">
+                    {t('lookups.cols.sortOrder')}
+                  </TableHead>
                   <TableHead className="text-right w-[80px]">{t('lookups.cols.active')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.lookups.map((l) => <LookupRow key={l.id} lookup={l} />)}
+                {data.lookups.map((l) => (
+                  <LookupRow key={l.id} lookup={l} />
+                ))}
               </TableBody>
             </Table>
           )}
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }
 
@@ -140,17 +143,33 @@ function LookupRow({ lookup }: { lookup: LookupValueDto }) {
   if (editing) {
     return (
       <TableRow>
-        <TableCell className="font-mono text-xs">{t(`lookups.kinds.${lookup.kind}`, lookup.kind)}</TableCell>
+        <TableCell className="font-mono text-xs">
+          {t(`lookups.kinds.${lookup.kind}`, lookup.kind)}
+        </TableCell>
         <TableCell className="font-mono text-xs">{lookup.code}</TableCell>
-        <TableCell><Input value={nameRu} onChange={(e) => setNameRu(e.target.value)} /></TableCell>
-        <TableCell><Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} /></TableCell>
+        <TableCell>
+          <Input value={nameRu} onChange={(e) => setNameRu(e.target.value)} />
+        </TableCell>
+        <TableCell>
+          <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} />
+        </TableCell>
         <TableCell className="text-right">
-          <Input className="text-right tabular-nums" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
+          <Input
+            className="text-right tabular-nums"
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+          />
         </TableCell>
         <TableCell className="text-right">
           <label className="flex items-center justify-end gap-1 text-xs">
-            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-            <span className="text-muted-foreground">{isActive ? t('common.yes') : t('common.no')}</span>
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+            />
+            <span className="text-muted-foreground">
+              {isActive ? t('common.yes') : t('common.no')}
+            </span>
           </label>
           <div className="flex gap-1 mt-2 justify-end">
             <Button size="sm" variant="outline" onClick={() => setEditing(false)} type="button">
@@ -167,12 +186,16 @@ function LookupRow({ lookup }: { lookup: LookupValueDto }) {
 
   return (
     <TableRow onClick={() => setEditing(true)} className="cursor-pointer">
-      <TableCell className="text-xs text-muted-foreground">{t(`lookups.kinds.${lookup.kind}`, lookup.kind)}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {t(`lookups.kinds.${lookup.kind}`, lookup.kind)}
+      </TableCell>
       <TableCell className="font-mono text-xs">{lookup.code}</TableCell>
       <TableCell>{lookup.nameRu}</TableCell>
       <TableCell className="text-muted-foreground">{lookup.nameEn}</TableCell>
       <TableCell className="text-right tabular-nums">{lookup.sortOrder}</TableCell>
-      <TableCell className="text-right">{lookup.isActive ? t('common.yes') : t('common.no')}</TableCell>
+      <TableCell className="text-right">
+        {lookup.isActive ? t('common.yes') : t('common.no')}
+      </TableCell>
     </TableRow>
   );
 }
@@ -198,7 +221,11 @@ function CreateLookupCard({ defaultKind }: { defaultKind: string }) {
         sortOrder: Number(sortOrder) || 0,
       });
       toast.success(t('lookups.created'));
-      setCode(''); setNameRu(''); setNameEn(''); setSortOrder('0'); setOpen(false);
+      setCode('');
+      setNameRu('');
+      setNameEn('');
+      setSortOrder('0');
+      setOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiClientError ? err.message : 'Error');
     }
@@ -218,7 +245,10 @@ function CreateLookupCard({ defaultKind }: { defaultKind: string }) {
         <CardTitle>{t('lookups.cards.values.create')}</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={(e) => void onSubmit(e)} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <form
+          onSubmit={(e) => void onSubmit(e)}
+          className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end"
+        >
           <div className="space-y-2 md:col-span-1">
             <Label htmlFor="kind">{t('lookups.fields.kind')}</Label>
             <select
@@ -228,28 +258,53 @@ function CreateLookupCard({ defaultKind }: { defaultKind: string }) {
               onChange={(e) => setKind(e.target.value as LookupKindValue)}
             >
               {KIND_OPTIONS.filter((o) => o.value !== '').map((o) => (
-                <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
+                <option key={o.value} value={o.value}>
+                  {t(o.labelKey)}
+                </option>
               ))}
             </select>
           </div>
           <div className="space-y-2 md:col-span-1">
             <Label htmlFor="code">{t('lookups.fields.code')}</Label>
-            <Input id="code" value={code} onChange={(e) => setCode(e.target.value)} required placeholder="snake_case" />
+            <Input
+              id="code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              required
+              placeholder="snake_case"
+            />
           </div>
           <div className="space-y-2 md:col-span-1">
             <Label htmlFor="sortOrder">{t('lookups.fields.sortOrder')}</Label>
-            <Input id="sortOrder" type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
+            <Input
+              id="sortOrder"
+              type="number"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+            />
           </div>
           <div className="space-y-2 md:col-span-1">
             <Label htmlFor="nameRu">{t('lookups.fields.nameRu')}</Label>
-            <Input id="nameRu" value={nameRu} onChange={(e) => setNameRu(e.target.value)} required />
+            <Input
+              id="nameRu"
+              value={nameRu}
+              onChange={(e) => setNameRu(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2 md:col-span-1">
             <Label htmlFor="nameEn">{t('lookups.fields.nameEn')}</Label>
-            <Input id="nameEn" value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+            <Input
+              id="nameEn"
+              value={nameEn}
+              onChange={(e) => setNameEn(e.target.value)}
+              required
+            />
           </div>
           <div className="md:col-span-3 flex gap-2 justify-end">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              {t('common.cancel')}
+            </Button>
             <Button type="submit" disabled={create.isPending}>
               {create.isPending ? t('common.saving') : t('common.save')}
             </Button>

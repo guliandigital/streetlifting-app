@@ -16,6 +16,7 @@ import {
   TableRow,
 } from '@streetlifting/ui';
 import { useAuthStore } from '../../lib/auth/store.js';
+import { WorkspacePage } from '../../components/workspace.js';
 import { useFederations } from './api.js';
 import { formatRub } from './format.js';
 
@@ -36,19 +37,17 @@ export default function FederationsListFeature() {
   }, [data, isPlatformAdmin, navigate]);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{t('federations.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('federations.subtitle')}</p>
-        </div>
-        {isPlatformAdmin && (
+    <WorkspacePage
+      title={t('federations.title')}
+      subtitle={t('federations.subtitle')}
+      actions={
+        isPlatformAdmin ? (
           <Button asChild>
             <Link to="/federations/new">{t('federations.create')}</Link>
           </Button>
-        )}
-      </div>
-
+        ) : null
+      }
+    >
       <Card>
         <CardHeader>
           <CardTitle>{t('federations.listTitle')}</CardTitle>
@@ -113,6 +112,6 @@ export default function FederationsListFeature() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

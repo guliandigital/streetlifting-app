@@ -2,16 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  toast,
-} from '@streetlifting/ui';
+import { Button, Card, CardContent, Input, Label, toast } from '@streetlifting/ui';
+import { WorkspacePage } from '../../components/workspace.js';
 import { api, ApiClientError } from '../../lib/api-client.js';
 import { rubToKopecks } from '../../lib/money.js';
 import { useCreateCompetition } from './api.js';
@@ -76,11 +68,8 @@ export default function CompetitionNewFeature() {
   const hasFederations = (federationsData?.federations.length ?? 0) > 0;
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-10">
+    <WorkspacePage title={t('competitions.newTitle')} subtitle={t('competitions.subtitle')}>
       <Card>
-        <CardHeader>
-          <CardTitle>{t('competitions.newTitle')}</CardTitle>
-        </CardHeader>
         <CardContent>
           <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
             <div className="space-y-2">
@@ -99,39 +88,74 @@ export default function CompetitionNewFeature() {
                 ))}
               </select>
               {!hasFederations && (
-                <p className="text-xs text-muted-foreground">{t('competitions.errors.federationRequired')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('competitions.errors.federationRequired')}
+                </p>
               )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="code">{t('competitions.fields.code')}</Label>
-                <Input id="code" value={code} onChange={(e) => setCode(e.target.value)} required maxLength={64} />
+                <Input
+                  id="code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  required
+                  maxLength={64}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="timezone">{t('competitions.fields.timezone')}</Label>
-                <Input id="timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} required />
+                <Input
+                  id="timezone"
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  required
+                />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="nameRu">{t('competitions.fields.nameRu')}</Label>
-              <Input id="nameRu" value={nameRu} onChange={(e) => setNameRu(e.target.value)} required />
+              <Input
+                id="nameRu"
+                value={nameRu}
+                onChange={(e) => setNameRu(e.target.value)}
+                required
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="nameEn">{t('competitions.fields.nameEn')}</Label>
-              <Input id="nameEn" value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+              <Input
+                id="nameEn"
+                value={nameEn}
+                onChange={(e) => setNameEn(e.target.value)}
+                required
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="startDate">{t('competitions.fields.startDate')}</Label>
-                <Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="endDate">{t('competitions.fields.endDate')}</Label>
-                <Input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  required
+                />
               </div>
             </div>
 
@@ -161,7 +185,11 @@ export default function CompetitionNewFeature() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => void navigate({ to: '/competitions' })}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void navigate({ to: '/competitions' })}
+              >
                 {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={create.isPending || !hasFederations}>
@@ -171,6 +199,6 @@ export default function CompetitionNewFeature() {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }
