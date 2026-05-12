@@ -3,13 +3,17 @@ import { useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
 import {
-  PowerTableButton,
-  PowerTableIcon,
-  PowerTablePage,
-  PowerTablePanel,
-} from '../../components/powertable.js';
+  WorkspaceButton,
+  WorkspaceIcon,
+  WorkspacePage,
+  WorkspacePanel,
+} from '../../components/workspace.js';
 import { nominationGenderStats } from './gender-stats.js';
-import { usePublicScoreboard, type NominationDto, type ScoreboardRowDto } from './operations-api.js';
+import {
+  usePublicScoreboard,
+  type NominationDto,
+  type ScoreboardRowDto,
+} from './operations-api.js';
 
 type BroadcastSortMode = 'name' | 'weight' | 'division' | 'score';
 type BroadcastColumnKey =
@@ -88,7 +92,9 @@ function sortBroadcastRows(
 ): ScoreboardRowDto[] {
   return [...rows].sort((a, b) => {
     if (mode === 'weight') {
-      return a.weightClass.localeCompare(b.weightClass) || a.athleteName.localeCompare(b.athleteName);
+      return (
+        a.weightClass.localeCompare(b.weightClass) || a.athleteName.localeCompare(b.athleteName)
+      );
     }
     if (mode === 'division') {
       return (
@@ -104,25 +110,31 @@ function sortBroadcastRows(
         a.athleteName.localeCompare(b.athleteName)
       );
     }
-    return fullName(nominationsById.get(a.nominationId)?.athlete ?? {
-      id: '',
-      firstName: a.athleteName,
-      lastName: '',
-      middleName: null,
-      dateOfBirth: '',
-      clubName: null,
-      federationCardNumber: null,
-      photoUrl: null,
-    }).localeCompare(fullName(nominationsById.get(b.nominationId)?.athlete ?? {
-      id: '',
-      firstName: b.athleteName,
-      lastName: '',
-      middleName: null,
-      dateOfBirth: '',
-      clubName: null,
-      federationCardNumber: null,
-      photoUrl: null,
-    }));
+    return fullName(
+      nominationsById.get(a.nominationId)?.athlete ?? {
+        id: '',
+        firstName: a.athleteName,
+        lastName: '',
+        middleName: null,
+        dateOfBirth: '',
+        clubName: null,
+        federationCardNumber: null,
+        photoUrl: null,
+      },
+    ).localeCompare(
+      fullName(
+        nominationsById.get(b.nominationId)?.athlete ?? {
+          id: '',
+          firstName: b.athleteName,
+          lastName: '',
+          middleName: null,
+          dateOfBirth: '',
+          clubName: null,
+          federationCardNumber: null,
+          photoUrl: null,
+        },
+      ),
+    );
   });
 }
 
@@ -148,19 +160,26 @@ export default function CompetitionBroadcastFeature() {
     [data?.nominations],
   );
   const showCompetitionRow = data
-    ? showAllCompetitions || isCompetitionInBroadcastWindow(data.competition.startDate, data.competition.endDate)
+    ? showAllCompetitions ||
+      isCompetitionInBroadcastWindow(data.competition.startDate, data.competition.endDate)
     : false;
   const visibleRows = useMemo(
-    () => sortBroadcastRows(competitionSelected && showCompetitionRow ? data?.rows ?? [] : [], nominationsById, sortMode),
+    () =>
+      sortBroadcastRows(
+        competitionSelected && showCompetitionRow ? (data?.rows ?? []) : [],
+        nominationsById,
+        sortMode,
+      ),
     [competitionSelected, data?.rows, nominationsById, showCompetitionRow, sortMode],
   );
 
   const current = useMemo(
-    () => visibleRows[0] ? nominationsById.get(visibleRows[0].nominationId) ?? null : null,
+    () => (visibleRows[0] ? (nominationsById.get(visibleRows[0].nominationId) ?? null) : null),
     [nominationsById, visibleRows],
   );
   const athleteName = current ? fullName(current.athlete) : '';
-  const visibleColumnCount = 2 + broadcastColumns.filter((column) => visibleColumns[column.key]).length;
+  const visibleColumnCount =
+    2 + broadcastColumns.filter((column) => visibleColumns[column.key]).length;
 
   useEffect(() => {
     if (!timerRunning) return undefined;
@@ -197,7 +216,9 @@ export default function CompetitionBroadcastFeature() {
 
   function markDecision(decision: 'good_lift' | 'no_lift') {
     setLocalDecision(decision);
-    toast.success(decision === 'good_lift' ? 'На табло отмечен зачет' : 'На табло отмечен не зачет');
+    toast.success(
+      decision === 'good_lift' ? 'На табло отмечен зачет' : 'На табло отмечен не зачет',
+    );
   }
 
   function setColumnVisibility(key: BroadcastColumnKey, checked: boolean) {
@@ -206,15 +227,52 @@ export default function CompetitionBroadcastFeature() {
 
   function renderColumn(row: ScoreboardRowDto, key: BroadcastColumnKey) {
     const nomination = nominationsById.get(row.nominationId);
-    if (key === 'weightClass') return <td key={key} className="font-bold">{row.weightClass}</td>;
-    if (key === 'bodyWeight') return <td key={key} className="text-right">{nomination?.bodyWeightAtWeighIn ?? '-'}</td>;
-    if (key === 'rankTitle') return <td key={key}>{nomination?.athlete.federationCardNumber ?? '-'}</td>;
-    if (key === 'birthYear') return <td key={key} className="text-right">{birthYear(nomination?.athlete.dateOfBirth)}</td>;
-    if (key === 'coefficient') return <td key={key} className="text-right">{row.finalScore && row.bestSuccessfulAttemptKg ? (row.finalScore / row.bestSuccessfulAttemptKg).toFixed(3) : '-'}</td>;
-    if (key === 'place') return <td key={key} className="text-right">{row.placeInClass ?? '-'}</td>;
-    if (key === 'teamPoints') return <td key={key} className="text-right">{row.finalScore ?? '-'}</td>;
+    if (key === 'weightClass')
+      return (
+        <td key={key} className="font-bold">
+          {row.weightClass}
+        </td>
+      );
+    if (key === 'bodyWeight')
+      return (
+        <td key={key} className="text-right">
+          {nomination?.bodyWeightAtWeighIn ?? '-'}
+        </td>
+      );
+    if (key === 'rankTitle')
+      return <td key={key}>{nomination?.athlete.federationCardNumber ?? '-'}</td>;
+    if (key === 'birthYear')
+      return (
+        <td key={key} className="text-right">
+          {birthYear(nomination?.athlete.dateOfBirth)}
+        </td>
+      );
+    if (key === 'coefficient')
+      return (
+        <td key={key} className="text-right">
+          {row.finalScore && row.bestSuccessfulAttemptKg
+            ? (row.finalScore / row.bestSuccessfulAttemptKg).toFixed(3)
+            : '-'}
+        </td>
+      );
+    if (key === 'place')
+      return (
+        <td key={key} className="text-right">
+          {row.placeInClass ?? '-'}
+        </td>
+      );
+    if (key === 'teamPoints')
+      return (
+        <td key={key} className="text-right">
+          {row.finalScore ?? '-'}
+        </td>
+      );
     if (key === 'status') return <td key={key}>{t(`competitionOps.status.${row.status}`)}</td>;
-    return <td key={key}>{row.status === 'finished' ? '-' : t(`competitionOps.status.${row.status}`)}</td>;
+    return (
+      <td key={key}>
+        {row.status === 'finished' ? '-' : t(`competitionOps.status.${row.status}`)}
+      </td>
+    );
   }
 
   if (isLoading) {
@@ -229,15 +287,25 @@ export default function CompetitionBroadcastFeature() {
   }
 
   return (
-    <PowerTablePage
+    <WorkspacePage
       title={`Помост №${selectedPlatform === 'admin' ? 'Admin' : selectedPlatform}`}
       subtitle={`${data.competition.nameRu} · обновлено ${new Date(data.generatedAt).toLocaleTimeString('ru-RU')}`}
-      actions={(
-        <PowerTableButton type="button" icon="refresh" onClick={() => void refreshList()} disabled={isFetching}>
+      actions={
+        <WorkspaceButton
+          type="button"
+          icon="refresh"
+          onClick={() => void refreshList()}
+          disabled={isFetching}
+        >
           {isFetching ? t('common.loading') : 'Обновить список'}
-        </PowerTableButton>
-      )}
-      federationBar={<><span>{data.competition.federation.code}</span><span>{data.competition.federation.nameRu}</span></>}
+        </WorkspaceButton>
+      }
+      federationBar={
+        <>
+          <span>{data.competition.federation.code}</span>
+          <span>{data.competition.federation.nameRu}</span>
+        </>
+      }
       tabs={[
         { label: 'Параметры', icon: 'settings' },
         { label: 'Оператор', icon: 'operator', active: true },
@@ -246,39 +314,72 @@ export default function CompetitionBroadcastFeature() {
       ]}
     >
       <div className="pt-info-gray mb-2 flex items-center justify-between">
-        <span className="pt-inline-icon"><PowerTableIcon name="warning" />В списке отображаются соревнования + 30 дней от текущей даты</span>
-        <label className="pt-checkline"><span>Отобразить все соревнования:</span><input type="checkbox" checked={showAllCompetitions} onChange={(event) => setShowAllCompetitions(event.target.checked)} /></label>
+        <span className="pt-inline-icon">
+          <WorkspaceIcon name="warning" />В списке отображаются соревнования + 30 дней от текущей
+          даты
+        </span>
+        <label className="pt-checkline">
+          <span>Отобразить все соревнования:</span>
+          <input
+            type="checkbox"
+            checked={showAllCompetitions}
+            onChange={(event) => setShowAllCompetitions(event.target.checked)}
+          />
+        </label>
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_370px]">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="font-bold text-red-700">Выберите номер помоста:</span>
-            <PowerTableButton
+            <WorkspaceButton
               type="button"
               {...(selectedPlatform === '1' ? { tone: 'green' as const } : {})}
               onClick={() => setSelectedPlatform('1')}
             >
               1
-            </PowerTableButton>
-            <PowerTableButton
+            </WorkspaceButton>
+            <WorkspaceButton
               type="button"
               {...(selectedPlatform === 'admin' ? { tone: 'green' as const } : {})}
               onClick={() => setSelectedPlatform('admin')}
             >
               Admin
-            </PowerTableButton>
+            </WorkspaceButton>
           </div>
-          <PowerTableButton type="button" icon="refresh" onClick={() => void refreshList()} disabled={isFetching}>
+          <WorkspaceButton
+            type="button"
+            icon="refresh"
+            onClick={() => void refreshList()}
+            disabled={isFetching}
+          >
             {isFetching ? t('common.loading') : 'Обновить список'}
-          </PowerTableButton>
+          </WorkspaceButton>
 
           <table className="pt-grid">
-            <thead><tr><th></th><th></th><th><PowerTableIcon name="timer" className="mx-auto" /></th><th>Начало</th><th>Ном</th><th>Жен</th><th>Муж</th></tr></thead>
+            <thead>
+              <tr>
+                <th></th>
+                <th></th>
+                <th>
+                  <WorkspaceIcon name="timer" className="mx-auto" />
+                </th>
+                <th>Начало</th>
+                <th>Ном</th>
+                <th>Жен</th>
+                <th>Муж</th>
+              </tr>
+            </thead>
             <tbody>
               {showCompetitionRow ? (
                 <tr className="is-selected">
-                  <td><input type="checkbox" checked={competitionSelected} onChange={(event) => setCompetitionSelected(event.target.checked)} /></td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={competitionSelected}
+                      onChange={(event) => setCompetitionSelected(event.target.checked)}
+                    />
+                  </td>
                   <td>{data.competition.nameRu}</td>
                   <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
                   <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
@@ -287,7 +388,11 @@ export default function CompetitionBroadcastFeature() {
                   <td className="text-right">{competitionGenderStats.men}</td>
                 </tr>
               ) : (
-                <tr><td colSpan={7} className="italic">Соревнование скрыто 30-дневным фильтром.</td></tr>
+                <tr>
+                  <td colSpan={7} className="italic">
+                    Соревнование скрыто 30-дневным фильтром.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -295,7 +400,11 @@ export default function CompetitionBroadcastFeature() {
           <div className="pt-live-controls mt-2">
             {!hideAthletePhoto && current ? (
               current.athlete.photoUrl ? (
-                <img src={current.athlete.photoUrl} alt="" className="h-16 w-16 rounded border border-gray-700 object-cover" />
+                <img
+                  src={current.athlete.photoUrl}
+                  alt=""
+                  className="h-16 w-16 rounded border border-gray-700 object-cover"
+                />
               ) : (
                 <div className="flex h-16 w-16 items-center justify-center rounded border border-gray-700 bg-black text-lg font-bold text-[#98e400]">
                   {initials(athleteName) || 'SL'}
@@ -310,14 +419,36 @@ export default function CompetitionBroadcastFeature() {
                 </span>
               ) : null}
             </div>
-            <PowerTableButton type="button" icon="break" aria-label="Пауза" onClick={pauseTimer} />
-            <PowerTableButton type="button" onClick={() => startTimer(60)}>60s Старт</PowerTableButton>
-            <button className="pt-big-green" type="button" onClick={() => setTimerRunning((running) => !running)}>
-              <PowerTableIcon name="timer" />{timerRunning ? 'Пауза' : 'Старт'} [{timerSeconds} сек]
+            <WorkspaceButton type="button" icon="break" aria-label="Пауза" onClick={pauseTimer} />
+            <WorkspaceButton type="button" onClick={() => startTimer(60)}>
+              60s Старт
+            </WorkspaceButton>
+            <button
+              className="pt-big-green"
+              type="button"
+              onClick={() => setTimerRunning((running) => !running)}
+            >
+              <WorkspaceIcon name="timer" />
+              {timerRunning ? 'Пауза' : 'Старт'} [{timerSeconds} сек]
             </button>
-            <PowerTableButton type="button" icon="break" aria-label="Пауза таймера" onClick={pauseTimer} />
-            <button className="pt-big-green" type="button" onClick={() => markDecision('good_lift')}><PowerTableIcon name="flag" />Зачёт</button>
-            <button className="pt-big-pink" type="button" onClick={() => markDecision('no_lift')}><PowerTableIcon name="flag" />Не зачёт</button>
+            <WorkspaceButton
+              type="button"
+              icon="break"
+              aria-label="Пауза таймера"
+              onClick={pauseTimer}
+            />
+            <button
+              className="pt-big-green"
+              type="button"
+              onClick={() => markDecision('good_lift')}
+            >
+              <WorkspaceIcon name="flag" />
+              Зачёт
+            </button>
+            <button className="pt-big-pink" type="button" onClick={() => markDecision('no_lift')}>
+              <WorkspaceIcon name="flag" />
+              Не зачёт
+            </button>
           </div>
 
           <table className="pt-grid">
@@ -325,27 +456,38 @@ export default function CompetitionBroadcastFeature() {
               <tr>
                 <th>Спортсмен</th>
                 <th>Дисц.</th>
-                {broadcastColumns.filter((column) => visibleColumns[column.key]).map((column) => (
-                  <th key={column.key}>{column.label}</th>
-                ))}
+                {broadcastColumns
+                  .filter((column) => visibleColumns[column.key])
+                  .map((column) => (
+                    <th key={column.key}>{column.label}</th>
+                  ))}
               </tr>
             </thead>
             <tbody>
               {visibleRows.map((row, index) => (
-                <tr key={row.nominationId} className={index === 0 ? 'is-selected' : index % 2 ? 'is-yellow' : 'is-green'}>
+                <tr
+                  key={row.nominationId}
+                  className={index === 0 ? 'is-selected' : index % 2 ? 'is-yellow' : 'is-green'}
+                >
                   <td>{row.athleteName}</td>
                   <td>{row.discipline}</td>
-                  {broadcastColumns.filter((column) => visibleColumns[column.key]).map((column) => renderColumn(row, column.key))}
+                  {broadcastColumns
+                    .filter((column) => visibleColumns[column.key])
+                    .map((column) => renderColumn(row, column.key))}
                 </tr>
               ))}
               {visibleRows.length === 0 ? (
-                <tr><td colSpan={visibleColumnCount} className="italic">Номинации скрыты настройками отображения.</td></tr>
+                <tr>
+                  <td colSpan={visibleColumnCount} className="italic">
+                    Номинации скрыты настройками отображения.
+                  </td>
+                </tr>
               ) : null}
             </tbody>
           </table>
         </div>
 
-        <PowerTablePanel className="p-3">
+        <WorkspacePanel className="p-3">
           <div className="font-bold text-blue-900">Упорядочивание номинаций:</div>
           {[
             ['name', 'по ФИО'],
@@ -364,9 +506,16 @@ export default function CompetitionBroadcastFeature() {
             </label>
           ))}
 
-          <div className="mt-4 font-bold text-blue-900">Управление видимостью колонок в номинациях</div>
+          <div className="mt-4 font-bold text-blue-900">
+            Управление видимостью колонок в номинациях
+          </div>
           <table className="pt-grid mt-1">
-            <thead><tr><th>Вкл</th><th>Название колонки</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Вкл</th>
+                <th>Название колонки</th>
+              </tr>
+            </thead>
             <tbody>
               {broadcastColumns.map((column, index) => (
                 <tr key={column.key} className={index === 0 ? 'is-selected' : undefined}>
@@ -382,9 +531,16 @@ export default function CompetitionBroadcastFeature() {
               ))}
             </tbody>
           </table>
-          <label className="pt-checkline mt-3"><span>Не отображать фото спортсмена:</span><input type="checkbox" checked={hideAthletePhoto} onChange={(event) => setHideAthletePhoto(event.target.checked)} /></label>
-        </PowerTablePanel>
+          <label className="pt-checkline mt-3">
+            <span>Не отображать фото спортсмена:</span>
+            <input
+              type="checkbox"
+              checked={hideAthletePhoto}
+              onChange={(event) => setHideAthletePhoto(event.target.checked)}
+            />
+          </label>
+        </WorkspacePanel>
       </div>
-    </PowerTablePage>
+    </WorkspacePage>
   );
 }

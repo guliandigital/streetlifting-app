@@ -4,13 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
 import type { PlateColor, PlateSetCreate } from '@streetlifting/domain';
 import {
-  PowerTableButton,
-  PowerTableIcon,
-  PowerTablePage,
-  PowerTablePanel,
-  PowerTableSectionTitle,
-  PowerTableToolbar,
-} from '../../components/powertable.js';
+  WorkspaceButton,
+  WorkspaceIcon,
+  WorkspacePage,
+  WorkspacePanel,
+  WorkspaceSectionTitle,
+  WorkspaceToolbar,
+} from '../../components/workspace.js';
 import { useAuthStore } from '../../lib/auth/store.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import {
@@ -73,11 +73,14 @@ function rowsFromPlates(plates: unknown): PlateRowForm[] {
   const rows = plates.flatMap((plate): PlateRowForm[] => {
     if (!plate || typeof plate !== 'object') return [];
     const payload = plate as Record<string, unknown>;
-    const color = typeof payload.color === 'string' && PLATE_COLORS.includes(payload.color as PlateColor)
-      ? (payload.color as PlateColor)
-      : 'gray';
-    const weightKg = typeof payload.weightKg === 'number' ? payload.weightKg : Number(payload.weightKg);
-    const pairCount = typeof payload.pairCount === 'number' ? payload.pairCount : Number(payload.pairCount);
+    const color =
+      typeof payload.color === 'string' && PLATE_COLORS.includes(payload.color as PlateColor)
+        ? (payload.color as PlateColor)
+        : 'gray';
+    const weightKg =
+      typeof payload.weightKg === 'number' ? payload.weightKg : Number(payload.weightKg);
+    const pairCount =
+      typeof payload.pairCount === 'number' ? payload.pairCount : Number(payload.pairCount);
     if (!Number.isFinite(weightKg) || !Number.isFinite(pairCount)) return [];
     return [
       {
@@ -139,7 +142,7 @@ export default function FederationInventoryFeature() {
 
   const plateSets = useMemo(() => data?.federation.plateSets ?? [], [data?.federation.plateSets]);
   const selectedSet = useMemo(
-    () => (selectedSetId ? plateSets.find((set) => set.id === selectedSetId) ?? null : null),
+    () => (selectedSetId ? (plateSets.find((set) => set.id === selectedSetId) ?? null) : null),
     [plateSets, selectedSetId],
   );
 
@@ -178,7 +181,8 @@ export default function FederationInventoryFeature() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const closeAfterSave =
-      ((event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.dataset.intent === 'save-close';
+      ((event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.dataset.intent ===
+      'save-close';
     const payload = buildPayload();
     if (!payload) return;
     try {
@@ -206,7 +210,16 @@ export default function FederationInventoryFeature() {
     const barWeight = numberFromInput(barWeightKg);
     const collarWeight = numberFromInput(collarWeightKg);
     const plates = payloadFromRows(plateRows);
-    if (!trimmedName || !increment || increment <= 0 || barWeight === null || barWeight < 0 || collarWeight === null || collarWeight < 0 || !plates) {
+    if (
+      !trimmedName ||
+      !increment ||
+      increment <= 0 ||
+      barWeight === null ||
+      barWeight < 0 ||
+      collarWeight === null ||
+      collarWeight < 0 ||
+      !plates
+    ) {
       toast.error('Проверьте название, веса и количество пар');
       return null;
     }
@@ -247,11 +260,16 @@ export default function FederationInventoryFeature() {
   }
 
   function updatePlateRow(index: number, patch: Partial<PlateRowForm>) {
-    setPlateRows((rows) => rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
+    setPlateRows((rows) =>
+      rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)),
+    );
   }
 
   function addPlateRow() {
-    setPlateRows((rows) => [...rows, { weightKg: '1.25', pairCount: '2', color: 'gray', recordOnly: false }]);
+    setPlateRows((rows) => [
+      ...rows,
+      { weightKg: '1.25', pairCount: '2', color: 'gray', recordOnly: false },
+    ]);
   }
 
   function deletePlateRow(index: number) {
@@ -259,51 +277,105 @@ export default function FederationInventoryFeature() {
   }
 
   return (
-    <PowerTablePage
+    <WorkspacePage
       title="Склад"
       subtitle={data.federation.nameRu}
-      actions={(
+      actions={
         <>
-          <PowerTableButton tone="danger" form="federationInventoryForm" type="submit" data-intent="save-close" disabled={!canManage || isSaving}>
+          <WorkspaceButton
+            tone="danger"
+            form="federationInventoryForm"
+            type="submit"
+            data-intent="save-close"
+            disabled={!canManage || isSaving}
+          >
             Записать и закрыть
-          </PowerTableButton>
-          <PowerTableButton form="federationInventoryForm" type="submit" disabled={!canManage || isSaving}>
+          </WorkspaceButton>
+          <WorkspaceButton
+            form="federationInventoryForm"
+            type="submit"
+            disabled={!canManage || isSaving}
+          >
             {isSaving ? t('common.saving') : 'Записать'}
-          </PowerTableButton>
-          <Link to="/federations/$id" params={{ id }} className="pt-link-button">К федерации</Link>
+          </WorkspaceButton>
+          <Link to="/federations/$id" params={{ id }} className="pt-link-button">
+            К федерации
+          </Link>
         </>
-      )}
-      federationBar={<><span>{data.federation.code}</span><span>{data.federation.nameRu}</span></>}
+      }
+      federationBar={
+        <>
+          <span>{data.federation.code}</span>
+          <span>{data.federation.nameRu}</span>
+        </>
+      }
       tabs={[
-        { label: <Link to="/federations/$id/settings" params={{ id }}>Основные настройки</Link>, icon: 'settings' },
-        { label: 'Диски', icon: 'plates', active: true },
-        { label: 'Грифы', icon: 'bar' },
-        { label: <Link to="/federations/$id/files" params={{ id }}>Файлы</Link>, icon: 'files' },
-        { label: <Link to="/federations/$id/logins" params={{ id }}>История</Link>, icon: 'history' },
+        {
+          label: (
+            <Link to="/federations/$id/settings" params={{ id }}>
+              Основные настройки
+            </Link>
+          ),
+          icon: 'settings',
+        },
+        { label: <a href="#inventory-plates">Диски</a>, icon: 'plates', active: true },
+        { label: <a href="#inventory-bars">Грифы</a>, icon: 'bar' },
+        {
+          label: (
+            <Link to="/federations/$id/files" params={{ id }}>
+              Файлы
+            </Link>
+          ),
+          icon: 'files',
+        },
+        {
+          label: (
+            <Link to="/federations/$id/logins" params={{ id }}>
+              История
+            </Link>
+          ),
+          icon: 'history',
+        },
       ]}
     >
       <div className="pt-info-yellow text-lg">
-        Здесь можно указать индивидуальный набор дисков, отличный от общепринятого, когда вес снаряда заполняется 25кг блинами, затем 20, 15, 10, 5, 2.5 и рекордные.
+        Здесь можно указать индивидуальный набор дисков, отличный от общепринятого, когда вес
+        снаряда заполняется 25кг блинами, затем 20, 15, 10, 5, 2.5 и рекордные.
       </div>
-      <PowerTableToolbar>
-        <PowerTableButton type="button" icon="plates" onClick={() => void createDefaultSet()} disabled={!canManage || createPlateSet.isPending}>
+      <WorkspaceToolbar>
+        <WorkspaceButton
+          type="button"
+          icon="plates"
+          onClick={() => void createDefaultSet()}
+          disabled={!canManage || createPlateSet.isPending}
+        >
           Создать стандартный комплект
-        </PowerTableButton>
-        <PowerTableButton type="button" icon="add" onClick={addPlateRow} disabled={!canManage}>
+        </WorkspaceButton>
+        <WorkspaceButton type="button" icon="add" onClick={addPlateRow} disabled={!canManage}>
           Добавить диск
-        </PowerTableButton>
-        <PowerTableButton type="button" icon="close" onClick={() => void removeSelectedSet()} disabled={!canManage || !selectedSetId || deletePlateSet.isPending}>
+        </WorkspaceButton>
+        <WorkspaceButton
+          type="button"
+          icon="close"
+          onClick={() => void removeSelectedSet()}
+          disabled={!canManage || !selectedSetId || deletePlateSet.isPending}
+        >
           Удалить комплект
-        </PowerTableButton>
+        </WorkspaceButton>
         <span className="font-bold text-red-600">
-          <PowerTableIcon name="warning" className="mr-1 inline-block align-[-3px]" />
-          После изменения настроек обновите информационные таблицы ассистентов на телевизорах, если они уже открыты.
+          <WorkspaceIcon name="warning" className="mr-1 inline-block align-[-3px]" />
+          После изменения настроек обновите информационные таблицы ассистентов на телевизорах, если
+          они уже открыты.
         </span>
-      </PowerTableToolbar>
+      </WorkspaceToolbar>
 
-      <form id="federationInventoryForm" onSubmit={(event) => void submit(event)} className="space-y-3">
-        <PowerTablePanel className="p-3">
-          <PowerTableSectionTitle>Параметры комплекта</PowerTableSectionTitle>
+      <form
+        id="federationInventoryForm"
+        onSubmit={(event) => void submit(event)}
+        className="space-y-3"
+      >
+        <WorkspacePanel className="p-3" id="inventory-bars">
+          <WorkspaceSectionTitle>Параметры комплекта, грифы и замки</WorkspaceSectionTitle>
           <div className="pt-form-grid max-w-5xl">
             <label htmlFor="plateSetSelect">Комплект:</label>
             <select
@@ -314,35 +386,74 @@ export default function FederationInventoryFeature() {
             >
               <option value="">Новый комплект</option>
               {plateSets.map((set) => (
-                <option key={set.id} value={set.id}>{set.name}</option>
+                <option key={set.id} value={set.id}>
+                  {set.name}
+                </option>
               ))}
             </select>
             <label htmlFor="plateSetName">Название:</label>
-            <input id="plateSetName" className="pt-field" value={name} onChange={(event) => setName(event.target.value)} disabled={!canManage} />
+            <input
+              id="plateSetName"
+              className="pt-field"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              disabled={!canManage}
+            />
             <label htmlFor="incrementKg">Шаг веса, кг:</label>
-            <input id="incrementKg" className="pt-field" value={incrementKg} onChange={(event) => setIncrementKg(event.target.value)} disabled={!canManage} />
+            <input
+              id="incrementKg"
+              className="pt-field"
+              value={incrementKg}
+              onChange={(event) => setIncrementKg(event.target.value)}
+              disabled={!canManage}
+            />
             <label htmlFor="barWeightKg">Гриф, кг:</label>
-            <input id="barWeightKg" className="pt-field" value={barWeightKg} onChange={(event) => setBarWeightKg(event.target.value)} disabled={!canManage} />
+            <input
+              id="barWeightKg"
+              className="pt-field"
+              value={barWeightKg}
+              onChange={(event) => setBarWeightKg(event.target.value)}
+              disabled={!canManage}
+            />
             <label htmlFor="collarWeightKg">Замки, кг:</label>
-            <input id="collarWeightKg" className="pt-field" value={collarWeightKg} onChange={(event) => setCollarWeightKg(event.target.value)} disabled={!canManage} />
+            <input
+              id="collarWeightKg"
+              className="pt-field"
+              value={collarWeightKg}
+              onChange={(event) => setCollarWeightKg(event.target.value)}
+              disabled={!canManage}
+            />
           </div>
-        </PowerTablePanel>
+        </WorkspacePanel>
 
         <div className="pt-split">
-          <PowerTablePanel className="p-2">
+          <WorkspacePanel className="p-2" id="inventory-plates">
             <div className="mb-2 text-sm">
               Измените вес, количество пар и цвет дисков. Рекордные диски можно отметить отдельно.
             </div>
             <table className="pt-grid">
-              <thead><tr><th>Вес диска</th><th>Пар</th><th>Цвет</th><th>Рекордный</th><th></th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Вес диска</th>
+                  <th>Пар</th>
+                  <th>Цвет</th>
+                  <th>Рекордный</th>
+                  <th></th>
+                </tr>
+              </thead>
               <tbody>
                 {plateRows.map((row, index) => (
-                  <tr key={`${row.weightKg}-${index}`} className={index === 0 ? 'is-selected' : undefined}>
+                  <tr
+                    key={`${row.weightKg}-${index}`}
+                    className={index === 0 ? 'is-selected' : undefined}
+                  >
                     <td>
                       <input
                         className="pt-field w-24"
                         value={row.weightKg}
-                        onChange={(event) => updatePlateRow(index, { weightKg: event.target.value })}
+                        onChange={(event) =>
+                          updatePlateRow(index, { weightKg: event.target.value })
+                        }
                         disabled={!canManage}
                       />
                     </td>
@@ -350,7 +461,9 @@ export default function FederationInventoryFeature() {
                       <input
                         className="pt-field w-20"
                         value={row.pairCount}
-                        onChange={(event) => updatePlateRow(index, { pairCount: event.target.value })}
+                        onChange={(event) =>
+                          updatePlateRow(index, { pairCount: event.target.value })
+                        }
                         disabled={!canManage}
                       />
                     </td>
@@ -358,28 +471,42 @@ export default function FederationInventoryFeature() {
                       <select
                         className="pt-select"
                         value={row.color}
-                        onChange={(event) => updatePlateRow(index, { color: event.target.value as PlateColor })}
+                        onChange={(event) =>
+                          updatePlateRow(index, { color: event.target.value as PlateColor })
+                        }
                         disabled={!canManage}
                       >
-                        {PLATE_COLORS.map((color) => <option key={color} value={color}>{color}</option>)}
+                        {PLATE_COLORS.map((color) => (
+                          <option key={color} value={color}>
+                            {color}
+                          </option>
+                        ))}
                       </select>
                     </td>
                     <td className="text-center">
                       <input
                         type="checkbox"
                         checked={row.recordOnly}
-                        onChange={(event) => updatePlateRow(index, { recordOnly: event.target.checked })}
+                        onChange={(event) =>
+                          updatePlateRow(index, { recordOnly: event.target.checked })
+                        }
                         disabled={!canManage}
                       />
                     </td>
                     <td>
-                      <PowerTableButton type="button" icon="close" onClick={() => deletePlateRow(index)} disabled={!canManage || plateRows.length <= 1} aria-label="Удалить диск" />
+                      <WorkspaceButton
+                        type="button"
+                        icon="close"
+                        onClick={() => deletePlateRow(index)}
+                        disabled={!canManage || plateRows.length <= 1}
+                        aria-label="Удалить диск"
+                      />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </PowerTablePanel>
+          </WorkspacePanel>
 
           <div className="pt-plate-canvas">
             <div className="pt-plate-stack">
@@ -400,47 +527,87 @@ export default function FederationInventoryFeature() {
       </form>
 
       <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <PowerTablePanel className="p-2">
-          <PowerTableSectionTitle>Комплекты дисков и оборудования</PowerTableSectionTitle>
+        <WorkspacePanel className="p-2">
+          <WorkspaceSectionTitle>Комплекты дисков и оборудования</WorkspaceSectionTitle>
           <table className="pt-grid">
             <thead>
-              <tr><th>Название</th><th>Шаг</th><th>Гриф</th><th>Замки</th><th>Позиций</th><th></th></tr>
+              <tr>
+                <th>Название</th>
+                <th>Шаг</th>
+                <th>Гриф</th>
+                <th>Замки</th>
+                <th>Позиций</th>
+                <th></th>
+              </tr>
             </thead>
             <tbody>
               {plateSets.map((set, index) => (
-                <tr key={set.id} className={set.id === selectedSetId ? 'is-selected' : index === 0 ? 'is-green' : undefined}>
+                <tr
+                  key={set.id}
+                  className={
+                    set.id === selectedSetId ? 'is-selected' : index === 0 ? 'is-green' : undefined
+                  }
+                >
                   <td>{set.name}</td>
                   <td className="text-right tabular-nums">{set.incrementKg} кг</td>
                   <td className="text-right tabular-nums">{set.barWeightKg} кг</td>
                   <td className="text-right tabular-nums">{set.collarWeightKg} кг</td>
                   <td className="text-right tabular-nums">{plateCount(set.plates)}</td>
-                  <td><PowerTableButton type="button" icon="check" onClick={() => setSelectedSetId(set.id)}>Открыть</PowerTableButton></td>
+                  <td>
+                    <WorkspaceButton
+                      type="button"
+                      icon="check"
+                      onClick={() => setSelectedSetId(set.id)}
+                    >
+                      Открыть
+                    </WorkspaceButton>
+                  </td>
                 </tr>
               ))}
               {plateSets.length === 0 ? (
-                <tr><td colSpan={6} className="italic">Комплекты пока не заведены.</td></tr>
+                <tr>
+                  <td colSpan={6} className="italic">
+                    Комплекты пока не заведены.
+                  </td>
+                </tr>
               ) : null}
             </tbody>
           </table>
-        </PowerTablePanel>
+        </WorkspacePanel>
 
-        <PowerTablePanel className="p-2">
-          <PowerTableSectionTitle>Файлы склада</PowerTableSectionTitle>
+        <WorkspacePanel className="p-2">
+          <WorkspaceSectionTitle>Файлы склада</WorkspaceSectionTitle>
           <table className="pt-grid">
-            <thead><tr><th>Файл</th><th>Тип</th><th>Дата</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Файл</th>
+                <th>Тип</th>
+                <th>Дата</th>
+              </tr>
+            </thead>
             <tbody>
               {data.federation.attachments.map((file, index) => (
                 <tr key={file.id} className={index === 0 ? 'is-selected' : undefined}>
-                  <td><Link to="/federations/$id/files" params={{ id }} className="pt-link">{file.filename}</Link></td>
+                  <td>
+                    <Link to="/federations/$id/files" params={{ id }} className="pt-link">
+                      {file.filename}
+                    </Link>
+                  </td>
                   <td>{file.mimeType}</td>
                   <td>{new Date(file.uploadedAt).toLocaleDateString('ru-RU')}</td>
                 </tr>
               ))}
-              {data.federation.attachments.length === 0 ? <tr><td colSpan={3} className="italic">Файлов пока нет.</td></tr> : null}
+              {data.federation.attachments.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="italic">
+                    Файлов пока нет.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
-        </PowerTablePanel>
+        </WorkspacePanel>
       </div>
-    </PowerTablePage>
+    </WorkspacePage>
   );
 }

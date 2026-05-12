@@ -13,6 +13,7 @@ import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
+import { validateUuidParams } from '../lib/params.js';
 import {
   MailerDeliveryError,
   MailerNotConfiguredError,
@@ -103,11 +104,13 @@ function uploadRoot(): string {
 }
 
 function sanitizeFilename(filename: string): string {
-  return filename
-    .replace(/[\\/:"*?<>|]+/g, '-')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 180) || 'file';
+  return (
+    filename
+      .replace(/[\\/:"*?<>|]+/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180) || 'file'
+  );
 }
 
 function contentDispositionFilename(filename: string): string {
@@ -132,7 +135,8 @@ function canManageFederation(
 ): boolean {
   if (!user) return false;
   return user.roles.some(
-    (r) => r.role === 'platform_admin' || (roles.includes(r.role) && r.federationId === federationId),
+    (r) =>
+      r.role === 'platform_admin' || (roles.includes(r.role) && r.federationId === federationId),
   );
 }
 
@@ -149,6 +153,8 @@ function dateOnly(value: Date): Date {
 export const federationsPlugin: FeaturePlugin = {
   name: 'federations',
   register: async (app) => {
+    app.addHook('preHandler', validateUuidParams(['id', 'plateSetId', 'ticketId', 'attachmentId']));
+
     app.get('/health/federations', async () => ({ status: 'ok', module: 'federations' }));
 
     // ─── List ───────────────────────────────────────────────────────────
@@ -163,21 +169,25 @@ export const federationsPlugin: FeaturePlugin = {
     });
 
     // ─── Get one ────────────────────────────────────────────────────────
-    app.get<{ Params: { id: string } }>('/federations/:id', { preHandler: requireAuth() }, async (req, reply) => {
-      const visible = visibleFederationIds(req.user);
-      if (!('all' in visible) && !visible.ids.includes(req.params.id)) {
-        return reply.code(403).send({
-          error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
-        });
-      }
-      const federation = await prisma.federation.findUnique({ where: { id: req.params.id } });
-      if (!federation) {
-        return reply.code(404).send({
-          error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
-        });
-      }
-      return { federation };
-    });
+    app.get<{ Params: { id: string } }>(
+      '/federations/:id',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const visible = visibleFederationIds(req.user);
+        if (!('all' in visible) && !visible.ids.includes(req.params.id)) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+        const federation = await prisma.federation.findUnique({ where: { id: req.params.id } });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+        return { federation };
+      },
+    );
 
     app.get<{ Params: { id: string } }>(
       '/federations/:id/dashboard',
@@ -338,10 +348,10 @@ export const federationsPlugin: FeaturePlugin = {
             result: row.result,
             actorIp: row.actorIp,
             actorUserAgent: row.actorUserAgent,
-            actorUser: row.actorUserId ? usersById.get(row.actorUserId) ?? null : null,
+            actorUser: row.actorUserId ? (usersById.get(row.actorUserId) ?? null) : null,
             targetType: row.targetType,
             targetId: row.targetId,
-            targetUser: row.targetType === 'user' ? usersById.get(row.targetId) ?? null : null,
+            targetUser: row.targetType === 'user' ? (usersById.get(row.targetId) ?? null) : null,
             after: row.after,
             notes: row.notes,
           })),
@@ -355,13 +365,21 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
           });
         }
         const parsed = PlateSetCreate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const federation = await prisma.federation.findUnique({
@@ -413,13 +431,21 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
           });
         }
         const parsed = PlateSetUpdate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const before = await prisma.plateSet.findFirst({
@@ -439,8 +465,10 @@ export const federationsPlugin: FeaturePlugin = {
         if (parsed.data.name !== undefined) updateData.name = parsed.data.name.trim();
         if (parsed.data.incrementKg !== undefined) updateData.incrementKg = parsed.data.incrementKg;
         if (parsed.data.barWeightKg !== undefined) updateData.barWeightKg = parsed.data.barWeightKg;
-        if (parsed.data.collarWeightKg !== undefined) updateData.collarWeightKg = parsed.data.collarWeightKg;
-        if (parsed.data.plates !== undefined) updateData.plates = parsed.data.plates as Prisma.InputJsonValue;
+        if (parsed.data.collarWeightKg !== undefined)
+          updateData.collarWeightKg = parsed.data.collarWeightKg;
+        if (parsed.data.plates !== undefined)
+          updateData.plates = parsed.data.plates as Prisma.InputJsonValue;
 
         const plateSet = await audit.withAudit(
           {
@@ -470,7 +498,11 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
           });
         }
         const before = await prisma.plateSet.findFirst({
@@ -513,7 +545,11 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -528,7 +564,11 @@ export const federationsPlugin: FeaturePlugin = {
         }
         if (!federation.contactEmail) {
           return reply.code(400).send({
-            error: { code: 'contact_email_missing', message: 'Federation contact email is empty', requestId: req.requestId },
+            error: {
+              code: 'contact_email_missing',
+              message: 'Federation contact email is empty',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -624,7 +664,11 @@ export const federationsPlugin: FeaturePlugin = {
         const parsed = FederationFeedbackCreateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const federation = await prisma.federation.findUnique({
@@ -735,7 +779,11 @@ export const federationsPlugin: FeaturePlugin = {
         const parsed = SupportTicketCreateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -810,7 +858,11 @@ export const federationsPlugin: FeaturePlugin = {
         const parsed = SupportTicketMessageCreateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -820,12 +872,20 @@ export const federationsPlugin: FeaturePlugin = {
         });
         if (!ticket) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Support ticket not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Support ticket not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (ticket.status === 'closed') {
           return reply.code(409).send({
-            error: { code: 'ticket_closed', message: 'Closed ticket cannot receive messages', requestId: req.requestId },
+            error: {
+              code: 'ticket_closed',
+              message: 'Closed ticket cannot receive messages',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -879,13 +939,21 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
           });
         }
         const parsed = SupportTicketUpdateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -894,7 +962,11 @@ export const federationsPlugin: FeaturePlugin = {
         });
         if (!before) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Support ticket not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Support ticket not found',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -940,13 +1012,21 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin', 'accountant'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation accounting role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation accounting role required',
+              requestId: req.requestId,
+            },
           });
         }
         const parsed = ReceiptCreateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const federation = await prisma.federation.findUnique({
@@ -998,7 +1078,11 @@ export const federationsPlugin: FeaturePlugin = {
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'number_taken', message: 'Receipt number already exists', requestId: req.requestId },
+              error: {
+                code: 'number_taken',
+                message: 'Receipt number already exists',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -1012,13 +1096,21 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin', 'accountant'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation accounting role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation accounting role required',
+              requestId: req.requestId,
+            },
           });
         }
         const parsed = WriteoffCreateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const federation = await prisma.federation.findUnique({
@@ -1037,7 +1129,11 @@ export const federationsPlugin: FeaturePlugin = {
           });
           if (!competition || competition.federationId !== req.params.id) {
             return reply.code(400).send({
-              error: { code: 'competition_out_of_scope', message: 'Competition is not in federation', requestId: req.requestId },
+              error: {
+                code: 'competition_out_of_scope',
+                message: 'Competition is not in federation',
+                requestId: req.requestId,
+              },
             });
           }
         }
@@ -1048,7 +1144,11 @@ export const federationsPlugin: FeaturePlugin = {
           });
           if (!receipt || receipt.federationId !== req.params.id) {
             return reply.code(400).send({
-              error: { code: 'receipt_out_of_scope', message: 'Receipt is not in federation', requestId: req.requestId },
+              error: {
+                code: 'receipt_out_of_scope',
+                message: 'Receipt is not in federation',
+                requestId: req.requestId,
+              },
             });
           }
         }
@@ -1090,7 +1190,11 @@ export const federationsPlugin: FeaturePlugin = {
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'number_taken', message: 'Writeoff number already exists', requestId: req.requestId },
+              error: {
+                code: 'number_taken',
+                message: 'Writeoff number already exists',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -1104,13 +1208,21 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
           });
         }
         const parsed = FederationAttachmentCreateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const federation = await prisma.federation.findUnique({
@@ -1185,7 +1297,11 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
           });
         }
         const before = await prisma.attachment.findFirst({
@@ -1255,7 +1371,11 @@ export const federationsPlugin: FeaturePlugin = {
         const absolutePath = path.resolve(root, attachment.storagePath);
         if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`)) {
           return reply.code(500).send({
-            error: { code: 'invalid_storage_path', message: 'Attachment storage path is invalid', requestId: req.requestId },
+            error: {
+              code: 'invalid_storage_path',
+              message: 'Attachment storage path is invalid',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -1270,7 +1390,11 @@ export const federationsPlugin: FeaturePlugin = {
         } catch (err) {
           log.error({ err, attachmentId: attachment.id }, 'attachment file read failed');
           return reply.code(404).send({
-            error: { code: 'file_missing', message: 'Attachment file is missing from storage', requestId: req.requestId },
+            error: {
+              code: 'file_missing',
+              message: 'Attachment file is missing from storage',
+              requestId: req.requestId,
+            },
           });
         }
       },
@@ -1282,7 +1406,11 @@ export const federationsPlugin: FeaturePlugin = {
       const parsed = FederationCreate.safeParse(req.body);
       if (!parsed.success) {
         return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
         });
       }
       const data = parsed.data;
@@ -1312,7 +1440,9 @@ export const federationsPlugin: FeaturePlugin = {
                 ...(data.telegramHandle !== undefined && { telegramHandle: data.telegramHandle }),
                 ...(data.vkUrl !== undefined && { vkUrl: data.vkUrl }),
                 ...(data.websiteUrl !== undefined && { websiteUrl: data.websiteUrl }),
-                ...(data.chiefAccountantName !== undefined && { chiefAccountantName: data.chiefAccountantName }),
+                ...(data.chiefAccountantName !== undefined && {
+                  chiefAccountantName: data.chiefAccountantName,
+                }),
                 ...(data.cashierName !== undefined && { cashierName: data.cashierName }),
                 billingTariffKopecksPerNomination: data.billingTariffKopecksPerNomination,
                 securityKey: randomUUID(),
@@ -1324,7 +1454,11 @@ export const federationsPlugin: FeaturePlugin = {
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
           return reply.code(409).send({
-            error: { code: 'code_taken', message: 'Federation code already in use', requestId: req.requestId },
+            error: {
+              code: 'code_taken',
+              message: 'Federation code already in use',
+              requestId: req.requestId,
+            },
           });
         }
         throw err;
@@ -1332,67 +1466,83 @@ export const federationsPlugin: FeaturePlugin = {
     });
 
     // ─── Update ─────────────────────────────────────────────────────────
-    app.patch<{ Params: { id: string } }>('/federations/:id', { preHandler: requireAuth() }, async (req, reply) => {
-      const visible = visibleFederationIds(req.user);
-      const isPlatformAdmin = 'all' in visible;
-      const isMember = isPlatformAdmin || visible.ids.includes(req.params.id);
-      if (!isMember) {
-        return reply.code(403).send({
-          error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
-        });
-      }
-      // Federation_admin (or platform_admin) only can update.
-      const canEdit =
-        isPlatformAdmin ||
-        (req.user?.roles.some(
-          (r) => r.role === 'federation_admin' && r.federationId === req.params.id,
-        ) ??
-          false);
-      if (!canEdit) {
-        return reply.code(403).send({
-          error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
-        });
-      }
+    app.patch<{ Params: { id: string } }>(
+      '/federations/:id',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const visible = visibleFederationIds(req.user);
+        const isPlatformAdmin = 'all' in visible;
+        const isMember = isPlatformAdmin || visible.ids.includes(req.params.id);
+        if (!isMember) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+        // Federation_admin (or platform_admin) only can update.
+        const canEdit =
+          isPlatformAdmin ||
+          (req.user?.roles.some(
+            (r) => r.role === 'federation_admin' && r.federationId === req.params.id,
+          ) ??
+            false);
+        if (!canEdit) {
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
+          });
+        }
 
-      const parsed = FederationUpdate.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
-        });
-      }
-      const before = await prisma.federation.findUnique({ where: { id: req.params.id } });
-      if (!before) {
-        return reply.code(404).send({
-          error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
-        });
-      }
+        const parsed = FederationUpdate.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        const before = await prisma.federation.findUnique({ where: { id: req.params.id } });
+        if (!before) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
 
-      // exactOptionalPropertyTypes forbids `key: undefined`. Strip out
-      // undefined keys before passing to Prisma.
-      const updateData: Prisma.FederationUpdateInput = {};
-      for (const [k, v] of Object.entries(parsed.data)) {
-        if (v !== undefined) (updateData as Record<string, unknown>)[k] = v;
-      }
+        // exactOptionalPropertyTypes forbids `key: undefined`. Strip out
+        // undefined keys before passing to Prisma.
+        const updateData: Prisma.FederationUpdateInput = {};
+        for (const [k, v] of Object.entries(parsed.data)) {
+          if (v !== undefined) (updateData as Record<string, unknown>)[k] = v;
+        }
 
-      const updated = await audit.withAudit(
-        {
-          ...audit.fromRequest(req),
-          actorUserId: req.user!.id,
-          action: 'federation.updated',
-          scopeFederationId: req.params.id,
-          scopeCompetitionId: null,
-          targetType: 'federation',
-          targetId: req.params.id,
-          before: { ...before, billingTariffKopecksPerNomination: before.billingTariffKopecksPerNomination.toString() },
-          after: parsed.data,
-        },
-        (tx) =>
-          tx.federation.update({
-            where: { id: req.params.id },
-            data: updateData,
-          }),
-      );
-      return { federation: updated };
-    });
+        const updated = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.updated',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'federation',
+            targetId: req.params.id,
+            before: {
+              ...before,
+              billingTariffKopecksPerNomination:
+                before.billingTariffKopecksPerNomination.toString(),
+            },
+            after: parsed.data,
+          },
+          (tx) =>
+            tx.federation.update({
+              where: { id: req.params.id },
+              data: updateData,
+            }),
+        );
+        return { federation: updated };
+      },
+    );
   },
 };

@@ -15,6 +15,7 @@ import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
+import { validateUuidParams } from '../lib/params.js';
 
 const log = moduleLogger('competition-ops');
 
@@ -190,50 +191,74 @@ function toAttemptData(data: AttemptUpsert): Prisma.AttemptUncheckedCreateInput 
     timeoutSeconds: data.timeoutSeconds,
     startedAt: dateOrNull(data.startedAt),
     decidedAt:
-      data.decidedAt === undefined && data.result !== 'pending' ? new Date() : dateOrNull(data.decidedAt),
+      data.decidedAt === undefined && data.result !== 'pending'
+        ? new Date()
+        : dateOrNull(data.decidedAt),
     notes: data.notes,
   }) as Prisma.AttemptUncheckedCreateInput;
 }
 
 async function validateNominationRefs(
   competitionId: string,
-  data: Pick<NominationCreate, 'athleteId' | 'disciplineId' | 'divisionId' | 'weightClassId' | 'declaredWeightClassId'> &
+  data: Pick<
+    NominationCreate,
+    'athleteId' | 'disciplineId' | 'divisionId' | 'weightClassId' | 'declaredWeightClassId'
+  > &
     Pick<NominationCreate, 'flightId' | 'groupId'>,
 ): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
-  const [athlete, discipline, division, declaredWeightClass, weightClass, flight, group] = await Promise.all([
-    prisma.athlete.findUnique({ where: { id: data.athleteId }, select: { id: true } }),
-    prisma.discipline.findUnique({ where: { id: data.disciplineId }, select: { id: true } }),
-    prisma.division.findUnique({ where: { id: data.divisionId }, select: { id: true, competitionId: true } }),
-    data.declaredWeightClassId
-      ? prisma.weightClass.findUnique({
-          where: { id: data.declaredWeightClassId },
-          select: { id: true, divisionId: true, disciplineId: true },
-        })
-      : Promise.resolve(null),
-    prisma.weightClass.findUnique({
-      where: { id: data.weightClassId },
-      select: { id: true, divisionId: true, disciplineId: true },
-    }),
-    data.flightId
-      ? prisma.flight.findUnique({ where: { id: data.flightId }, select: { id: true, competitionId: true } })
-      : Promise.resolve(null),
-    data.groupId
-      ? prisma.group.findUnique({
-          where: { id: data.groupId },
-          select: { id: true, flight: { select: { id: true, competitionId: true } } },
-        })
-      : Promise.resolve(null),
-  ]);
+  const [athlete, discipline, division, declaredWeightClass, weightClass, flight, group] =
+    await Promise.all([
+      prisma.athlete.findUnique({ where: { id: data.athleteId }, select: { id: true } }),
+      prisma.discipline.findUnique({ where: { id: data.disciplineId }, select: { id: true } }),
+      prisma.division.findUnique({
+        where: { id: data.divisionId },
+        select: { id: true, competitionId: true },
+      }),
+      data.declaredWeightClassId
+        ? prisma.weightClass.findUnique({
+            where: { id: data.declaredWeightClassId },
+            select: { id: true, divisionId: true, disciplineId: true },
+          })
+        : Promise.resolve(null),
+      prisma.weightClass.findUnique({
+        where: { id: data.weightClassId },
+        select: { id: true, divisionId: true, disciplineId: true },
+      }),
+      data.flightId
+        ? prisma.flight.findUnique({
+            where: { id: data.flightId },
+            select: { id: true, competitionId: true },
+          })
+        : Promise.resolve(null),
+      data.groupId
+        ? prisma.group.findUnique({
+            where: { id: data.groupId },
+            select: { id: true, flight: { select: { id: true, competitionId: true } } },
+          })
+        : Promise.resolve(null),
+    ]);
 
   if (!athlete) return { ok: false, code: 'athlete_not_found', message: 'Athlete not found' };
-  if (!discipline) return { ok: false, code: 'discipline_not_found', message: 'Discipline not found' };
+  if (!discipline)
+    return { ok: false, code: 'discipline_not_found', message: 'Discipline not found' };
   if (!division || division.competitionId !== competitionId) {
-    return { ok: false, code: 'division_out_of_scope', message: 'Division is not in this competition' };
+    return {
+      ok: false,
+      code: 'division_out_of_scope',
+      message: 'Division is not in this competition',
+    };
   }
   if (!weightClass || weightClass.divisionId !== data.divisionId) {
-    return { ok: false, code: 'weight_class_out_of_scope', message: 'Weight class is not in this division' };
+    return {
+      ok: false,
+      code: 'weight_class_out_of_scope',
+      message: 'Weight class is not in this division',
+    };
   }
-  if (data.declaredWeightClassId && (!declaredWeightClass || declaredWeightClass.divisionId !== data.divisionId)) {
+  if (
+    data.declaredWeightClassId &&
+    (!declaredWeightClass || declaredWeightClass.divisionId !== data.divisionId)
+  ) {
     return {
       ok: false,
       code: 'declared_weight_class_out_of_scope',
@@ -241,7 +266,11 @@ async function validateNominationRefs(
     };
   }
   if (weightClass.disciplineId && weightClass.disciplineId !== data.disciplineId) {
-    return { ok: false, code: 'weight_class_discipline_mismatch', message: 'Weight class discipline mismatch' };
+    return {
+      ok: false,
+      code: 'weight_class_discipline_mismatch',
+      message: 'Weight class discipline mismatch',
+    };
   }
   if (declaredWeightClass?.disciplineId && declaredWeightClass.disciplineId !== data.disciplineId) {
     return {
@@ -303,7 +332,10 @@ async function validateNominationOperationalRefs(
         })
       : Promise.resolve(null),
     data.flightId
-      ? prisma.flight.findUnique({ where: { id: data.flightId }, select: { id: true, competitionId: true } })
+      ? prisma.flight.findUnique({
+          where: { id: data.flightId },
+          select: { id: true, competitionId: true },
+        })
       : Promise.resolve(null),
     data.groupId
       ? prisma.group.findUnique({
@@ -319,7 +351,11 @@ async function validateNominationOperationalRefs(
   ] as const) {
     if (!weightClassRef) continue;
     if (weightClassRef.divisionId !== divisionId) {
-      return { ok: false, code: `${kind}_out_of_scope`, message: 'Weight class is not in this division' };
+      return {
+        ok: false,
+        code: `${kind}_out_of_scope`,
+        message: 'Weight class is not in this division',
+      };
     }
     if (weightClassRef.disciplineId && weightClassRef.disciplineId !== disciplineId) {
       return {
@@ -341,7 +377,10 @@ async function validateNominationOperationalRefs(
   return { ok: true };
 }
 
-async function recalculateNomination(tx: Prisma.TransactionClient, nominationId: string): Promise<void> {
+async function recalculateNomination(
+  tx: Prisma.TransactionClient,
+  nominationId: string,
+): Promise<void> {
   const nomination = await tx.nomination.findUnique({
     where: { id: nominationId },
     select: {
@@ -352,7 +391,9 @@ async function recalculateNomination(tx: Prisma.TransactionClient, nominationId:
       bodyWeightAtWeighIn: true,
       entryNumber: true,
       status: true,
-      discipline: { select: { attemptCount: true, format: true, components: { orderBy: { order: 'asc' } } } },
+      discipline: {
+        select: { attemptCount: true, format: true, components: { orderBy: { order: 'asc' } } },
+      },
       attempts: { orderBy: { attemptNumber: 'asc' } },
     },
   });
@@ -461,7 +502,11 @@ function csvEscape(value: unknown): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
-function sendCsv(reply: { header: (name: string, value: string) => unknown; send: (body: string) => unknown }, filename: string, rows: unknown[][]) {
+function sendCsv(
+  reply: { header: (name: string, value: string) => unknown; send: (body: string) => unknown },
+  filename: string,
+  rows: unknown[][],
+) {
   const body = rows.map((row) => row.map(csvEscape).join(',')).join('\n');
   reply.header('content-type', 'text/csv; charset=utf-8');
   reply.header('content-disposition', `attachment; filename="${filename}"`);
@@ -512,7 +557,8 @@ function xlsxSheet(rows: unknown[][]): string {
       const cells = row
         .map((value, columnIndex) => {
           const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
-          if (typeof value === 'number' && Number.isFinite(value)) return `<c r="${ref}"><v>${value}</v></c>`;
+          if (typeof value === 'number' && Number.isFinite(value))
+            return `<c r="${ref}"><v>${value}</v></c>`;
           return `<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`;
         })
         .join('');
@@ -529,7 +575,9 @@ function zipStore(files: Array<{ name: string; content: string | Buffer }>): Buf
 
   for (const file of files) {
     const name = Buffer.from(file.name, 'utf8');
-    const content = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content, 'utf8');
+    const content = Buffer.isBuffer(file.content)
+      ? file.content
+      : Buffer.from(file.content, 'utf8');
     const crc = crc32(content);
 
     const local = Buffer.alloc(30);
@@ -619,7 +667,11 @@ function buildXlsx(rows: unknown[][]): Buffer {
   ]);
 }
 
-function sendXlsx(reply: { header: (name: string, value: string) => unknown; send: (body: Buffer) => unknown }, filename: string, rows: unknown[][]) {
+function sendXlsx(
+  reply: { header: (name: string, value: string) => unknown; send: (body: Buffer) => unknown },
+  filename: string,
+  rows: unknown[][],
+) {
   reply.header('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   reply.header('content-disposition', `attachment; filename="${filename}"`);
   return reply.send(buildXlsx(rows));
@@ -657,7 +709,9 @@ async function getOpsPayload(competitionId: string) {
     prisma.platform.findMany({
       where: { competitionId },
       orderBy: { order: 'asc' },
-      include: { flights: { orderBy: { order: 'asc' }, include: { groups: { orderBy: { order: 'asc' } } } } },
+      include: {
+        flights: { orderBy: { order: 'asc' }, include: { groups: { orderBy: { order: 'asc' } } } },
+      },
     }),
     prisma.judgeAssignment.findMany({
       where: { competitionId },
@@ -674,7 +728,9 @@ async function getOpsPayload(competitionId: string) {
   if (!competition) return null;
 
   const total = nominations.length;
-  const paid = nominations.filter((n) => n.paymentStatus === 'paid' || n.paymentStatus === 'waived').length;
+  const paid = nominations.filter(
+    (n) => n.paymentStatus === 'paid' || n.paymentStatus === 'waived',
+  ).length;
   const weighedIn = nominations.filter((n) => n.bodyWeightAtWeighIn !== null).length;
   const mandatePassed = nominations.filter((n) => n.isMandatePassed).length;
   const entryFee = Number(competition.entryFeeKopecks);
@@ -682,15 +738,18 @@ async function getOpsPayload(competitionId: string) {
   const scoreboardRows = [...nominations]
     .sort(
       (a, b) =>
-        (a.discipline.nameRu.localeCompare(b.discipline.nameRu)) ||
-        ((a.placeInClass ?? Number.POSITIVE_INFINITY) - (b.placeInClass ?? Number.POSITIVE_INFINITY)) ||
-        (Number(b.finalScore ?? 0) - Number(a.finalScore ?? 0)) ||
-        ((a.entryNumber ?? Number.POSITIVE_INFINITY) - (b.entryNumber ?? Number.POSITIVE_INFINITY)),
+        a.discipline.nameRu.localeCompare(b.discipline.nameRu) ||
+        (a.placeInClass ?? Number.POSITIVE_INFINITY) -
+          (b.placeInClass ?? Number.POSITIVE_INFINITY) ||
+        Number(b.finalScore ?? 0) - Number(a.finalScore ?? 0) ||
+        (a.entryNumber ?? Number.POSITIVE_INFINITY) - (b.entryNumber ?? Number.POSITIVE_INFINITY),
     )
     .map((n) => ({
       nominationId: n.id,
       entryNumber: n.entryNumber,
-      athleteName: [n.athlete.lastName, n.athlete.firstName, n.athlete.middleName].filter(Boolean).join(' '),
+      athleteName: [n.athlete.lastName, n.athlete.firstName, n.athlete.middleName]
+        .filter(Boolean)
+        .join(' '),
       discipline: n.discipline.nameRu,
       division: n.division.nameRu,
       weightClass: n.weightClass.nameRu,
@@ -748,10 +807,12 @@ function attemptExportSummary(nomination: OpsPayload['nominations'][number]): st
 function protocolRows(payload: OpsPayload): unknown[][] {
   const ranked = [...payload.nominations].sort(
     (a, b) =>
-      ((a.placeInClass ?? Number.POSITIVE_INFINITY) - (b.placeInClass ?? Number.POSITIVE_INFINITY)) ||
-      (Number(b.finalScore ?? 0) - Number(a.finalScore ?? 0)) ||
-      (Number(b.bestSuccessfulAttemptKg ?? 0) - Number(a.bestSuccessfulAttemptKg ?? 0)) ||
-      `${a.athlete.lastName} ${a.athlete.firstName}`.localeCompare(`${b.athlete.lastName} ${b.athlete.firstName}`),
+      (a.placeInClass ?? Number.POSITIVE_INFINITY) - (b.placeInClass ?? Number.POSITIVE_INFINITY) ||
+      Number(b.finalScore ?? 0) - Number(a.finalScore ?? 0) ||
+      Number(b.bestSuccessfulAttemptKg ?? 0) - Number(a.bestSuccessfulAttemptKg ?? 0) ||
+      `${a.athlete.lastName} ${a.athlete.firstName}`.localeCompare(
+        `${b.athlete.lastName} ${b.athlete.firstName}`,
+      ),
   );
 
   return [
@@ -838,6 +899,11 @@ function accountingRows(payload: OpsPayload): unknown[][] {
 export const competitionOpsPlugin: FeaturePlugin = {
   name: 'competition-ops',
   register: async (app) => {
+    app.addHook(
+      'preHandler',
+      validateUuidParams(['id', 'assignmentId', 'nominationId', 'componentId']),
+    );
+
     app.get('/health/competition-ops', async () => ({ status: 'ok', module: 'competition-ops' }));
 
     app.get<{ Params: { id: string } }>(
@@ -847,7 +913,11 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const payload = await getOpsPayload(req.params.id);
         if (!payload) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!canRead(req.user, payload.competition)) {
@@ -866,19 +936,31 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const competition = await loadCompetition(req.params.id);
         if (!competition) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!hasScopedRole(req.user, competition, ['federation_admin', 'secretary'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'competition setup role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'competition setup role required',
+              requestId: req.requestId,
+            },
           });
         }
 
         const parsed = CompetitionDefaultSetup.safeParse(req.body ?? {});
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -901,7 +983,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
               update: { name: parsed.data.platformName },
             });
             const flight = await tx.flight.upsert({
-              where: { competitionId_code: { competitionId: competition.id, code: parsed.data.flightCode } },
+              where: {
+                competitionId_code: { competitionId: competition.id, code: parsed.data.flightCode },
+              },
               create: {
                 competitionId: competition.id,
                 platformId: platform.id,
@@ -911,16 +995,22 @@ export const competitionOpsPlugin: FeaturePlugin = {
               },
               update: { platformId: platform.id, name: parsed.data.flightName, order: 1 },
             });
-            const existingGroup = await tx.group.findFirst({ where: { flightId: flight.id, order: 1 } });
+            const existingGroup = await tx.group.findFirst({
+              where: { flightId: flight.id, order: 1 },
+            });
             if (!existingGroup) {
-              await tx.group.create({ data: { flightId: flight.id, name: `${parsed.data.flightCode}-1`, order: 1 } });
+              await tx.group.create({
+                data: { flightId: flight.id, name: `${parsed.data.flightCode}-1`, order: 1 },
+              });
             }
 
             let divisions = 0;
             let weightClasses = 0;
             for (const gender of ['M', 'F'] as const) {
               const division = await tx.division.upsert({
-                where: { competitionId_code: { competitionId: competition.id, code: `${gender}_OPEN` } },
+                where: {
+                  competitionId_code: { competitionId: competition.id, code: `${gender}_OPEN` },
+                },
                 create: {
                   competitionId: competition.id,
                   code: `${gender}_OPEN`,
@@ -934,7 +1024,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
               });
               divisions++;
 
-              const presetsForGender = presets.ISF_V51_WEIGHT_CATEGORIES.filter((p) => p.sex === gender);
+              const presetsForGender = presets.ISF_V51_WEIGHT_CATEGORIES.filter(
+                (p) => p.sex === gender,
+              );
               for (const [index, p] of presetsForGender.entries()) {
                 const existing = await tx.weightClass.findFirst({
                   where: { divisionId: division.id, code: p.code },
@@ -973,19 +1065,31 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const competition = await loadCompetition(req.params.id);
         if (!competition) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!hasScopedRole(req.user, competition, ['federation_admin', 'secretary'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'judge assignment role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'judge assignment role required',
+              requestId: req.requestId,
+            },
           });
         }
 
         const parsed = JudgeAssignmentCreate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -1010,17 +1114,29 @@ export const competitionOpsPlugin: FeaturePlugin = {
 
         if (!judge) {
           return reply.code(404).send({
-            error: { code: 'judge_not_found', message: 'Judge not found', requestId: req.requestId },
+            error: {
+              code: 'judge_not_found',
+              message: 'Judge not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (parsed.data.platformId && (!platform || platform.competitionId !== competition.id)) {
           return reply.code(400).send({
-            error: { code: 'platform_out_of_scope', message: 'Platform is not in this competition', requestId: req.requestId },
+            error: {
+              code: 'platform_out_of_scope',
+              message: 'Platform is not in this competition',
+              requestId: req.requestId,
+            },
           });
         }
         if (duplicate) {
           return reply.code(409).send({
-            error: { code: 'judge_assignment_exists', message: 'Judge assignment already exists', requestId: req.requestId },
+            error: {
+              code: 'judge_assignment_exists',
+              message: 'Judge assignment already exists',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -1057,7 +1173,11 @@ export const competitionOpsPlugin: FeaturePlugin = {
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'judge_assignment_exists', message: 'Judge assignment already exists', requestId: req.requestId },
+              error: {
+                code: 'judge_assignment_exists',
+                message: 'Judge assignment already exists',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -1075,12 +1195,20 @@ export const competitionOpsPlugin: FeaturePlugin = {
         });
         if (!before) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Judge assignment not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Judge assignment not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!hasScopedRole(req.user, before.competition, ['federation_admin', 'secretary'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'judge assignment role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'judge assignment role required',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -1120,19 +1248,31 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const competition = await loadCompetition(req.params.id);
         if (!competition) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!hasScopedRole(req.user, competition, ['federation_admin', 'secretary'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'nomination write role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'nomination write role required',
+              requestId: req.requestId,
+            },
           });
         }
 
         const parsed = NominationCreate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const refCheck = await validateNominationRefs(competition.id, parsed.data);
@@ -1165,7 +1305,11 @@ export const competitionOpsPlugin: FeaturePlugin = {
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'nomination_exists', message: 'Athlete already has this nomination', requestId: req.requestId },
+              error: {
+                code: 'nomination_exists',
+                message: 'Athlete already has this nomination',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -1180,19 +1324,31 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const competition = await loadCompetition(req.params.id);
         if (!competition) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!hasScopedRole(req.user, competition, ['federation_admin', 'secretary'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'nomination draw role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'nomination draw role required',
+              requestId: req.requestId,
+            },
           });
         }
 
         const parsed = NominationDraw.safeParse(req.body ?? {});
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -1230,10 +1386,12 @@ export const competitionOpsPlugin: FeaturePlugin = {
             });
             const maxExisting = parsed.data.overwrite
               ? 0
-              : ((await tx.nomination.aggregate({
-                  where: { competitionId: competition.id },
-                  _max: { entryNumber: true },
-                }))._max.entryNumber ?? 0);
+              : ((
+                  await tx.nomination.aggregate({
+                    where: { competitionId: competition.id },
+                    _max: { entryNumber: true },
+                  })
+                )._max.entryNumber ?? 0);
 
             await Promise.all(
               nominations.map((nomination, index) =>
@@ -1243,7 +1401,10 @@ export const competitionOpsPlugin: FeaturePlugin = {
                 }),
               ),
             );
-            return { assigned: nominations.length, firstNumber: nominations.length > 0 ? maxExisting + 1 : null };
+            return {
+              assigned: nominations.length,
+              firstNumber: nominations.length > 0 ? maxExisting + 1 : null,
+            };
           },
         );
 
@@ -1258,19 +1419,31 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const competition = await loadCompetition(req.params.id);
         if (!competition) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!hasScopedRole(req.user, competition, ['federation_admin', 'secretary'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'flight planning role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'flight planning role required',
+              requestId: req.requestId,
+            },
           });
         }
 
         const parsed = FlightAutoPlan.safeParse(req.body ?? {});
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -1310,7 +1483,10 @@ export const competitionOpsPlugin: FeaturePlugin = {
             });
             const grouped = new Map<string, typeof nominations>();
             for (const nomination of nominations) {
-              grouped.set(nomination.disciplineId, [...(grouped.get(nomination.disciplineId) ?? []), nomination]);
+              grouped.set(nomination.disciplineId, [
+                ...(grouped.get(nomination.disciplineId) ?? []),
+                nomination,
+              ]);
             }
 
             let cursor = parsed.data.startAt
@@ -1349,10 +1525,17 @@ export const competitionOpsPlugin: FeaturePlugin = {
               });
               const attemptsPerNomination =
                 discipline.components.length > 0
-                  ? discipline.components.reduce((sum, component) => sum + component.attemptCount, 0)
+                  ? discipline.components.reduce(
+                      (sum, component) => sum + component.attemptCount,
+                      0,
+                    )
                   : discipline.attemptCount;
               const chunks: Array<typeof nominationsInFlight> = [];
-              for (let i = 0; i < nominationsInFlight.length; i += parsed.data.maxNominationsPerGroup) {
+              for (
+                let i = 0;
+                i < nominationsInFlight.length;
+                i += parsed.data.maxNominationsPerGroup
+              ) {
                 chunks.push(nominationsInFlight.slice(i, i + parsed.data.maxNominationsPerGroup));
               }
               for (const [groupIndex, nominationsInGroup] of chunks.entries()) {
@@ -1366,7 +1549,11 @@ export const competitionOpsPlugin: FeaturePlugin = {
                       data: { name: `${code}-${groupIndex + 1}`, order: groupIndex + 1 },
                     })
                   : await tx.group.create({
-                      data: { flightId: flight.id, name: `${code}-${groupIndex + 1}`, order: groupIndex + 1 },
+                      data: {
+                        flightId: flight.id,
+                        name: `${code}-${groupIndex + 1}`,
+                        order: groupIndex + 1,
+                      },
                     });
                 await Promise.all(
                   nominationsInGroup.map((nomination) =>
@@ -1390,7 +1577,8 @@ export const competitionOpsPlugin: FeaturePlugin = {
                 estimatedMinutes,
               });
               cursor = new Date(
-                cursor.getTime() + (estimatedMinutes + parsed.data.breakBetweenFlightsMinutes) * 60_000,
+                cursor.getTime() +
+                  (estimatedMinutes + parsed.data.breakBetweenFlightsMinutes) * 60_000,
               );
               flightOrder++;
             }
@@ -1415,20 +1603,38 @@ export const competitionOpsPlugin: FeaturePlugin = {
             error: { code: 'not_found', message: 'Nomination not found', requestId: req.requestId },
           });
         }
-        if (!hasScopedRole(req.user, before.competition, ['federation_admin', 'secretary', 'head_judge'])) {
+        if (
+          !hasScopedRole(req.user, before.competition, [
+            'federation_admin',
+            'secretary',
+            'head_judge',
+          ])
+        ) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'nomination write role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'nomination write role required',
+              requestId: req.requestId,
+            },
           });
         }
 
         const parsed = NominationUpdate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const data: NominationUpdate = { ...parsed.data };
-        if (data.bodyWeightAtWeighIn !== undefined && data.bodyWeightAtWeighIn !== null && data.weightClassId === undefined) {
+        if (
+          data.bodyWeightAtWeighIn !== undefined &&
+          data.bodyWeightAtWeighIn !== null &&
+          data.weightClassId === undefined
+        ) {
           const autoWeightClassId = await findWeightClassForBodyWeight(
             before.divisionId,
             before.disciplineId,
@@ -1445,7 +1651,12 @@ export const competitionOpsPlugin: FeaturePlugin = {
           }
           data.weightClassId = autoWeightClassId;
         }
-        const refCheck = await validateNominationOperationalRefs(before.competition.id, before.divisionId, before.disciplineId, data);
+        const refCheck = await validateNominationOperationalRefs(
+          before.competition.id,
+          before.divisionId,
+          before.disciplineId,
+          data,
+        );
         if (!refCheck.ok) {
           return reply.code(400).send({
             error: { code: refCheck.code, message: refCheck.message, requestId: req.requestId },
@@ -1514,7 +1725,11 @@ export const competitionOpsPlugin: FeaturePlugin = {
           ])
         ) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'attempt write role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'attempt write role required',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -1522,13 +1737,25 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const parsed = AttemptUpsert.safeParse({ ...(req.body as object), attemptNumber });
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
-        const componentId = parsed.data.componentId ?? nomination.discipline.components[0]?.id ?? null;
-        if (componentId && !nomination.discipline.components.some((component) => component.id === componentId)) {
+        const componentId =
+          parsed.data.componentId ?? nomination.discipline.components[0]?.id ?? null;
+        if (
+          componentId &&
+          !nomination.discipline.components.some((component) => component.id === componentId)
+        ) {
           return reply.code(400).send({
-            error: { code: 'component_out_of_scope', message: 'Component is not in nomination discipline', requestId: req.requestId },
+            error: {
+              code: 'component_out_of_scope',
+              message: 'Component is not in nomination discipline',
+              requestId: req.requestId,
+            },
           });
         }
         const attemptData = { ...parsed.data, componentId };
@@ -1587,24 +1814,26 @@ export const competitionOpsPlugin: FeaturePlugin = {
       '/nominations/:nominationId/attempts/:componentId/:attemptNumber',
       { preHandler: requireAuth() },
       async (req, reply) => {
-        return app.inject({
-          method: 'PUT',
-          url: `/nominations/${req.params.nominationId}/attempts/${req.params.attemptNumber}`,
-          headers: {
-            authorization: req.headers.authorization ?? '',
-            cookie: req.headers.cookie ?? '',
-          },
-          payload: {
-            ...(req.body as object),
-            componentId: req.params.componentId,
-          },
-        }).then((res) => {
-          reply.code(res.statusCode);
-          for (const [name, value] of Object.entries(res.headers)) {
-            if (typeof value === 'string') reply.header(name, value);
-          }
-          return reply.send(res.body);
-        });
+        return app
+          .inject({
+            method: 'PUT',
+            url: `/nominations/${req.params.nominationId}/attempts/${req.params.attemptNumber}`,
+            headers: {
+              authorization: req.headers.authorization ?? '',
+              cookie: req.headers.cookie ?? '',
+            },
+            payload: {
+              ...(req.body as object),
+              componentId: req.params.componentId,
+            },
+          })
+          .then((res) => {
+            reply.code(res.statusCode);
+            for (const [name, value] of Object.entries(res.headers)) {
+              if (typeof value === 'string') reply.header(name, value);
+            }
+            return reply.send(res.body);
+          });
       },
     );
 
@@ -1615,7 +1844,11 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const payload = await getOpsPayload(req.params.id);
         if (!payload) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!canRead(req.user, payload.competition)) {
@@ -1638,12 +1871,20 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const payload = await getOpsPayload(req.params.id);
         if (!payload) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (payload.competition.federation.isPublicResultsClosed) {
           return reply.code(403).send({
-            error: { code: 'public_results_closed', message: 'Public results are closed', requestId: req.requestId },
+            error: {
+              code: 'public_results_closed',
+              message: 'Public results are closed',
+              requestId: req.requestId,
+            },
           });
         }
         return {
@@ -1662,7 +1903,11 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const payload = await getOpsPayload(req.params.id);
         if (!payload) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!canRead(req.user, payload.competition)) {
@@ -1682,7 +1927,11 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const payload = await getOpsPayload(req.params.id);
         if (!payload) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!canRead(req.user, payload.competition)) {
@@ -1701,16 +1950,28 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const payload = await getOpsPayload(req.params.id);
         if (!payload) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!hasScopedRole(req.user, payload.competition, ['federation_admin', 'accountant'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'accounting role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'accounting role required',
+              requestId: req.requestId,
+            },
           });
         }
 
-        return sendCsv(reply, `${payload.competition.code}-accounting.csv`, accountingRows(payload));
+        return sendCsv(
+          reply,
+          `${payload.competition.code}-accounting.csv`,
+          accountingRows(payload),
+        );
       },
     );
 
@@ -1721,16 +1982,28 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const payload = await getOpsPayload(req.params.id);
         if (!payload) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!hasScopedRole(req.user, payload.competition, ['federation_admin', 'accountant'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'accounting role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'accounting role required',
+              requestId: req.requestId,
+            },
           });
         }
 
-        return sendXlsx(reply, `${payload.competition.code}-accounting.xlsx`, accountingRows(payload));
+        return sendXlsx(
+          reply,
+          `${payload.competition.code}-accounting.xlsx`,
+          accountingRows(payload),
+        );
       },
     );
   },

@@ -3,12 +3,12 @@ import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
 import {
-  PowerTableButton,
-  PowerTablePage,
-  PowerTablePanel,
-  PowerTableSectionTitle,
-  PowerTableToolbar,
-} from '../../components/powertable.js';
+  WorkspaceButton,
+  WorkspacePage,
+  WorkspacePanel,
+  WorkspaceSectionTitle,
+  WorkspaceToolbar,
+} from '../../components/workspace.js';
 import { nominationGenderStats } from './gender-stats.js';
 import { useCompetitionOps } from './operations-api.js';
 
@@ -30,25 +30,60 @@ function toggleValue(values: string[], value: string, enabled: boolean): string[
   return values.filter((item) => item !== value);
 }
 
+function weightFilterKey(gender: 'F' | 'M', weightClass: string): string {
+  return `${gender}:${weightClass}`;
+}
+
+interface WeightFilterRow {
+  key: string;
+  gender: 'F' | 'M';
+  name: string;
+  count: number;
+}
+
 export default function CompetitionCertificatesFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/competitions/$id/certificates' });
   const { data, isLoading, error, isFetching, refetch } = useCompetitionOps(id);
-  const [selectedWeights, setSelectedWeights] = useState<string[]>([]);
+  const [selectedWeightKeys, setSelectedWeightKeys] = useState<string[]>([]);
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
   const [selectedPlaces, setSelectedPlaces] = useState<number[]>([1, 2, 3]);
   const [showAllPlaces, setShowAllPlaces] = useState(false);
-  const [hidePastCompetitions, setHidePastCompetitions] = useState(true);
+  const [hidePastCompetitions, setHidePastCompetitions] = useState(false);
   const [competitionSelected, setCompetitionSelected] = useState(true);
   const competitionGenderStats = useMemo(
     () => nominationGenderStats(data?.nominations ?? []),
     [data?.nominations],
   );
-  const showCompetitionRow = data ? (!hidePastCompetitions || !isPastCompetition(data.competition.endDate)) : false;
-  const weights = useMemo(
-    () => (data ? uniqueValues(data.scoreboardRows.map((row) => row.weightClass)) : []),
-    [data],
+  const showCompetitionRow = data
+    ? !hidePastCompetitions || !isPastCompetition(data.competition.endDate)
+    : false;
+  const weightFilters = useMemo<WeightFilterRow[]>(() => {
+    if (!data) return [];
+    const map = new Map<string, WeightFilterRow>();
+    for (const nomination of data.nominations) {
+      const gender = nomination.division.gender;
+      const name = nomination.weightClass.nameRu;
+      const key = weightFilterKey(gender, name);
+      const current = map.get(key) ?? { key, gender, name, count: 0 };
+      map.set(key, { ...current, count: current.count + 1 });
+    }
+    return [...map.values()].sort(
+      (a, b) => a.gender.localeCompare(b.gender) || a.name.localeCompare(b.name),
+    );
+  }, [data]);
+  const womenWeightFilters = useMemo(
+    () => weightFilters.filter((row) => row.gender === 'F'),
+    [weightFilters],
+  );
+  const menWeightFilters = useMemo(
+    () => weightFilters.filter((row) => row.gender === 'M'),
+    [weightFilters],
+  );
+  const nominationById = useMemo(
+    () => new Map((data?.nominations ?? []).map((nomination) => [nomination.id, nomination])),
+    [data?.nominations],
   );
   const divisions = useMemo(
     () => (data ? uniqueValues(data.scoreboardRows.map((row) => row.division)) : []),
@@ -66,16 +101,34 @@ export default function CompetitionCertificatesFeature() {
           showCompetitionRow &&
           row.placeInClass !== null &&
           (showAllPlaces || selectedPlaces.includes(row.placeInClass)) &&
-          selectedWeights.includes(row.weightClass) &&
+          Boolean(
+            nominationById.get(row.nominationId) &&
+            selectedWeightKeys.includes(
+              weightFilterKey(
+                nominationById.get(row.nominationId)!.division.gender,
+                row.weightClass,
+              ),
+            ),
+          ) &&
           selectedDivisions.includes(row.division) &&
           selectedDisciplines.includes(row.discipline),
       ) ?? [],
-    [competitionSelected, data?.scoreboardRows, selectedDisciplines, selectedDivisions, selectedPlaces, selectedWeights, showAllPlaces, showCompetitionRow],
+    [
+      competitionSelected,
+      data?.scoreboardRows,
+      nominationById,
+      selectedDisciplines,
+      selectedDivisions,
+      selectedPlaces,
+      selectedWeightKeys,
+      showAllPlaces,
+      showCompetitionRow,
+    ],
   );
 
   useEffect(() => {
-    setSelectedWeights(weights);
-  }, [weights]);
+    setSelectedWeightKeys(weightFilters.map((row) => row.key));
+  }, [weightFilters]);
 
   useEffect(() => {
     setSelectedDivisions(divisions);
@@ -94,6 +147,14 @@ export default function CompetitionCertificatesFeature() {
     toast.success('Списки грамот обновлены');
   }
 
+  function setWeightGroup(filters: WeightFilterRow[], enabled: boolean) {
+    const keys = new Set(filters.map((row) => row.key));
+    setSelectedWeightKeys((values) => {
+      if (!enabled) return values.filter((value) => !keys.has(value));
+      return [...new Set([...values, ...keys])];
+    });
+  }
+
   if (isLoading) {
     return <div className="pt-page p-6 text-sm text-gray-600">{t('common.loading')}</div>;
   }
@@ -106,35 +167,84 @@ export default function CompetitionCertificatesFeature() {
   }
 
   return (
-    <PowerTablePage
+    <WorkspacePage
       title={`Печать грамот. Данные на ${new Date().toLocaleTimeString('ru-RU')} (UTC+3)`}
       subtitle={data.competition.nameRu}
-      actions={(
+      actions={
         <>
-          <PowerTableButton type="button" onClick={() => window.print()}>Печать / PDF</PowerTableButton>
-          <Link to="/competitions/$id/reports" params={{ id }} className="pt-link-button">Отчеты</Link>
-          <Link to="/competitions/$id/operations" params={{ id }} className="pt-link-button">Операции</Link>
+          <WorkspaceButton
+            type="button"
+            onClick={() => window.print()}
+            disabled={rows.length === 0}
+          >
+            Печать / PDF
+          </WorkspaceButton>
+          <Link to="/competitions/$id/reports" params={{ id }} className="pt-link-button">
+            Отчеты
+          </Link>
+          <Link to="/competitions/$id/operations" params={{ id }} className="pt-link-button">
+            Операции
+          </Link>
         </>
-      )}
-      federationBar={<><span>{data.competition.federation.code}</span><span>{data.competition.federation.nameRu}</span></>}
+      }
+      federationBar={
+        <>
+          <span>{data.competition.federation.code}</span>
+          <span>{data.competition.federation.nameRu}</span>
+        </>
+      }
       tabs={[
         { label: 'Фильтры', icon: 'filter', active: true },
-        { label: 'Номинации', icon: 'nomination' },
-        { label: 'Рекорды', icon: 'records' },
-        { label: 'Команды', icon: 'teams' },
-        { label: 'Тренеры', icon: 'coach' },
+        {
+          label: (
+            <Link to="/competitions/$id/nominations" params={{ id }}>
+              Номинации
+            </Link>
+          ),
+          icon: 'nomination',
+        },
+        {
+          label: (
+            <Link to="/competitions/$id/reports" params={{ id }}>
+              Отчеты
+            </Link>
+          ),
+          icon: 'reports',
+        },
         { label: 'Сертификат участника', icon: 'certificate' },
       ]}
     >
       <div className="print:hidden">
-        <PowerTableSectionTitle>Соревнования</PowerTableSectionTitle>
-        <label className="pt-checkline mb-2"><input type="checkbox" checked={hidePastCompetitions} onChange={(event) => setHidePastCompetitions(event.target.checked)} /> Скрыть прошедшие соревнования</label>
+        <WorkspaceSectionTitle>Соревнования</WorkspaceSectionTitle>
+        <label className="pt-checkline mb-2">
+          <input
+            type="checkbox"
+            checked={hidePastCompetitions}
+            onChange={(event) => setHidePastCompetitions(event.target.checked)}
+          />{' '}
+          Скрыть прошедшие соревнования
+        </label>
         <table className="pt-grid">
-          <thead><tr><th>Вкл</th><th>Начало</th><th>Соревнование</th><th>Н.Всего</th><th>Н.Жен.</th><th>Н.Муж.</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Вкл</th>
+              <th>Начало</th>
+              <th>Соревнование</th>
+              <th>Н.Всего</th>
+              <th>Н.Жен.</th>
+              <th>Н.Муж.</th>
+            </tr>
+          </thead>
           <tbody>
             {showCompetitionRow ? (
               <tr className="is-selected">
-                <td><input type="checkbox" checked={competitionSelected} onChange={(event) => setCompetitionSelected(event.target.checked)} /></td>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={competitionSelected}
+                    onChange={(event) => setCompetitionSelected(event.target.checked)}
+                  />
+                </td>
                 <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
                 <td>{data.competition.nameRu}</td>
                 <td className="text-right">{competitionGenderStats.total}</td>
@@ -142,91 +252,162 @@ export default function CompetitionCertificatesFeature() {
                 <td className="text-right">{competitionGenderStats.men}</td>
               </tr>
             ) : (
-              <tr><td colSpan={6} className="italic">Соревнование скрыто фильтром прошедших.</td></tr>
+              <tr>
+                <td colSpan={6} className="italic">
+                  Соревнование скрыто фильтром прошедших.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
 
         <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[1fr_1fr_210px]">
-          <PowerTablePanel className="p-2">
-            <PowerTableSectionTitle>Фильтр ВКЖ</PowerTableSectionTitle>
-            <PowerTableToolbar>
-              <PowerTableButton type="button" icon="check" aria-label="Выбрать все весовые слева" onClick={() => setSelectedWeights(weights)} />
-              <PowerTableButton type="button" icon="list" aria-label="Очистить весовые слева" onClick={() => setSelectedWeights([])} />
-            </PowerTableToolbar>
+          <WorkspacePanel className="p-2">
+            <WorkspaceSectionTitle>Фильтр весовых: женщины</WorkspaceSectionTitle>
+            <WorkspaceToolbar>
+              <WorkspaceButton
+                type="button"
+                icon="check"
+                aria-label="Выбрать все женские весовые"
+                onClick={() => setWeightGroup(womenWeightFilters, true)}
+              />
+              <WorkspaceButton
+                type="button"
+                icon="list"
+                aria-label="Очистить женские весовые"
+                onClick={() => setWeightGroup(womenWeightFilters, false)}
+              />
+            </WorkspaceToolbar>
             <table className="pt-grid">
-              <thead><tr><th>Вкл</th><th>Весовая категория</th><th>Номинаций</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Вкл</th>
+                  <th>Весовая категория</th>
+                  <th>Номинаций</th>
+                </tr>
+              </thead>
               <tbody>
-                {weights.slice(0, Math.ceil(weights.length / 2)).map((weight, index) => (
-                  <tr key={weight} className={index === 0 ? 'is-selected' : undefined}>
+                {womenWeightFilters.map((weight, index) => (
+                  <tr key={weight.key} className={index === 0 ? 'is-selected' : undefined}>
                     <td>
                       <input
                         type="checkbox"
-                        checked={selectedWeights.includes(weight)}
-                        onChange={(event) => setSelectedWeights((values) => toggleValue(values, weight, event.target.checked))}
+                        checked={selectedWeightKeys.includes(weight.key)}
+                        onChange={(event) =>
+                          setSelectedWeightKeys((values) =>
+                            toggleValue(values, weight.key, event.target.checked),
+                          )
+                        }
                       />
                     </td>
-                    <td>{weight}</td>
-                    <td className="text-right">{data.scoreboardRows.filter((row) => row.weightClass === weight).length}</td>
+                    <td>{weight.name}</td>
+                    <td className="text-right">{weight.count}</td>
                   </tr>
                 ))}
+                {womenWeightFilters.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="italic">
+                      Женских весовых категорий пока нет.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
-          </PowerTablePanel>
+          </WorkspacePanel>
 
-          <PowerTablePanel className="p-2">
-            <PowerTableSectionTitle>Фильтр ВКМ</PowerTableSectionTitle>
-            <PowerTableToolbar>
-              <PowerTableButton type="button" icon="check" aria-label="Выбрать все весовые справа" onClick={() => setSelectedWeights(weights)} />
-              <PowerTableButton type="button" icon="list" aria-label="Очистить весовые справа" onClick={() => setSelectedWeights([])} />
-            </PowerTableToolbar>
+          <WorkspacePanel className="p-2">
+            <WorkspaceSectionTitle>Фильтр весовых: мужчины</WorkspaceSectionTitle>
+            <WorkspaceToolbar>
+              <WorkspaceButton
+                type="button"
+                icon="check"
+                aria-label="Выбрать все мужские весовые"
+                onClick={() => setWeightGroup(menWeightFilters, true)}
+              />
+              <WorkspaceButton
+                type="button"
+                icon="list"
+                aria-label="Очистить мужские весовые"
+                onClick={() => setWeightGroup(menWeightFilters, false)}
+              />
+            </WorkspaceToolbar>
             <table className="pt-grid">
-              <thead><tr><th>Вкл</th><th>Весовая категория</th><th>Номинаций</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Вкл</th>
+                  <th>Весовая категория</th>
+                  <th>Номинаций</th>
+                </tr>
+              </thead>
               <tbody>
-                {weights.slice(Math.ceil(weights.length / 2)).map((weight, index) => (
-                  <tr key={weight} className={index === 0 ? 'is-selected' : undefined}>
+                {menWeightFilters.map((weight, index) => (
+                  <tr key={weight.key} className={index === 0 ? 'is-selected' : undefined}>
                     <td>
                       <input
                         type="checkbox"
-                        checked={selectedWeights.includes(weight)}
-                        onChange={(event) => setSelectedWeights((values) => toggleValue(values, weight, event.target.checked))}
+                        checked={selectedWeightKeys.includes(weight.key)}
+                        onChange={(event) =>
+                          setSelectedWeightKeys((values) =>
+                            toggleValue(values, weight.key, event.target.checked),
+                          )
+                        }
                       />
                     </td>
-                    <td>{weight}</td>
-                    <td className="text-right">{data.scoreboardRows.filter((row) => row.weightClass === weight).length}</td>
+                    <td>{weight.name}</td>
+                    <td className="text-right">{weight.count}</td>
                   </tr>
                 ))}
+                {menWeightFilters.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="italic">
+                      Мужских весовых категорий пока нет.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
-          </PowerTablePanel>
+          </WorkspacePanel>
 
-          <PowerTablePanel className="p-3">
-            <PowerTableSectionTitle>Фильтр мест</PowerTableSectionTitle>
+          <WorkspacePanel className="p-3">
+            <WorkspaceSectionTitle>Фильтр мест</WorkspaceSectionTitle>
             {[1, 2, 3].map((place) => (
               <label key={place} className="pt-checkline mb-3 text-lg font-bold">
                 <span>Место №{place}:</span>
                 <input
                   type="checkbox"
                   checked={selectedPlaces.includes(place)}
-                  onChange={(event) => setSelectedPlaces((values) => {
-                    if (event.target.checked) return values.includes(place) ? values : [...values, place].sort();
-                    return values.filter((value) => value !== place);
-                  })}
+                  onChange={(event) =>
+                    setSelectedPlaces((values) => {
+                      if (event.target.checked)
+                        return values.includes(place) ? values : [...values, place].sort();
+                      return values.filter((value) => value !== place);
+                    })
+                  }
                 />
               </label>
             ))}
             <label className="pt-checkline mt-8">
               <span>Отобразить все места:</span>
-              <input type="checkbox" checked={showAllPlaces} onChange={(event) => setShowAllPlaces(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={showAllPlaces}
+                onChange={(event) => setShowAllPlaces(event.target.checked)}
+              />
             </label>
-          </PowerTablePanel>
+          </WorkspacePanel>
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
-          <PowerTablePanel className="p-2">
-            <PowerTableSectionTitle>Фильтр возрастные</PowerTableSectionTitle>
+          <WorkspacePanel className="p-2">
+            <WorkspaceSectionTitle>Фильтр возрастные</WorkspaceSectionTitle>
             <table className="pt-grid">
-              <thead><tr><th>Вкл</th><th>Возрастная</th><th>Номинаций</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Вкл</th>
+                  <th>Возрастная</th>
+                  <th>Номинаций</th>
+                </tr>
+              </thead>
               <tbody>
                 {divisions.map((division, index) => (
                   <tr key={division} className={index === 0 ? 'is-selected' : undefined}>
@@ -234,21 +415,33 @@ export default function CompetitionCertificatesFeature() {
                       <input
                         type="checkbox"
                         checked={selectedDivisions.includes(division)}
-                        onChange={(event) => setSelectedDivisions((values) => toggleValue(values, division, event.target.checked))}
+                        onChange={(event) =>
+                          setSelectedDivisions((values) =>
+                            toggleValue(values, division, event.target.checked),
+                          )
+                        }
                       />
                     </td>
                     <td>{division}</td>
-                    <td className="text-right">{data.scoreboardRows.filter((row) => row.division === division).length}</td>
+                    <td className="text-right">
+                      {data.scoreboardRows.filter((row) => row.division === division).length}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </PowerTablePanel>
+          </WorkspacePanel>
 
-          <PowerTablePanel className="p-2">
-            <PowerTableSectionTitle>Фильтр дисциплины</PowerTableSectionTitle>
+          <WorkspacePanel className="p-2">
+            <WorkspaceSectionTitle>Фильтр дисциплины</WorkspaceSectionTitle>
             <table className="pt-grid">
-              <thead><tr><th>Вкл</th><th>Дисциплина</th><th>Номинаций</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Вкл</th>
+                  <th>Дисциплина</th>
+                  <th>Номинаций</th>
+                </tr>
+              </thead>
               <tbody>
                 {disciplines.map((discipline, index) => (
                   <tr key={discipline} className={index === 0 ? 'is-selected' : undefined}>
@@ -256,34 +449,56 @@ export default function CompetitionCertificatesFeature() {
                       <input
                         type="checkbox"
                         checked={selectedDisciplines.includes(discipline)}
-                        onChange={(event) => setSelectedDisciplines((values) => toggleValue(values, discipline, event.target.checked))}
+                        onChange={(event) =>
+                          setSelectedDisciplines((values) =>
+                            toggleValue(values, discipline, event.target.checked),
+                          )
+                        }
                       />
                     </td>
                     <td>{discipline}</td>
-                    <td className="text-right">{data.scoreboardRows.filter((row) => row.discipline === discipline).length}</td>
+                    <td className="text-right">
+                      {data.scoreboardRows.filter((row) => row.discipline === discipline).length}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </PowerTablePanel>
+          </WorkspacePanel>
         </div>
 
-        <PowerTableToolbar className="mt-2">
-          <PowerTableButton type="button" icon="refresh" onClick={() => void refreshLists()} disabled={isFetching}>
-            {isFetching ? t('common.loading') : 'Обновить списки номинаций, рекордов, команд, тренеров'}
-          </PowerTableButton>
-        </PowerTableToolbar>
+        <WorkspaceToolbar className="mt-2">
+          <WorkspaceButton
+            type="button"
+            icon="refresh"
+            onClick={() => void refreshLists()}
+            disabled={isFetching}
+          >
+            {isFetching
+              ? t('common.loading')
+              : 'Обновить списки номинаций, рекордов, команд, тренеров'}
+          </WorkspaceButton>
+        </WorkspaceToolbar>
       </div>
 
       <div className="hidden print:block">
         {rows.map((row) => (
-          <section key={row.nominationId} className="mb-0 flex h-[190mm] w-[277mm] break-after-page flex-col items-center justify-center gap-5 border-0 bg-white p-12 text-center text-black">
-            <div className="text-sm uppercase tracking-[0.35em]">{data.competition.federation.nameRu}</div>
+          <section
+            key={row.nominationId}
+            className="mb-0 flex h-[190mm] w-[277mm] break-after-page flex-col items-center justify-center gap-5 border-0 bg-white p-12 text-center text-black"
+          >
+            <div className="text-sm uppercase tracking-[0.35em]">
+              {data.competition.federation.nameRu}
+            </div>
             <div className="text-6xl font-semibold">Грамота</div>
             <div className="max-w-3xl text-lg">награждается участник соревнования</div>
             <div className="text-4xl font-semibold">{row.athleteName}</div>
-            <div className="text-xl">{row.placeInClass} место · {row.discipline} · {row.weightClass}</div>
-            <div className="text-lg">Лучший результат: {row.bestSuccessfulAttemptKg ?? '-'} · Очки: {row.finalScore ?? '-'}</div>
+            <div className="text-xl">
+              {row.placeInClass} место · {row.discipline} · {row.weightClass}
+            </div>
+            <div className="text-lg">
+              Лучший результат: {row.bestSuccessfulAttemptKg ?? '-'} · Очки: {row.finalScore ?? '-'}
+            </div>
             <div className="mt-10 grid w-full max-w-3xl grid-cols-2 gap-16 text-left text-sm">
               <div className="border-t border-black pt-2">Главный судья</div>
               <div className="border-t border-black pt-2">Главный секретарь</div>
@@ -291,6 +506,6 @@ export default function CompetitionCertificatesFeature() {
           </section>
         ))}
       </div>
-    </PowerTablePage>
+    </WorkspacePage>
   );
 }

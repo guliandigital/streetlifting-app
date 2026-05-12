@@ -1,51 +1,171 @@
-import {
-  createRootRoute,
-  createRoute,
-  createRouter,
-  redirect,
-} from '@tanstack/react-router';
+import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router';
 import { RootLayout } from './components/Layout.js';
 import { defaultAuthenticatedRoute } from './lib/auth/default-route.js';
 import { useAuthStore } from './lib/auth/store.js';
 import { LazyModule } from './lib/lazy-module.js';
 
-const LoginFeature = () => <LazyModule module="login" loader={() => import('./features/login/index.js')} />;
-const ProfileFeature = () => <LazyModule module="profile" loader={() => import('./features/profile/index.js')} />;
-const HealthFeature = () => <LazyModule module="health" loader={() => import('./features/_health/index.js')} />;
-const FederationsListFeature = () => <LazyModule module="federations" loader={() => import('./features/federations/index.js')} />;
-const FederationNewFeature = () => <LazyModule module="federations-new" loader={() => import('./features/federations/new.js')} />;
-const FederationDetailFeature = () => <LazyModule module="federations-detail" loader={() => import('./features/federations/detail.js')} />;
-const FederationInventoryFeature = () => <LazyModule module="federations-inventory" loader={() => import('./features/federations/inventory.js')} />;
-const FederationNotificationsFeature = () => <LazyModule module="federations-notifications" loader={() => import('./features/federations/notifications.js')} />;
-const FederationSettingsFeature = () => <LazyModule module="federations-settings" loader={() => import('./features/federations/settings.js')} />;
-const FederationFilesFeature = () => <LazyModule module="federations-files" loader={() => import('./features/federations/files.js')} />;
-const CompetitionsListFeature = () => <LazyModule module="competitions" loader={() => import('./features/competitions/index.js')} />;
-const CompetitionNewFeature = () => <LazyModule module="competitions-new" loader={() => import('./features/competitions/new.js')} />;
-const CompetitionDetailFeature = () => <LazyModule module="competitions-detail" loader={() => import('./features/competitions/detail.js')} />;
-const CompetitionOperationsFeature = () => <LazyModule module="competition-operations" loader={() => import('./features/competitions/operations.js')} />;
-const CompetitionScoreboardFeature = () => <LazyModule module="competition-scoreboard" loader={() => import('./features/competitions/scoreboard.js')} />;
-const CompetitionOperatorFeature = () => <LazyModule module="competition-operator" loader={() => import('./features/competitions/operator.js')} />;
-const CompetitionJudgeFeature = () => <LazyModule module="competition-judge" loader={() => import('./features/competitions/judge.js')} />;
-const CompetitionProtocolPrintFeature = () => <LazyModule module="competition-protocol-print" loader={() => import('./features/competitions/protocol-print.js')} />;
-const CompetitionReportsFeature = () => <LazyModule module="competition-reports" loader={() => import('./features/competitions/reports.js')} />;
-const CompetitionCertificatesFeature = () => <LazyModule module="competition-certificates" loader={() => import('./features/competitions/certificates.js')} />;
-const CompetitionAwardsFeature = () => <LazyModule module="competition-awards" loader={() => import('./features/competitions/awards.js')} />;
-const CompetitionBroadcastFeature = () => <LazyModule module="competition-broadcast" loader={() => import('./features/competitions/broadcast.js')} />;
-const PublicCompetitionRegistrationFeature = () => <LazyModule module="public-registration" loader={() => import('./features/public-registration/register.js')} />;
-const PublicFederationRegistrationFeature = () => <LazyModule module="public-federation-registration" loader={() => import('./features/public-registration/federation.js')} />;
-const AthletesListFeature = () => <LazyModule module="athletes" loader={() => import('./features/athletes/index.js')} />;
-const AthleteNewFeature = () => <LazyModule module="athletes-new" loader={() => import('./features/athletes/new.js')} />;
-const AthleteDetailFeature = () => <LazyModule module="athletes-detail" loader={() => import('./features/athletes/detail.js')} />;
-const DisciplinesListFeature = () => <LazyModule module="disciplines" loader={() => import('./features/disciplines/index.js')} />;
-const DisciplineDetailFeature = () => <LazyModule module="disciplines-detail" loader={() => import('./features/disciplines/detail.js')} />;
-const JudgesListFeature = () => <LazyModule module="judges" loader={() => import('./features/judges/index.js')} />;
-const JudgeNewFeature = () => <LazyModule module="judges-new" loader={() => import('./features/judges/new.js')} />;
-const JudgeDetailFeature = () => <LazyModule module="judges-detail" loader={() => import('./features/judges/detail.js')} />;
-const LookupsLandingFeature = () => <LazyModule module="lookups" loader={() => import('./features/lookups/index.js')} />;
-const LookupsCountriesFeature = () => <LazyModule module="lookups-countries" loader={() => import('./features/lookups/countries.js')} />;
-const LookupsRegionsFeature = () => <LazyModule module="lookups-regions" loader={() => import('./features/lookups/regions.js')} />;
-const LookupsCitiesFeature = () => <LazyModule module="lookups-cities" loader={() => import('./features/lookups/cities.js')} />;
-const LookupsValuesFeature = () => <LazyModule module="lookups-values" loader={() => import('./features/lookups/values.js')} />;
+const LoginFeature = () => (
+  <LazyModule module="login" loader={() => import('./features/login/index.js')} />
+);
+const ProfileFeature = () => (
+  <LazyModule module="profile" loader={() => import('./features/profile/index.js')} />
+);
+const HealthFeature = () => (
+  <LazyModule module="health" loader={() => import('./features/_health/index.js')} />
+);
+const FederationsListFeature = () => (
+  <LazyModule module="federations" loader={() => import('./features/federations/index.js')} />
+);
+const FederationNewFeature = () => (
+  <LazyModule module="federations-new" loader={() => import('./features/federations/new.js')} />
+);
+const FederationDetailFeature = () => (
+  <LazyModule
+    module="federations-detail"
+    loader={() => import('./features/federations/detail.js')}
+  />
+);
+const FederationInventoryFeature = () => (
+  <LazyModule
+    module="federations-inventory"
+    loader={() => import('./features/federations/inventory.js')}
+  />
+);
+const FederationNotificationsFeature = () => (
+  <LazyModule
+    module="federations-notifications"
+    loader={() => import('./features/federations/notifications.js')}
+  />
+);
+const FederationSettingsFeature = () => (
+  <LazyModule
+    module="federations-settings"
+    loader={() => import('./features/federations/settings.js')}
+  />
+);
+const FederationFilesFeature = () => (
+  <LazyModule module="federations-files" loader={() => import('./features/federations/files.js')} />
+);
+const CompetitionsListFeature = () => (
+  <LazyModule module="competitions" loader={() => import('./features/competitions/index.js')} />
+);
+const CompetitionNewFeature = () => (
+  <LazyModule module="competitions-new" loader={() => import('./features/competitions/new.js')} />
+);
+const CompetitionDetailFeature = () => (
+  <LazyModule
+    module="competitions-detail"
+    loader={() => import('./features/competitions/detail.js')}
+  />
+);
+const CompetitionOperationsFeature = () => (
+  <LazyModule
+    module="competition-operations"
+    loader={() => import('./features/competitions/operations.js')}
+  />
+);
+const CompetitionScoreboardFeature = () => (
+  <LazyModule
+    module="competition-scoreboard"
+    loader={() => import('./features/competitions/scoreboard.js')}
+  />
+);
+const CompetitionOperatorFeature = () => (
+  <LazyModule
+    module="competition-operator"
+    loader={() => import('./features/competitions/operator.js')}
+  />
+);
+const CompetitionJudgeFeature = () => (
+  <LazyModule
+    module="competition-judge"
+    loader={() => import('./features/competitions/judge.js')}
+  />
+);
+const CompetitionProtocolPrintFeature = () => (
+  <LazyModule
+    module="competition-protocol-print"
+    loader={() => import('./features/competitions/protocol-print.js')}
+  />
+);
+const CompetitionReportsFeature = () => (
+  <LazyModule
+    module="competition-reports"
+    loader={() => import('./features/competitions/reports.js')}
+  />
+);
+const CompetitionCertificatesFeature = () => (
+  <LazyModule
+    module="competition-certificates"
+    loader={() => import('./features/competitions/certificates.js')}
+  />
+);
+const CompetitionAwardsFeature = () => (
+  <LazyModule
+    module="competition-awards"
+    loader={() => import('./features/competitions/awards.js')}
+  />
+);
+const CompetitionBroadcastFeature = () => (
+  <LazyModule
+    module="competition-broadcast"
+    loader={() => import('./features/competitions/broadcast.js')}
+  />
+);
+const PublicCompetitionRegistrationFeature = () => (
+  <LazyModule
+    module="public-registration"
+    loader={() => import('./features/public-registration/register.js')}
+  />
+);
+const PublicFederationRegistrationFeature = () => (
+  <LazyModule
+    module="public-federation-registration"
+    loader={() => import('./features/public-registration/federation.js')}
+  />
+);
+const AthletesListFeature = () => (
+  <LazyModule module="athletes" loader={() => import('./features/athletes/index.js')} />
+);
+const AthleteNewFeature = () => (
+  <LazyModule module="athletes-new" loader={() => import('./features/athletes/new.js')} />
+);
+const AthleteDetailFeature = () => (
+  <LazyModule module="athletes-detail" loader={() => import('./features/athletes/detail.js')} />
+);
+const DisciplinesListFeature = () => (
+  <LazyModule module="disciplines" loader={() => import('./features/disciplines/index.js')} />
+);
+const DisciplineDetailFeature = () => (
+  <LazyModule
+    module="disciplines-detail"
+    loader={() => import('./features/disciplines/detail.js')}
+  />
+);
+const JudgesListFeature = () => (
+  <LazyModule module="judges" loader={() => import('./features/judges/index.js')} />
+);
+const JudgeNewFeature = () => (
+  <LazyModule module="judges-new" loader={() => import('./features/judges/new.js')} />
+);
+const JudgeDetailFeature = () => (
+  <LazyModule module="judges-detail" loader={() => import('./features/judges/detail.js')} />
+);
+const LookupsLandingFeature = () => (
+  <LazyModule module="lookups" loader={() => import('./features/lookups/index.js')} />
+);
+const LookupsCountriesFeature = () => (
+  <LazyModule module="lookups-countries" loader={() => import('./features/lookups/countries.js')} />
+);
+const LookupsRegionsFeature = () => (
+  <LazyModule module="lookups-regions" loader={() => import('./features/lookups/regions.js')} />
+);
+const LookupsCitiesFeature = () => (
+  <LazyModule module="lookups-cities" loader={() => import('./features/lookups/cities.js')} />
+);
+const LookupsValuesFeature = () => (
+  <LazyModule module="lookups-values" loader={() => import('./features/lookups/values.js')} />
+);
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -66,6 +186,16 @@ function requirePlatformAdmin(href: string): void {
   // through — the API will 403 if it's truly not platform_admin.
   if (!user) return;
   if (!user.roles.some((r) => r.role === 'platform_admin')) {
+    throw redirect({ to: '/me' });
+  }
+}
+
+function requireAnyRole(href: string, roles: readonly string[]): void {
+  requireAuthGuard(href);
+  const user = useAuthStore.getState().user;
+  // If hydration hasn't completed, let the API enforce the role on submit.
+  if (!user) return;
+  if (!user.roles.some((r) => roles.includes(r.role))) {
     throw redirect({ to: '/me' });
   }
 }
@@ -167,7 +297,8 @@ const competitionsListRoute = createRoute({
 const competitionNewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/competitions/new',
-  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  beforeLoad: ({ location }) =>
+    requireAnyRole(location.href, ['platform_admin', 'federation_admin']),
   component: CompetitionNewFeature,
 });
 
@@ -332,7 +463,7 @@ const judgeDetailRoute = createRoute({
 const lookupsLandingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/lookups',
-  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  beforeLoad: ({ location }) => requirePlatformAdmin(location.href),
   component: LookupsLandingFeature,
 });
 

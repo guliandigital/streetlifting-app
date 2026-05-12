@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { toast } from '@streetlifting/ui';
 import {
-  PowerTableButton,
-  PowerTablePanel,
-  PowerTableSectionTitle,
-  PowerTableToolbar,
-} from '../../components/powertable.js';
+  WorkspaceButton,
+  WorkspacePanel,
+  WorkspaceSectionTitle,
+  WorkspaceToolbar,
+} from '../../components/workspace.js';
 import { useAuthStore } from '../../lib/auth/store.js';
 import {
   type SupportTicketDto,
@@ -122,8 +122,8 @@ export function SupportTicketsPanel({ federationId }: { federationId: string }) 
 
   return (
     <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <PowerTablePanel className="p-3">
-        <PowerTableSectionTitle>Обращения в поддержку</PowerTableSectionTitle>
+      <WorkspacePanel className="p-3">
+        <WorkspaceSectionTitle>Обращения в поддержку</WorkspaceSectionTitle>
         <div className="pt-form-grid max-w-5xl">
           <label htmlFor="supportSubject">Тема:</label>
           <input
@@ -143,45 +143,71 @@ export function SupportTicketsPanel({ federationId }: { federationId: string }) 
             placeholder="Опишите вопрос или доработку"
           />
         </div>
-        <PowerTableToolbar className="mt-2">
-          <PowerTableButton type="button" icon="add" onClick={() => void submitTicket()} disabled={createTicket.isPending}>
+        <WorkspaceToolbar className="mt-2">
+          <WorkspaceButton
+            type="button"
+            icon="add"
+            onClick={() => void submitTicket()}
+            disabled={createTicket.isPending}
+          >
             Создать обращение
-          </PowerTableButton>
-        </PowerTableToolbar>
+          </WorkspaceButton>
+        </WorkspaceToolbar>
 
         <div className="mt-4 overflow-x-auto">
           <table className="pt-grid">
             <thead>
-              <tr><th>Дата</th><th>Тема</th><th>Статус</th><th>Последнее сообщение</th></tr>
+              <tr>
+                <th>Дата</th>
+                <th>Тема</th>
+                <th>Статус</th>
+                <th>Последнее сообщение</th>
+              </tr>
             </thead>
             <tbody>
-              {isLoading ? <tr><td colSpan={4}>Загружаем...</td></tr> : null}
-              {!isLoading && tickets.map((ticket, index) => (
-                <tr
-                  key={ticket.id}
-                  className={ticket.id === selectedTicket?.id ? 'is-selected' : index % 2 ? 'is-green' : undefined}
-                  onClick={() => setSelectedTicketId(ticket.id)}
-                >
-                  <td>{formatDate(ticket.lastMessageAt)}</td>
-                  <td>{ticket.subject}</td>
-                  <td>{statusLabels[ticket.status]}</td>
-                  <td>{lastPublicMessage(ticket)}</td>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={4}>Загружаем...</td>
                 </tr>
-              ))}
+              ) : null}
+              {!isLoading &&
+                tickets.map((ticket, index) => (
+                  <tr
+                    key={ticket.id}
+                    className={
+                      ticket.id === selectedTicket?.id
+                        ? 'is-selected'
+                        : index % 2
+                          ? 'is-green'
+                          : undefined
+                    }
+                    onClick={() => setSelectedTicketId(ticket.id)}
+                  >
+                    <td>{formatDate(ticket.lastMessageAt)}</td>
+                    <td>{ticket.subject}</td>
+                    <td>{statusLabels[ticket.status]}</td>
+                    <td>{lastPublicMessage(ticket)}</td>
+                  </tr>
+                ))}
               {!isLoading && tickets.length === 0 ? (
-                <tr><td colSpan={4} className="italic">Обращений пока нет.</td></tr>
+                <tr>
+                  <td colSpan={4} className="italic">
+                    Обращений пока нет.
+                  </td>
+                </tr>
               ) : null}
             </tbody>
           </table>
         </div>
-      </PowerTablePanel>
+      </WorkspacePanel>
 
-      <PowerTablePanel className="p-3">
-        <PowerTableSectionTitle>Переписка</PowerTableSectionTitle>
+      <WorkspacePanel className="p-3">
+        <WorkspaceSectionTitle>Переписка</WorkspaceSectionTitle>
         {selectedTicket ? (
           <div className="space-y-3">
             <div className="pt-info-yellow">
-              <b>{selectedTicket.subject}</b><br />
+              <b>{selectedTicket.subject}</b>
+              <br />
               Статус: {statusLabels[selectedTicket.status]}
             </div>
             <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
@@ -214,36 +240,59 @@ export function SupportTicketsPanel({ federationId }: { federationId: string }) 
                     <span>Внутренняя заметка</span>
                   </label>
                 ) : null}
-                <PowerTableToolbar>
-                  <PowerTableButton type="button" icon="add" onClick={() => void submitReply()} disabled={createMessage.isPending}>
+                <WorkspaceToolbar>
+                  <WorkspaceButton
+                    type="button"
+                    icon="add"
+                    onClick={() => void submitReply()}
+                    disabled={createMessage.isPending}
+                  >
                     Добавить сообщение
-                  </PowerTableButton>
-                </PowerTableToolbar>
+                  </WorkspaceButton>
+                </WorkspaceToolbar>
               </>
             ) : (
               <div className="pt-muted italic">Закрытое обращение нельзя дополнять.</div>
             )}
             {canManage ? (
-              <PowerTableToolbar>
-                <PowerTableButton type="button" onClick={() => void setStatus(selectedTicket.id, 'open')} disabled={updateTicket.isPending}>
+              <WorkspaceToolbar>
+                <WorkspaceButton
+                  type="button"
+                  onClick={() => void setStatus(selectedTicket.id, 'open')}
+                  disabled={updateTicket.isPending}
+                >
                   Открыть
-                </PowerTableButton>
-                <PowerTableButton type="button" onClick={() => void setStatus(selectedTicket.id, 'in_progress')} disabled={updateTicket.isPending}>
+                </WorkspaceButton>
+                <WorkspaceButton
+                  type="button"
+                  onClick={() => void setStatus(selectedTicket.id, 'in_progress')}
+                  disabled={updateTicket.isPending}
+                >
                   В работу
-                </PowerTableButton>
-                <PowerTableButton type="button" tone="green" onClick={() => void setStatus(selectedTicket.id, 'resolved')} disabled={updateTicket.isPending}>
+                </WorkspaceButton>
+                <WorkspaceButton
+                  type="button"
+                  tone="green"
+                  onClick={() => void setStatus(selectedTicket.id, 'resolved')}
+                  disabled={updateTicket.isPending}
+                >
                   Решено
-                </PowerTableButton>
-                <PowerTableButton type="button" tone="danger" onClick={() => void setStatus(selectedTicket.id, 'closed')} disabled={updateTicket.isPending}>
+                </WorkspaceButton>
+                <WorkspaceButton
+                  type="button"
+                  tone="danger"
+                  onClick={() => void setStatus(selectedTicket.id, 'closed')}
+                  disabled={updateTicket.isPending}
+                >
                   Закрыть
-                </PowerTableButton>
-              </PowerTableToolbar>
+                </WorkspaceButton>
+              </WorkspaceToolbar>
             ) : null}
           </div>
         ) : (
           <div className="pt-muted italic">Выберите обращение из списка.</div>
         )}
-      </PowerTablePanel>
+      </WorkspacePanel>
     </div>
   );
 }

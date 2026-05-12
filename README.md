@@ -24,7 +24,7 @@ packages/
   ui         — shared shadcn/ui components
   sync       — event log + conflict resolution for offline desktop
 docs/
-  domain-model.md         — entities and fields (PowerTable parity)
+  domain-model.md         — entities and fields (legacy reference system parity)
   roadmap-v2.md           — phased plan to feature parity
   decisions/              — architecture decision records
   research/               — competitive analysis, screen maps

@@ -245,20 +245,25 @@ body {
   border-radius: 3px;
 }
 
-.pt-nav-buttons span {
+.pt-nav-buttons button {
   display: inline-flex;
   width: 45px;
   height: 28px;
   align-items: center;
   justify-content: center;
   border-right: 1px solid var(--pt-border);
+  border-top: 0;
+  border-bottom: 0;
+  border-left: 0;
   background: linear-gradient(#ffffff, #eeeeee);
   color: #555555;
+  cursor: pointer;
   font-size: 22px;
   font-weight: 700;
+  padding: 0;
 }
 
-.pt-nav-buttons span:last-child {
+.pt-nav-buttons button:last-child {
   border-right: 0;
 }
 
@@ -291,6 +296,14 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.pt-object-icon {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
 }
 
 .pt-inline-icon {
@@ -406,6 +419,11 @@ body {
 
 .pt-tab.is-active {
   background: #ffffff;
+}
+
+.pt-tab.is-disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .pt-tab-icon {
@@ -642,6 +660,12 @@ body {
   font-size: 28px;
 }
 
+.pt-menu-button.is-disabled,
+.pt-menu-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 .pt-menu-icon .pt-icon {
   width: 28px;
   height: 28px;
@@ -705,16 +729,29 @@ body {
   color: #ffffff;
   font-size: 34px;
   font-weight: 700;
-  text-shadow: 2px 2px 2px #000000, -1px -1px 1px #000000;
+  text-shadow:
+    2px 2px 2px #000000,
+    -1px -1px 1px #000000;
   writing-mode: vertical-rl;
   transform: rotate(180deg);
 }
 
-.pt-plate.green { background: #00ef00; }
-.pt-plate.red { background: #f11212; }
-.pt-plate.blue { background: #2e86f1; }
-.pt-plate.yellow { background: #f6ec00; color: #111111; }
-.pt-plate.dark { background: linear-gradient(90deg, #777777, #e8e8e8 42%, #555555); }
+.pt-plate.green {
+  background: #00ef00;
+}
+.pt-plate.red {
+  background: #f11212;
+}
+.pt-plate.blue {
+  background: #2e86f1;
+}
+.pt-plate.yellow {
+  background: #f6ec00;
+  color: #111111;
+}
+.pt-plate.dark {
+  background: linear-gradient(90deg, #777777, #e8e8e8 42%, #555555);
+}
 
 .pt-live-controls {
   display: grid;
@@ -822,8 +859,8 @@ body {
 }
 
 /*
- * Streetlifting skin for the PowerTable-inspired page structure.
- * The section/order/density remain PowerTable-like; colour, typography,
+ * Streetlifting skin for the Workspace-inspired page structure.
+ * The section/order/density remain Workspace-like; colour, typography,
  * borders, surfaces, and states follow the Streetlifting App brand.
  */
 .pt-app,
@@ -854,8 +891,7 @@ body {
 
 .pt-page {
   background:
-    radial-gradient(circle at top right, rgba(153, 205, 20, 0.06), transparent 34rem),
-    #10151d;
+    radial-gradient(circle at top right, rgba(153, 205, 20, 0.06), transparent 34rem), #10151d;
 }
 
 .pt-titlebar {
@@ -882,7 +918,10 @@ body {
   font-weight: 800;
   line-height: 1;
   padding: 0 10px;
-  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    background 160ms ease;
 }
 
 .pt-theme-toggle:hover {
@@ -969,13 +1008,13 @@ body {
   border-radius: 6px;
 }
 
-.pt-nav-buttons span {
+.pt-nav-buttons button {
   border-right-color: #262d3a;
   background: #0d1219;
   color: #fafafa;
 }
 
-.pt-nav-buttons span:hover {
+.pt-nav-buttons button:hover {
   color: #99cd14;
 }
 
@@ -1014,7 +1053,10 @@ body {
   color: #fafafa;
   font-family: var(--font-sans);
   font-weight: 600;
-  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    background 160ms ease;
 }
 
 .pt-button-icon .pt-icon,
@@ -1220,6 +1262,13 @@ input[type='radio'] {
   color: #99cd14;
 }
 
+.pt-menu-button.is-disabled:hover,
+.pt-menu-button:disabled:hover {
+  border-color: #262d3a;
+  background: #0d1219;
+  color: #fafafa;
+}
+
 .pt-metric-strip {
   border-color: #262d3a;
   border-radius: 8px;
@@ -1242,20 +1291,30 @@ input[type='radio'] {
 .pt-plate-canvas {
   border-color: #262d3a;
   border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(153, 205, 20, 0.05), transparent 44%),
-    #10151d;
+  background: linear-gradient(135deg, rgba(153, 205, 20, 0.05), transparent 44%), #10151d;
 }
 
 .pt-plate {
   border-color: rgba(255, 255, 255, 0.28);
 }
 
-.pt-plate.green { background: #99cd14; color: #10151d; }
-.pt-plate.red { background: #ef4444; }
-.pt-plate.blue { background: #3b82f6; }
-.pt-plate.yellow { background: #eab308; color: #10151d; }
-.pt-plate.dark { background: linear-gradient(90deg, #333b49, #a1a1aa 42%, #202633); }
+.pt-plate.green {
+  background: #99cd14;
+  color: #10151d;
+}
+.pt-plate.red {
+  background: #ef4444;
+}
+.pt-plate.blue {
+  background: #3b82f6;
+}
+.pt-plate.yellow {
+  background: #eab308;
+  color: #10151d;
+}
+.pt-plate.dark {
+  background: linear-gradient(90deg, #333b49, #a1a1aa 42%, #202633);
+}
 
 .pt-black-display {
   border: 1px solid #262d3a;
@@ -1300,7 +1359,7 @@ input[type='radio'] {
 
 /*
  * Streetlifting light theme. Dark remains the base skin above; this block
- * only re-colours the same PowerTable-derived structure when the user
+ * only re-colours the same Workspace-derived structure when the user
  * switches modes.
  */
 .pt-app.pt-theme-light,
@@ -1329,8 +1388,7 @@ input[type='radio'] {
 
 .pt-app.pt-theme-light .pt-page {
   background:
-    radial-gradient(circle at top right, rgba(153, 205, 20, 0.14), transparent 32rem),
-    #f5f8f1;
+    radial-gradient(circle at top right, rgba(153, 205, 20, 0.14), transparent 32rem), #f5f8f1;
 }
 
 .pt-app.pt-theme-light .pt-titlebar {
@@ -1406,7 +1464,7 @@ input[type='radio'] {
   border-color: #dbe4d2;
 }
 
-.pt-app.pt-theme-light .pt-nav-buttons span {
+.pt-app.pt-theme-light .pt-nav-buttons button {
   border-right-color: #dbe4d2;
   background: #ffffff;
   color: #10151d;
@@ -1545,6 +1603,13 @@ input[type='radio'] {
   color: #567800;
 }
 
+.pt-app.pt-theme-light .pt-menu-button.is-disabled:hover,
+.pt-app.pt-theme-light .pt-menu-button:disabled:hover {
+  border-color: #dbe4d2;
+  background: #ffffff;
+  color: #10151d;
+}
+
 .pt-app.pt-theme-light .pt-metric-strip {
   border-color: #dbe4d2;
 }
@@ -1556,9 +1621,7 @@ input[type='radio'] {
 
 .pt-app.pt-theme-light .pt-plate-canvas {
   border-color: #dbe4d2;
-  background:
-    linear-gradient(135deg, rgba(153, 205, 20, 0.1), transparent 44%),
-    #ffffff;
+  background: linear-gradient(135deg, rgba(153, 205, 20, 0.1), transparent 44%), #ffffff;
 }
 
 .pt-app.pt-theme-light .pt-plate {

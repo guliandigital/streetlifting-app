@@ -84,15 +84,15 @@ For reg.ru-specific SSH, nginx, systemd, and GitHub Actions setup, use [reg-ru-d
    pnpm release:seed
    ```
 
-4a. Provision a federation-scoped login when a federation account should open its PowerTable-style workspace directly:
+4a. Provision a federation-scoped login when a federation account should open its legacy reference system-style workspace directly:
 
-   ```bash
-   FEDERATION_CODE=<federation-code> \
-   FEDERATION_USER_EMAIL=<federation-email> \
-   FEDERATION_USER_PASSWORD=<temporary-password> \
-   FEDERATION_USER_DISPLAY_NAME=<display-name> \
-   pnpm --filter=@streetlifting/api seed:federation-user
-   ```
+```bash
+FEDERATION_CODE=<federation-code> \
+FEDERATION_USER_EMAIL=<federation-email> \
+FEDERATION_USER_PASSWORD=<temporary-password> \
+FEDERATION_USER_DISPLAY_NAME=<display-name> \
+pnpm --filter=@streetlifting/api seed:federation-user
+```
 
 5. Run the authenticated pilot smoke against the target API:
 

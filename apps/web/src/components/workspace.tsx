@@ -6,7 +6,7 @@ import {
 } from 'react';
 import { cn } from '@streetlifting/ui';
 
-const powerTableIconNames = [
+const WorkspaceIconNames = [
   'add',
   'arrow-down',
   'arrow-left',
@@ -61,9 +61,9 @@ const powerTableIconNames = [
   'warning',
 ] as const;
 
-export type PowerTableIconName = (typeof powerTableIconNames)[number];
+export type WorkspaceIconName = (typeof WorkspaceIconNames)[number];
 
-const iconAliases: Record<string, PowerTableIconName> = {
+const iconAliases: Record<string, WorkspaceIconName> = {
   '8': 'platform',
   '☑': 'nomination',
   '☕': 'break',
@@ -110,25 +110,25 @@ const iconAliases: Record<string, PowerTableIconName> = {
   '⋮': 'more',
 };
 
-function isPowerTableIconName(value: string): value is PowerTableIconName {
-  return (powerTableIconNames as readonly string[]).includes(value);
+function isWorkspaceIconName(value: string): value is WorkspaceIconName {
+  return (WorkspaceIconNames as readonly string[]).includes(value);
 }
 
-function resolvePowerTableIcon(value: string): PowerTableIconName | null {
-  if (isPowerTableIconName(value)) return value;
+function resolveWorkspaceIcon(value: string): WorkspaceIconName | null {
+  if (isWorkspaceIconName(value)) return value;
   return iconAliases[value] ?? null;
 }
 
-function renderIcon(icon: PowerTableIconName | ReactNode): ReactNode {
+function renderIcon(icon: WorkspaceIconName | ReactNode): ReactNode {
   if (typeof icon === 'string') {
-    const resolved = resolvePowerTableIcon(icon);
-    return resolved ? <PowerTableIcon name={resolved} /> : icon;
+    const resolved = resolveWorkspaceIcon(icon);
+    return resolved ? <WorkspaceIcon name={resolved} /> : icon;
   }
 
   return icon;
 }
 
-function PowerTableIconGlyph({ name }: { name: PowerTableIconName }) {
+function WorkspaceIconGlyph({ name }: { name: WorkspaceIconName }) {
   switch (name) {
     case 'add':
       return <path d="M12 5v14M5 12h14" />;
@@ -444,12 +444,12 @@ function PowerTableIconGlyph({ name }: { name: PowerTableIconName }) {
   }
 }
 
-export function PowerTableIcon({
+export function WorkspaceIcon({
   name,
   className,
   title,
   ...props
-}: SVGProps<SVGSVGElement> & { name: PowerTableIconName; title?: string }) {
+}: SVGProps<SVGSVGElement> & { name: WorkspaceIconName; title?: string }) {
   return (
     <svg
       className={cn('pt-icon', className)}
@@ -465,26 +465,28 @@ export function PowerTableIcon({
       focusable="false"
       {...props}
     >
-      <PowerTableIconGlyph name={name} />
+      <WorkspaceIconGlyph name={name} />
     </svg>
   );
 }
 
-export function PowerTableMenuIcon({ name }: { name: PowerTableIconName }) {
+export function WorkspaceMenuIcon({ name }: { name: WorkspaceIconName }) {
   return (
     <span className="pt-menu-icon" aria-hidden="true">
-      <PowerTableIcon name={name} />
+      <WorkspaceIcon name={name} />
     </span>
   );
 }
 
-export interface PowerTableTab {
+export interface WorkspaceTab {
   label: ReactNode;
   active?: boolean;
-  icon?: PowerTableIconName | ReactNode;
+  icon?: WorkspaceIconName | ReactNode;
+  disabled?: boolean;
+  title?: string;
 }
 
-export function PowerTablePage({
+export function WorkspacePage({
   title,
   subtitle,
   tabs,
@@ -495,50 +497,103 @@ export function PowerTablePage({
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
-  tabs?: PowerTableTab[];
+  tabs?: WorkspaceTab[];
   actions?: ReactNode;
   federationBar?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
+  function copyCurrentLink() {
+    if (typeof window === 'undefined') return;
+    void navigator.clipboard?.writeText(window.location.href);
+  }
+
   return (
     <section className={cn('pt-page', className)}>
       <div className="pt-object-header">
-        <div className="pt-nav-buttons" aria-hidden="true">
-          <span><PowerTableIcon name="arrow-left" /></span>
-          <span><PowerTableIcon name="arrow-right" /></span>
+        <div className="pt-nav-buttons">
+          <button
+            type="button"
+            onClick={() => window.history.back()}
+            title="Назад"
+            aria-label="Назад"
+          >
+            <WorkspaceIcon name="arrow-left" />
+          </button>
+          <button
+            type="button"
+            onClick={() => window.history.forward()}
+            title="Вперед"
+            aria-label="Вперед"
+          >
+            <WorkspaceIcon name="arrow-right" />
+          </button>
         </div>
-        <span className="pt-star" aria-hidden="true"><PowerTableIcon name="star" /></span>
+        <span className="pt-star" aria-hidden="true">
+          <WorkspaceIcon name="star" />
+        </span>
         <div className="min-w-0">
           <h1>{title}</h1>
           {subtitle ? <div className="pt-subtitle">{subtitle}</div> : null}
         </div>
-        <div className="pt-object-icons" aria-hidden="true">
-          <span className="pt-object-icon"><PowerTableIcon name="save" /></span>
-          <span className="pt-object-icon"><PowerTableIcon name="print" /></span>
-          <span className="pt-object-icon"><PowerTableIcon name="search" /></span>
-          <span className="pt-object-icon"><PowerTableIcon name="link" /></span>
-          <span className="pt-object-icon"><PowerTableIcon name="more" /></span>
-          <span className="pt-object-icon"><PowerTableIcon name="close" /></span>
+        <div className="pt-object-icons">
+          <button
+            type="button"
+            className="pt-object-icon"
+            onClick={() => window.print()}
+            title="Печать"
+            aria-label="Печать"
+          >
+            <WorkspaceIcon name="print" />
+          </button>
+          <button
+            type="button"
+            className="pt-object-icon"
+            onClick={copyCurrentLink}
+            title="Скопировать ссылку"
+            aria-label="Скопировать ссылку"
+          >
+            <WorkspaceIcon name="link" />
+          </button>
+          <button
+            type="button"
+            className="pt-object-icon"
+            onClick={() => window.location.reload()}
+            title="Обновить"
+            aria-label="Обновить"
+          >
+            <WorkspaceIcon name="refresh" />
+          </button>
+          <button
+            type="button"
+            className="pt-object-icon"
+            onClick={() => window.history.back()}
+            title="Закрыть"
+            aria-label="Закрыть"
+          >
+            <WorkspaceIcon name="close" />
+          </button>
         </div>
       </div>
       {actions ? <div className="pt-actions">{actions}</div> : null}
       {federationBar ? <div className="pt-red-bar">{federationBar}</div> : null}
-      {tabs ? <PowerTableTabs tabs={tabs} /> : null}
+      {tabs ? <WorkspaceTabs tabs={tabs} /> : null}
       <div className="pt-workspace">{children}</div>
     </section>
   );
 }
 
-export function PowerTableTabs({ tabs }: { tabs: PowerTableTab[] }) {
+export function WorkspaceTabs({ tabs }: { tabs: WorkspaceTab[] }) {
   return (
     <div className="pt-tabs" role="tablist">
       {tabs.map((tab, index) => (
         <div
           key={index}
-          className={cn('pt-tab', tab.active && 'is-active')}
+          className={cn('pt-tab', tab.active && 'is-active', tab.disabled && 'is-disabled')}
           role="tab"
           aria-selected={tab.active ? 'true' : 'false'}
+          aria-disabled={tab.disabled ? 'true' : undefined}
+          title={tab.title}
         >
           {tab.icon ? <span className="pt-tab-icon">{renderIcon(tab.icon)}</span> : null}
           <span>{tab.label}</span>
@@ -548,7 +603,7 @@ export function PowerTableTabs({ tabs }: { tabs: PowerTableTab[] }) {
   );
 }
 
-export function PowerTableButton({
+export function WorkspaceButton({
   className,
   tone,
   icon,
@@ -556,29 +611,33 @@ export function PowerTableButton({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   tone?: 'primary' | 'danger' | 'green';
-  icon?: PowerTableIconName | ReactNode;
+  icon?: WorkspaceIconName | ReactNode;
 }) {
   return (
     <button className={cn('pt-button', tone && `pt-button-${tone}`, className)} {...props}>
-      {icon ? <span className="pt-button-icon" aria-hidden="true">{renderIcon(icon)}</span> : null}
+      {icon ? (
+        <span className="pt-button-icon" aria-hidden="true">
+          {renderIcon(icon)}
+        </span>
+      ) : null}
       {children}
     </button>
   );
 }
 
-export function PowerTablePanel({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+export function WorkspacePanel({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('pt-panel', className)} {...props} />;
 }
 
-export function PowerTableSectionTitle({ children }: { children: ReactNode }) {
+export function WorkspaceSectionTitle({ children }: { children: ReactNode }) {
   return <div className="pt-section-title">{children}</div>;
 }
 
-export function PowerTableToolbar({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+export function WorkspaceToolbar({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('pt-toolbar', className)} {...props} />;
 }
 
-export function PowerTableCheckbox({
+export function WorkspaceCheckbox({
   checked,
   label,
   disabled,

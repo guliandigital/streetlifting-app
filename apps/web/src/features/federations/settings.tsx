@@ -3,13 +3,13 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
 import {
-  PowerTableButton,
-  PowerTableCheckbox,
-  PowerTablePage,
-  PowerTablePanel,
-  PowerTableSectionTitle,
-  PowerTableToolbar,
-} from '../../components/powertable.js';
+  WorkspaceButton,
+  WorkspaceCheckbox,
+  WorkspacePage,
+  WorkspacePanel,
+  WorkspaceSectionTitle,
+  WorkspaceToolbar,
+} from '../../components/workspace.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import { useAuthStore } from '../../lib/auth/store.js';
 import {
@@ -74,19 +74,39 @@ function AuditTable({ rows, emptyText }: { rows: FederationAuditEntryDto[]; empt
   return (
     <table className="pt-grid">
       <thead>
-        <tr><th>Дата</th><th>Пользователь</th><th>Действие</th><th>IP</th><th>Комментарий</th></tr>
+        <tr>
+          <th>Дата</th>
+          <th>Пользователь</th>
+          <th>Действие</th>
+          <th>IP</th>
+          <th>Комментарий</th>
+        </tr>
       </thead>
       <tbody>
         {rows.map((entry, index) => (
-          <tr key={entry.id} className={index === 0 ? 'is-selected' : index % 2 ? 'is-green' : undefined}>
+          <tr
+            key={entry.id}
+            className={index === 0 ? 'is-selected' : index % 2 ? 'is-green' : undefined}
+          >
             <td>{new Date(entry.occurredAt).toLocaleString('ru-RU')}</td>
             <td>{actorName(entry)}</td>
             <td>{auditLabel(entry.action)}</td>
             <td>{entry.actorIp ?? '-'}</td>
-            <td>{payloadField(entry, 'message') ?? payloadField(entry, 'recipient') ?? entry.notes ?? '-'}</td>
+            <td>
+              {payloadField(entry, 'message') ??
+                payloadField(entry, 'recipient') ??
+                entry.notes ??
+                '-'}
+            </td>
           </tr>
         ))}
-        {rows.length === 0 ? <tr><td colSpan={5} className="italic">{emptyText}</td></tr> : null}
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={5} className="italic">
+              {emptyText}
+            </td>
+          </tr>
+        ) : null}
       </tbody>
     </table>
   );
@@ -141,9 +161,7 @@ export default function FederationSettingsFeature() {
           'federation.support_ticket.created',
           'federation.support_ticket.message_created',
           'federation.support_ticket.status_updated',
-        ].includes(
-          entry.action,
-        ),
+        ].includes(entry.action),
       ),
     [auditRows],
   );
@@ -166,7 +184,8 @@ export default function FederationSettingsFeature() {
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const closeAfterSave =
-      ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.dataset.intent === 'save-close';
+      ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.dataset.intent ===
+      'save-close';
     try {
       await update.mutateAsync({
         contactPhone: nullableText(contactPhone),
@@ -208,80 +227,174 @@ export default function FederationSettingsFeature() {
   }
 
   return (
-    <PowerTablePage
+    <WorkspacePage
       title={showLogins ? 'Входы в программу' : 'Обращения, настройки / Feedback, settings'}
       subtitle={f.nameRu}
-      actions={(
+      actions={
         <>
           {!showLogins ? (
             <>
-              <PowerTableButton tone="danger" form="federationSettingsForm" type="submit" data-intent="save-close" disabled={!canManage || update.isPending}>
+              <WorkspaceButton
+                tone="danger"
+                form="federationSettingsForm"
+                type="submit"
+                data-intent="save-close"
+                disabled={!canManage || update.isPending}
+              >
                 Записать и закрыть
-              </PowerTableButton>
-              <PowerTableButton form="federationSettingsForm" type="submit" disabled={!canManage || update.isPending}>
+              </WorkspaceButton>
+              <WorkspaceButton
+                form="federationSettingsForm"
+                type="submit"
+                disabled={!canManage || update.isPending}
+              >
                 {update.isPending ? t('common.saving') : 'Записать'}
-              </PowerTableButton>
+              </WorkspaceButton>
             </>
           ) : null}
-          <Link to="/federations/$id" params={{ id }} className="pt-link-button">К федерации</Link>
-          <Link to="/federations/$id/files" params={{ id }} className="pt-link-button">Файлы</Link>
+          <Link to="/federations/$id" params={{ id }} className="pt-link-button">
+            К федерации
+          </Link>
+          <Link to="/federations/$id/files" params={{ id }} className="pt-link-button">
+            Файлы
+          </Link>
         </>
-      )}
-      federationBar={<><span>{f.code}</span><span>{f.nameRu}</span></>}
+      }
+      federationBar={
+        <>
+          <span>{f.code}</span>
+          <span>{f.nameRu}</span>
+        </>
+      }
       tabs={[
         {
-          label: <Link to="/federations/$id/settings" params={{ id }}>Обращения, настройки</Link>,
+          label: (
+            <Link to="/federations/$id/settings" params={{ id }}>
+              Обращения, настройки
+            </Link>
+          ),
           icon: 'settings',
           active: !showLogins,
         },
         {
-          label: <Link to="/federations/$id/logins" params={{ id }}>Входы в программу</Link>,
+          label: (
+            <Link to="/federations/$id/logins" params={{ id }}>
+              Входы в программу
+            </Link>
+          ),
           icon: 'history',
           active: showLogins,
         },
-        { label: <Link to="/federations/$id/notifications" params={{ id }}>Уведомления</Link>, icon: 'notifications' },
-        { label: <Link to="/federations/$id/files" params={{ id }}>Файлы</Link>, icon: 'files' },
+        {
+          label: (
+            <Link to="/federations/$id/notifications" params={{ id }}>
+              Уведомления
+            </Link>
+          ),
+          icon: 'notifications',
+        },
+        {
+          label: (
+            <Link to="/federations/$id/files" params={{ id }}>
+              Файлы
+            </Link>
+          ),
+          icon: 'files',
+        },
       ]}
     >
       {showLogins ? (
-        <PowerTablePanel className="p-3">
-          <PowerTableSectionTitle>История входов</PowerTableSectionTitle>
-          {auditLoading ? <p className="pt-muted">Загружаем...</p> : <AuditTable rows={loginRows} emptyText="Входов пока нет." />}
-        </PowerTablePanel>
+        <WorkspacePanel className="p-3">
+          <WorkspaceSectionTitle>История входов</WorkspaceSectionTitle>
+          {auditLoading ? (
+            <p className="pt-muted">Загружаем...</p>
+          ) : (
+            <AuditTable rows={loginRows} emptyText="Входов пока нет." />
+          )}
+        </WorkspacePanel>
       ) : (
         <div className="space-y-3">
           <SupportTicketsPanel federationId={id} />
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-            <PowerTablePanel className="p-3">
-              <form id="federationSettingsForm" onSubmit={(event) => void submit(event)} className="space-y-3">
-                <PowerTableSectionTitle>Ваши контактные данные. Будут публиковаться на персональной странице федерации</PowerTableSectionTitle>
+            <WorkspacePanel className="p-3">
+              <form
+                id="federationSettingsForm"
+                onSubmit={(event) => void submit(event)}
+                className="space-y-3"
+              >
+                <WorkspaceSectionTitle>
+                  Ваши контактные данные. Будут публиковаться на персональной странице федерации
+                </WorkspaceSectionTitle>
                 <div className="pt-form-grid max-w-5xl">
                   <label htmlFor="contactPhone">Телефон:</label>
-                  <input id="contactPhone" className="pt-field" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} disabled={!canManage} />
+                  <input
+                    id="contactPhone"
+                    className="pt-field"
+                    value={contactPhone}
+                    onChange={(event) => setContactPhone(event.target.value)}
+                    disabled={!canManage}
+                  />
                   <label htmlFor="contactEmail">Email:</label>
-                  <input id="contactEmail" className="pt-field" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} disabled={!canManage} />
+                  <input
+                    id="contactEmail"
+                    className="pt-field"
+                    type="email"
+                    value={contactEmail}
+                    onChange={(event) => setContactEmail(event.target.value)}
+                    disabled={!canManage}
+                  />
                   <label htmlFor="telegramHandle">Telegram:</label>
-                  <input id="telegramHandle" className="pt-field" value={telegramHandle} onChange={(event) => setTelegramHandle(event.target.value)} disabled={!canManage} />
+                  <input
+                    id="telegramHandle"
+                    className="pt-field"
+                    value={telegramHandle}
+                    onChange={(event) => setTelegramHandle(event.target.value)}
+                    disabled={!canManage}
+                  />
                   <label htmlFor="vkUrl">VK:</label>
-                  <input id="vkUrl" className="pt-field" value={vkUrl} onChange={(event) => setVkUrl(event.target.value)} disabled={!canManage} />
+                  <input
+                    id="vkUrl"
+                    className="pt-field"
+                    value={vkUrl}
+                    onChange={(event) => setVkUrl(event.target.value)}
+                    disabled={!canManage}
+                  />
                   <label htmlFor="websiteUrl">Сайт:</label>
-                  <input id="websiteUrl" className="pt-field" value={websiteUrl} onChange={(event) => setWebsiteUrl(event.target.value)} disabled={!canManage} />
+                  <input
+                    id="websiteUrl"
+                    className="pt-field"
+                    value={websiteUrl}
+                    onChange={(event) => setWebsiteUrl(event.target.value)}
+                    disabled={!canManage}
+                  />
                   <label htmlFor="chiefAccountantName">Главный бухгалтер:</label>
-                  <input id="chiefAccountantName" className="pt-field" value={chiefAccountantName} onChange={(event) => setChiefAccountantName(event.target.value)} disabled={!canManage} />
+                  <input
+                    id="chiefAccountantName"
+                    className="pt-field"
+                    value={chiefAccountantName}
+                    onChange={(event) => setChiefAccountantName(event.target.value)}
+                    disabled={!canManage}
+                  />
                   <label htmlFor="cashierName">Кассир:</label>
-                  <input id="cashierName" className="pt-field" value={cashierName} onChange={(event) => setCashierName(event.target.value)} disabled={!canManage} />
+                  <input
+                    id="cashierName"
+                    className="pt-field"
+                    value={cashierName}
+                    onChange={(event) => setCashierName(event.target.value)}
+                    disabled={!canManage}
+                  />
                   <label>Ключ защиты:</label>
                   <input className="pt-field font-mono" value={f.securityKey} readOnly />
                 </div>
 
                 <div className="pt-info-green space-y-2">
-                  <PowerTableCheckbox
+                  <WorkspaceCheckbox
                     checked={notificationsDisabled}
                     disabled={!canManage}
                     onChange={setNotificationsDisabled}
                     label="Не отправлять уведомления о новых регистрациях заявок на участие"
                   />
-                  <PowerTableCheckbox
+                  <WorkspaceCheckbox
                     checked={isPublicResultsClosed}
                     disabled={!canManage}
                     onChange={setIsPublicResultsClosed}
@@ -289,20 +402,38 @@ export default function FederationSettingsFeature() {
                   />
                 </div>
 
-                <PowerTableToolbar>
-                  <PowerTableButton type="submit" tone="green" icon="save" disabled={!canManage || update.isPending}>Сохранить настройки</PowerTableButton>
-                  <PowerTableButton type="button" icon="mail" onClick={() => void sendTestEmail()} disabled={!canManage || testEmail.isPending}>Тест письмо</PowerTableButton>
-                </PowerTableToolbar>
+                <WorkspaceToolbar>
+                  <WorkspaceButton
+                    type="submit"
+                    tone="green"
+                    icon="save"
+                    disabled={!canManage || update.isPending}
+                  >
+                    Сохранить настройки
+                  </WorkspaceButton>
+                  <WorkspaceButton
+                    type="button"
+                    icon="mail"
+                    onClick={() => void sendTestEmail()}
+                    disabled={!canManage || testEmail.isPending}
+                  >
+                    Тест письмо
+                  </WorkspaceButton>
+                </WorkspaceToolbar>
               </form>
-            </PowerTablePanel>
+            </WorkspacePanel>
 
-            <PowerTablePanel className="p-3">
-              <PowerTableSectionTitle>История настроек, писем и обращений</PowerTableSectionTitle>
-              {auditLoading ? <p className="pt-muted">Загружаем...</p> : <AuditTable rows={supportRows} emptyText="История пока пуста." />}
-            </PowerTablePanel>
+            <WorkspacePanel className="p-3">
+              <WorkspaceSectionTitle>История настроек, писем и обращений</WorkspaceSectionTitle>
+              {auditLoading ? (
+                <p className="pt-muted">Загружаем...</p>
+              ) : (
+                <AuditTable rows={supportRows} emptyText="История пока пуста." />
+              )}
+            </WorkspacePanel>
           </div>
         </div>
       )}
-    </PowerTablePage>
+    </WorkspacePage>
   );
 }

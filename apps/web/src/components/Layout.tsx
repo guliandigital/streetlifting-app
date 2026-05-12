@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@streetlifting/ui';
 import { useHydrateAuth, useAuth } from '../lib/auth/hooks.js';
 import { setLocale, SUPPORTED_LOCALES, type SupportedLocale } from '../lib/i18n/index.js';
-import { PowerTableIcon } from './powertable.js';
+import { WorkspaceIcon } from './workspace.js';
 
 type StreetliftingTheme = 'dark' | 'light';
 
@@ -20,7 +26,9 @@ function readFavoritePaths(): string[] {
   if (typeof window === 'undefined') return [];
   try {
     const parsed = JSON.parse(window.localStorage.getItem(FAVORITES_STORAGE_KEY) ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === 'string')
+      : [];
   } catch {
     return [];
   }
@@ -67,29 +75,33 @@ export function RootLayout() {
   const nextTheme = theme === 'dark' ? 'light' : 'dark';
   const themeToggleLabel = theme === 'dark' ? 'Светлая тема' : 'Темная тема';
 
-  const rootTabs = useMemo(
-    () => [
+  const rootTabs = useMemo(() => {
+    const isPlatformAdmin = user?.roles.some((role) => role.role === 'platform_admin') ?? false;
+    return [
       { to: '/', label: 'Начальная страница' },
       { to: '/federations', label: t('header.federations') },
       { to: '/athletes', label: t('header.athletes') },
       { to: '/competitions', label: t('header.competitions') },
       { to: '/disciplines', label: t('header.disciplines') },
       { to: '/judges', label: t('header.judges') },
-      { to: '/lookups', label: t('header.lookups') },
-    ] as const,
-    [t],
-  );
+      ...(isPlatformAdmin ? [{ to: '/lookups', label: t('header.lookups') }] : []),
+    ] as const;
+  }, [t, user?.roles]);
   const searchCommands = useMemo(
     () => [
       ...rootTabs.map((tab) => ({ to: tab.to, label: tab.label })),
-      { to: '/me', label: user?.displayName ? `${user.displayName} профиль аккаунт` : 'Профиль аккаунт' },
+      {
+        to: '/me',
+        label: user?.displayName ? `${user.displayName} профиль аккаунт` : 'Профиль аккаунт',
+      },
     ],
     [rootTabs, user?.displayName],
   );
   const currentPath = location.pathname;
   const isCurrentFavorite = favoritePaths.includes(currentPath);
 
-  const shouldUsePowerTableShell = (isAuthenticated && user) || location.pathname.startsWith('/broadcast');
+  const shouldUseWorkspaceShell =
+    (isAuthenticated && user) || location.pathname.startsWith('/broadcast');
 
   function submitSearch() {
     const query = normalizeSearch(searchQuery);
@@ -135,7 +147,7 @@ export function RootLayout() {
     void navigate({ to: '/me' });
   }
 
-  if (shouldUsePowerTableShell) {
+  if (shouldUseWorkspaceShell) {
     return (
       <div className={`pt-app pt-theme-${theme} min-h-screen`}>
         <header className="pt-titlebar">
@@ -144,7 +156,9 @@ export function RootLayout() {
             alt=""
             className="pt-brand-mark"
           />
-          <div className="pt-burger"><PowerTableIcon name="menu" /></div>
+          <div className="pt-burger">
+            <WorkspaceIcon name="menu" />
+          </div>
           <div className="pt-title">Соревнования (Streetlifting)</div>
           <input
             ref={searchRef}
@@ -164,11 +178,27 @@ export function RootLayout() {
               aria-pressed={theme === 'light'}
               title={themeToggleLabel}
             >
-              <PowerTableIcon name={theme === 'dark' ? 'sun' : 'moon'} />
+              <WorkspaceIcon name={theme === 'dark' ? 'sun' : 'moon'} />
               <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
             </button>
-            <button type="button" className="pt-title-action-icon" onClick={openNotifications} title="Уведомления" aria-label="Уведомления"><PowerTableIcon name="notifications" /></button>
-            <button type="button" className="pt-title-action-icon" onClick={() => window.location.reload()} title="Обновить страницу" aria-label="Обновить страницу"><PowerTableIcon name="refresh" /></button>
+            <button
+              type="button"
+              className="pt-title-action-icon"
+              onClick={openNotifications}
+              title="Уведомления"
+              aria-label="Уведомления"
+            >
+              <WorkspaceIcon name="notifications" />
+            </button>
+            <button
+              type="button"
+              className="pt-title-action-icon"
+              onClick={() => window.location.reload()}
+              title="Обновить страницу"
+              aria-label="Обновить страницу"
+            >
+              <WorkspaceIcon name="refresh" />
+            </button>
             <button
               type="button"
               className={`pt-title-action-icon${isCurrentFavorite ? ' is-active' : ''}`}
@@ -177,7 +207,7 @@ export function RootLayout() {
               aria-label={isCurrentFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}
               aria-pressed={isCurrentFavorite}
             >
-              <PowerTableIcon name="star" />
+              <WorkspaceIcon name="star" />
             </button>
             <span>{user?.displayName ?? 'Публичное табло'}</span>
             {user ? (
@@ -189,7 +219,9 @@ export function RootLayout() {
         </header>
 
         <nav className="pt-root-tabs" aria-label="Основные разделы">
-          <span className="pt-root-tab" aria-hidden="true"><PowerTableIcon name="home" /></span>
+          <span className="pt-root-tab" aria-hidden="true">
+            <WorkspaceIcon name="home" />
+          </span>
           {user ? (
             <>
               {rootTabs.map((tab) => (
@@ -213,7 +245,9 @@ export function RootLayout() {
               </Link>
             </>
           ) : (
-            <span className="pt-root-tab is-active">Помост №0 <span className="pt-root-tab-close">×</span></span>
+            <span className="pt-root-tab is-active">
+              Помост №0 <span className="pt-root-tab-close">×</span>
+            </span>
           )}
         </nav>
 
@@ -232,7 +266,11 @@ export function RootLayout() {
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src={theme === 'dark' ? '/brand/symbol-inverse.png' : '/brand/symbol-color.png'} alt="" className="h-8 w-8" />
+          <img
+            src={theme === 'dark' ? '/brand/symbol-inverse.png' : '/brand/symbol-color.png'}
+            alt=""
+            className="h-8 w-8"
+          />
           <Link to="/" className="text-base font-semibold tracking-tight hover:text-primary">
             {t('app.title')}
           </Link>
@@ -246,7 +284,7 @@ export function RootLayout() {
             aria-label={themeToggleLabel}
             aria-pressed={theme === 'light'}
           >
-            <PowerTableIcon name={theme === 'dark' ? 'sun' : 'moon'} />
+            <WorkspaceIcon name={theme === 'dark' ? 'sun' : 'moon'} />
             <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
           </button>
 
@@ -267,7 +305,12 @@ export function RootLayout() {
                 {t(`language.${loc}`)}
               </button>
             )).reduce<React.ReactNode[]>((acc, el, i) => {
-              if (i > 0) acc.push(<span key={`sep-${i}`} className="text-muted-foreground">·</span>);
+              if (i > 0)
+                acc.push(
+                  <span key={`sep-${i}`} className="text-muted-foreground">
+                    ·
+                  </span>,
+                );
               acc.push(el);
               return acc;
             }, [])}

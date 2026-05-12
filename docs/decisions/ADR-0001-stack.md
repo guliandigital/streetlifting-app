@@ -7,31 +7,31 @@
 
 V1 (`streetlifting-os-legacy`) was Tauri-only desktop. The "boxed" form factor solved offline reliability on tournament day but blocked four important workflows: zero-install browser registration, federation portal, public results, and broadcast surfaces.
 
-V2 must be browser-primary, with desktop as the offline tournament-day client. The same code should run in both. The product is a PowerTable replacement, so the data model is heavy (federation directories, billing journals, audit trails, multi-role permissions, broadcast publisher).
+V2 must be browser-primary, with desktop as the offline tournament-day client. The same code should run in both. The product is a legacy reference system replacement, so the data model is heavy (federation directories, billing journals, audit trails, multi-role permissions, broadcast publisher).
 
 ## Decision
 
-| Layer | Choice |
-|---|---|
-| Frontend (web + desktop view) | React 19 + TypeScript + Vite |
-| Routing | TanStack Router |
-| Server state | TanStack Query |
-| UI | Tailwind v4 + shadcn/ui |
-| Local state | Zustand |
-| Validation | Zod (shared with backend) |
-| Backend | Node 20 + Fastify + TypeScript |
-| ORM | Prisma |
-| DB | PostgreSQL 16 (already on reg.ru) |
-| Real-time | `@fastify/websocket` |
-| Auth | `@fastify/jwt` + argon2 |
-| Background jobs | BullMQ + Redis (added at M7 for Telegram bot) |
-| Desktop wrapper | Tauri 2 |
-| Local DB (desktop offline) | SQLite via `tauri-plugin-sql` |
-| Monorepo | pnpm workspaces + Turborepo |
+| Layer                         | Choice                                        |
+| ----------------------------- | --------------------------------------------- |
+| Frontend (web + desktop view) | React 19 + TypeScript + Vite                  |
+| Routing                       | TanStack Router                               |
+| Server state                  | TanStack Query                                |
+| UI                            | Tailwind v4 + shadcn/ui                       |
+| Local state                   | Zustand                                       |
+| Validation                    | Zod (shared with backend)                     |
+| Backend                       | Node 20 + Fastify + TypeScript                |
+| ORM                           | Prisma                                        |
+| DB                            | PostgreSQL 16 (already on reg.ru)             |
+| Real-time                     | `@fastify/websocket`                          |
+| Auth                          | `@fastify/jwt` + argon2                       |
+| Background jobs               | BullMQ + Redis (added at M7 for Telegram bot) |
+| Desktop wrapper               | Tauri 2                                       |
+| Local DB (desktop offline)    | SQLite via `tauri-plugin-sql`                 |
+| Monorepo                      | pnpm workspaces + Turborepo                   |
 
 ## Alternatives considered
 
-- **1С:Предприятие** (PowerTable's stack): rejected — proprietary, locks us into 1С licensing, dated UX
+- **1С:Предприятие** (legacy reference system's stack): rejected — proprietary, locks us into 1С licensing, dated UX
 - **Next.js**: rejected — server components add complexity for what is effectively a SPA + API, and SSR has no value for an authenticated admin tool
 - **Electron**: rejected — Tauri is smaller, faster, and we already have a working signed-update chain
 - **Supabase / Firebase**: rejected — RU jurisdiction, ИП Гулян А. Г. legal entity, owned reg.ru server (per project legal memo)

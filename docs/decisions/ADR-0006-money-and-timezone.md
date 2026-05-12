@@ -19,7 +19,7 @@ Examples in `packages/domain`:
 
 Every `Competition` carries a required **IANA timezone identifier** (`timezone: string`, e.g. `"Europe/Moscow"`, `"Europe/Kaliningrad"`, `"Asia/Yekaterinburg"`). This is the wall-clock the venue operates in.
 
-All timestamps elsewhere in the system are **UTC ISO 8601** in storage and on the wire. The competition's `timezone` is the *only* knob that controls how those timestamps render in operator-facing surfaces (schedule, attempt clocks, broadcast).
+All timestamps elsewhere in the system are **UTC ISO 8601** in storage and on the wire. The competition's `timezone` is the _only_ knob that controls how those timestamps render in operator-facing surfaces (schedule, attempt clocks, broadcast).
 
 ## Why money in kopecks
 
@@ -29,7 +29,7 @@ JavaScript `number` is IEEE-754 double. Operations on currency-as-float silently
 0.1 + 0.2 === 0.30000000000000004
 ```
 
-Multiplying a float tariff (e.g. 0.41 RUB) by a writeoff count of 1000 nominations and rounding back can drift by full rubles over a federation's history. PowerTable's billing reconciliation already operates on integer "tariff × count" arithmetic for exactly this reason.
+Multiplying a float tariff (e.g. 0.41 RUB) by a writeoff count of 1000 nominations and rounding back can drift by full rubles over a federation's history. legacy reference system's billing reconciliation already operates on integer "tariff × count" arithmetic for exactly this reason.
 
 Storing as integer kopecks gives:
 

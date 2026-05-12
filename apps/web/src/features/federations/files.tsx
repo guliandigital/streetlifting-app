@@ -3,13 +3,13 @@ import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
 import {
-  PowerTableButton,
-  PowerTableIcon,
-  PowerTablePage,
-  PowerTablePanel,
-  PowerTableSectionTitle,
-  PowerTableToolbar,
-} from '../../components/powertable.js';
+  WorkspaceButton,
+  WorkspaceIcon,
+  WorkspacePage,
+  WorkspacePanel,
+  WorkspaceSectionTitle,
+  WorkspaceToolbar,
+} from '../../components/workspace.js';
 import { useAuthStore } from '../../lib/auth/store.js';
 import { api, ApiClientError } from '../../lib/api-client.js';
 import {
@@ -154,30 +154,69 @@ export default function FederationFilesFeature() {
   }
 
   return (
-    <PowerTablePage
+    <WorkspacePage
       title="Файлы федерации"
       subtitle={data.federation.nameRu}
-      actions={(
+      actions={
         <>
-          <PowerTableButton tone="green" form="federationFileForm" type="submit" disabled={!canManage || !selectedFile || upload.isPending}>
+          <WorkspaceButton
+            tone="green"
+            form="federationFileForm"
+            type="submit"
+            disabled={!canManage || !selectedFile || upload.isPending}
+          >
             {upload.isPending ? 'Загружаем...' : 'Загрузить файл'}
-          </PowerTableButton>
-          <Link to="/federations/$id" params={{ id }} className="pt-link-button">К федерации</Link>
-          <Link to="/federations/$id/settings" params={{ id }} className="pt-link-button">Настройки</Link>
+          </WorkspaceButton>
+          <Link to="/federations/$id" params={{ id }} className="pt-link-button">
+            К федерации
+          </Link>
+          <Link to="/federations/$id/settings" params={{ id }} className="pt-link-button">
+            Настройки
+          </Link>
         </>
-      )}
-      federationBar={<><span>{data.federation.code}</span><span>{data.federation.nameRu}</span></>}
+      }
+      federationBar={
+        <>
+          <span>{data.federation.code}</span>
+          <span>{data.federation.nameRu}</span>
+        </>
+      }
       tabs={[
-        { label: <Link to="/federations/$id/settings" params={{ id }}>Основные настройки</Link>, icon: 'settings' },
-        { label: <Link to="/federations/$id/notifications" params={{ id }}>Уведомления</Link>, icon: 'notifications' },
+        {
+          label: (
+            <Link to="/federations/$id/settings" params={{ id }}>
+              Основные настройки
+            </Link>
+          ),
+          icon: 'settings',
+        },
+        {
+          label: (
+            <Link to="/federations/$id/notifications" params={{ id }}>
+              Уведомления
+            </Link>
+          ),
+          icon: 'notifications',
+        },
         { label: 'Файлы', icon: 'files', active: true },
-        { label: <Link to="/federations/$id/logins" params={{ id }}>История</Link>, icon: 'history' },
+        {
+          label: (
+            <Link to="/federations/$id/logins" params={{ id }}>
+              История
+            </Link>
+          ),
+          icon: 'history',
+        },
       ]}
     >
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <PowerTablePanel className="p-3">
-          <PowerTableSectionTitle>Загрузка</PowerTableSectionTitle>
-          <form id="federationFileForm" onSubmit={(event) => void submit(event)} className="space-y-3">
+        <WorkspacePanel className="p-3">
+          <WorkspaceSectionTitle>Загрузка</WorkspaceSectionTitle>
+          <form
+            id="federationFileForm"
+            onSubmit={(event) => void submit(event)}
+            className="space-y-3"
+          >
             <div className="pt-form-grid max-w-4xl">
               <label htmlFor="federationFile">Файл:</label>
               <input
@@ -189,19 +228,32 @@ export default function FederationFilesFeature() {
                 disabled={!canManage}
               />
               <label>Ограничение:</label>
-              <div className="pt-muted">До 5 МБ на файл. Загруженные файлы видны в карточке федерации.</div>
+              <div className="pt-muted">
+                До 5 МБ на файл. Загруженные файлы видны в карточке федерации.
+              </div>
             </div>
-            <PowerTableToolbar>
-              <PowerTableButton type="submit" tone="green" icon="add" disabled={!canManage || !selectedFile || upload.isPending}>
+            <WorkspaceToolbar>
+              <WorkspaceButton
+                type="submit"
+                tone="green"
+                icon="add"
+                disabled={!canManage || !selectedFile || upload.isPending}
+              >
                 {upload.isPending ? 'Загружаем...' : 'Добавить файл'}
-              </PowerTableButton>
-            </PowerTableToolbar>
+              </WorkspaceButton>
+            </WorkspaceToolbar>
           </form>
 
           <div className="mt-4 overflow-x-auto">
             <table className="pt-grid">
               <thead>
-                <tr><th>Имя файла</th><th>Тип</th><th>Размер</th><th>Дата</th><th>Действие</th></tr>
+                <tr>
+                  <th>Имя файла</th>
+                  <th>Тип</th>
+                  <th>Размер</th>
+                  <th>Дата</th>
+                  <th>Действие</th>
+                </tr>
               </thead>
               <tbody>
                 {attachmentRows.map((file, index) => (
@@ -211,57 +263,81 @@ export default function FederationFilesFeature() {
                     <td className="text-right tabular-nums">{formatSize(file.sizeBytes)}</td>
                     <td>{formatDate(file.uploadedAt)}</td>
                     <td className="space-x-1">
-                      <PowerTableButton
+                      <WorkspaceButton
                         type="button"
                         icon="document"
                         onClick={() => void downloadAttachment(file)}
                       >
                         Скачать
-                      </PowerTableButton>
-                      <PowerTableButton
+                      </WorkspaceButton>
+                      <WorkspaceButton
                         type="button"
                         icon="close"
                         disabled={!canManage || remove.isPending}
                         onClick={() => void deleteAttachment(file.id)}
                       >
                         Удалить
-                      </PowerTableButton>
+                      </WorkspaceButton>
                     </td>
                   </tr>
                 ))}
-                {attachmentRows.length === 0 ? <tr><td colSpan={5} className="italic">Файлы пока не загружены.</td></tr> : null}
+                {attachmentRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="italic">
+                      Файлы пока не загружены.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
-        </PowerTablePanel>
+        </WorkspacePanel>
 
-        <PowerTablePanel className="p-3">
-          <PowerTableSectionTitle>История файлов</PowerTableSectionTitle>
+        <WorkspacePanel className="p-3">
+          <WorkspaceSectionTitle>История файлов</WorkspaceSectionTitle>
           {auditLoading ? (
             <p className="pt-muted">Загружаем...</p>
           ) : (
             <table className="pt-grid">
-              <thead><tr><th>Дата</th><th>Действие</th><th>Файл</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Действие</th>
+                  <th>Файл</th>
+                </tr>
+              </thead>
               <tbody>
                 {fileAuditRows.map((entry, index) => (
                   <tr key={entry.id} className={index === 0 ? 'is-green' : undefined}>
                     <td>{formatDate(entry.occurredAt)}</td>
                     <td>
                       {entry.action === 'federation.attachment.deleted' ? (
-                        <><PowerTableIcon name="close" className="mr-1 inline-block align-[-3px]" />Удален</>
+                        <>
+                          <WorkspaceIcon name="close" className="mr-1 inline-block align-[-3px]" />
+                          Удален
+                        </>
                       ) : (
-                        <><PowerTableIcon name="add" className="mr-1 inline-block align-[-3px]" />Загружен</>
+                        <>
+                          <WorkspaceIcon name="add" className="mr-1 inline-block align-[-3px]" />
+                          Загружен
+                        </>
                       )}
                     </td>
                     <td>{auditComment(entry)}</td>
                   </tr>
                 ))}
-                {fileAuditRows.length === 0 ? <tr><td colSpan={3} className="italic">История файлов пока пуста.</td></tr> : null}
+                {fileAuditRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="italic">
+                      История файлов пока пуста.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           )}
-        </PowerTablePanel>
+        </WorkspacePanel>
       </div>
-    </PowerTablePage>
+    </WorkspacePage>
   );
 }
