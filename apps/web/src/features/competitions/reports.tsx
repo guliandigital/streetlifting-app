@@ -11,6 +11,7 @@ import {
 } from '../../components/powertable.js';
 import { api } from '../../lib/api-client.js';
 import { formatRub } from '../../lib/money.js';
+import { nominationGenderStats } from './gender-stats.js';
 import { useCompetitionOps } from './operations-api.js';
 
 function downloadText(filename: string, text: string): void {
@@ -35,6 +36,10 @@ export default function CompetitionReportsFeature() {
   const { data, isLoading, error, isFetching, refetch } = useCompetitionOps(id);
   const [query, setQuery] = useState('');
   const [showMore, setShowMore] = useState(false);
+  const competitionGenderStats = useMemo(
+    () => nominationGenderStats(data?.nominations ?? []),
+    [data?.nominations],
+  );
   const visibleRows = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!data || !normalized) return data?.scoreboardRows ?? [];
@@ -122,9 +127,9 @@ export default function CompetitionReportsFeature() {
             <td><input type="checkbox" defaultChecked /></td>
             <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
             <td>{data.competition.nameRu}</td>
-            <td className="text-right">{data.accounting.totalNominations}</td>
-            <td className="text-right">-</td>
-            <td className="text-right">-</td>
+            <td className="text-right">{competitionGenderStats.total}</td>
+            <td className="text-right">{competitionGenderStats.women}</td>
+            <td className="text-right">{competitionGenderStats.men}</td>
           </tr>
         </tbody>
       </table>

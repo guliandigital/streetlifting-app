@@ -8,6 +8,7 @@ import {
   PowerTablePage,
   PowerTablePanel,
 } from '../../components/powertable.js';
+import { nominationGenderStats } from './gender-stats.js';
 import { usePublicScoreboard } from './operations-api.js';
 
 export default function CompetitionBroadcastFeature() {
@@ -18,6 +19,10 @@ export default function CompetitionBroadcastFeature() {
   const [timerSeconds, setTimerSeconds] = useState(60);
   const [timerRunning, setTimerRunning] = useState(false);
   const [localDecision, setLocalDecision] = useState<'good_lift' | 'no_lift' | null>(null);
+  const competitionGenderStats = useMemo(
+    () => nominationGenderStats(data?.nominations ?? []),
+    [data?.nominations],
+  );
 
   const current = useMemo(
     () => data?.nominations.find((nomination) => nomination.status === 'on_platform') ?? data?.nominations[0] ?? null,
@@ -129,9 +134,9 @@ export default function CompetitionBroadcastFeature() {
                 <td>{data.competition.nameRu}</td>
                 <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
                 <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
-                <td className="text-right">{data.nominations.length}</td>
-                <td className="text-right">-</td>
-                <td className="text-right">-</td>
+                <td className="text-right">{competitionGenderStats.total}</td>
+                <td className="text-right">{competitionGenderStats.women}</td>
+                <td className="text-right">{competitionGenderStats.men}</td>
               </tr>
             </tbody>
           </table>

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
@@ -45,6 +45,28 @@ function formatDate(value: string): string {
 function normalizeNumber(value: string): number {
   const parsed = Number(value.replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+interface ConnectionSample {
+  id: number;
+  checkedAt: string;
+  latencyMs: number | null;
+  ok: boolean;
+}
+
+function connectionQuality(latencyMs: number | null, ok: boolean): string {
+  if (!ok || latencyMs === null) return 'нет связи';
+  if (latencyMs <= 300) return 'отлично';
+  if (latencyMs <= 800) return 'нормальное';
+  return 'нестабильно';
+}
+
+function formatLatency(latencyMs: number | null): string {
+  return latencyMs === null ? 'нет ответа' : `[${latencyMs}мс]`;
+}
+
+function formatConnectionTime(value: string): string {
+  return new Date(value).toLocaleString('ru-RU');
 }
 
 function canManageFederation(
@@ -262,6 +284,45 @@ export default function FederationDetailFeature() {
   const { data: regionsData } = useRegions(countryRow?.id);
   const update = useUpdateFederation(id);
   const testEmail = useTestFederationEmail(id);
+  const [connectionSamples, setConnectionSamples] = useState<ConnectionSample[]>([]);
+  const averageLatencyMs = useMemo(() => {
+    const healthySamples = connectionSamples.filter(
+      (sample): sample is ConnectionSample & { latencyMs: number } => sample.ok && sample.latencyMs !== null,
+    );
+    if (healthySamples.length === 0) return null;
+    return Math.round(healthySamples.reduce((sum, sample) => sum + sample.latencyMs, 0) / healthySamples.length);
+  }, [connectionSamples]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function probeConnection() {
+      const checkedAt = new Date().toISOString();
+      const startedAt = performance.now();
+      try {
+        const response = await fetch('/api/health', { cache: 'no-store' });
+        const latencyMs = Math.round(performance.now() - startedAt);
+        if (cancelled) return;
+        setConnectionSamples((samples) => [
+          { id: Date.now(), checkedAt, latencyMs, ok: response.ok },
+          ...samples,
+        ].slice(0, 4));
+      } catch {
+        if (cancelled) return;
+        setConnectionSamples((samples) => [
+          { id: Date.now(), checkedAt, latencyMs: null, ok: false },
+          ...samples,
+        ].slice(0, 4));
+      }
+    }
+
+    void probeConnection();
+    const timer = window.setInterval(() => void probeConnection(), 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   if (isLoading) {
     return <div className="pt-page p-6 text-sm text-gray-600">{t('common.loading')}</div>;
@@ -379,10 +440,23 @@ export default function FederationDetailFeature() {
 
           <table className="pt-status-table">
             <tbody>
-              <tr><td>Среднее значение качества связи с сервером</td><td>[295мс]</td></tr>
-              <tr><td>25.04.2026 22:55:12. Задержка</td><td>[290мс] - отлично</td></tr>
-              <tr><td>25.04.2026 22:55:08. Задержка</td><td>[324мс] - нормальное</td></tr>
-              <tr><td>25.04.2026 22:55:06. Задержка</td><td>[283мс] - отлично</td></tr>
+              <tr>
+                <td>Среднее значение качества связи с сервером</td>
+                <td>
+                  {connectionSamples.length > 0
+                    ? `${formatLatency(averageLatencyMs)} - ${connectionQuality(averageLatencyMs, averageLatencyMs !== null)}`
+                    : 'выполняется...'}
+                </td>
+              </tr>
+              {connectionSamples.map((sample) => (
+                <tr key={sample.id}>
+                  <td>{formatConnectionTime(sample.checkedAt)}. Задержка</td>
+                  <td>{formatLatency(sample.latencyMs)} - {connectionQuality(sample.latencyMs, sample.ok)}</td>
+                </tr>
+              ))}
+              {connectionSamples.length === 0 ? (
+                <tr><td>Проверка связи</td><td>выполняется...</td></tr>
+              ) : null}
             </tbody>
           </table>
           {primaryCompetitionId ? (

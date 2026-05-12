@@ -146,6 +146,7 @@ export interface NominationDto {
     code: string;
     nameRu: string;
     nameEn: string;
+    gender: 'M' | 'F';
   };
   declaredWeightClass: {
     id: string;

@@ -9,6 +9,7 @@ import {
   PowerTableSectionTitle,
   PowerTableToolbar,
 } from '../../components/powertable.js';
+import { nominationGenderStats } from './gender-stats.js';
 import { useCompetitionOps } from './operations-api.js';
 
 function uniqueValues(values: string[]): string[] {
@@ -29,6 +30,10 @@ export default function CompetitionCertificatesFeature() {
   const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
   const [selectedPlaces, setSelectedPlaces] = useState<number[]>([1, 2, 3]);
   const [showAllPlaces, setShowAllPlaces] = useState(false);
+  const competitionGenderStats = useMemo(
+    () => nominationGenderStats(data?.nominations ?? []),
+    [data?.nominations],
+  );
   const weights = useMemo(
     () => (data ? uniqueValues(data.scoreboardRows.map((row) => row.weightClass)) : []),
     [data],
@@ -117,9 +122,9 @@ export default function CompetitionCertificatesFeature() {
               <td><input type="checkbox" defaultChecked /></td>
               <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
               <td>{data.competition.nameRu}</td>
-              <td className="text-right">{data.accounting.totalNominations}</td>
-              <td className="text-right">-</td>
-              <td className="text-right">-</td>
+              <td className="text-right">{competitionGenderStats.total}</td>
+              <td className="text-right">{competitionGenderStats.women}</td>
+              <td className="text-right">{competitionGenderStats.men}</td>
             </tr>
           </tbody>
         </table>

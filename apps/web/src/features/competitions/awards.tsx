@@ -8,6 +8,7 @@ import {
   PowerTablePanel,
   PowerTableToolbar,
 } from '../../components/powertable.js';
+import { genderShortLabel, nominationGenderStats } from './gender-stats.js';
 import { useCompetitionOps, type ScoreboardRowDto } from './operations-api.js';
 
 type CeremonyPlayer = {
@@ -99,6 +100,24 @@ export default function CompetitionAwardsFeature() {
   const allDisciplines = useMemo(
     () => (data ? uniqueValues(data.scoreboardRows.map((row) => row.discipline)) : []),
     [data],
+  );
+  const nominationById = useMemo(
+    () => new Map((data?.nominations ?? []).map((nomination) => [nomination.id, nomination])),
+    [data?.nominations],
+  );
+  const competitionGenderStats = useMemo(
+    () => nominationGenderStats(data?.nominations ?? []),
+    [data?.nominations],
+  );
+  const disciplineGenderStats = useMemo(
+    () =>
+      new Map(
+        allDisciplines.map((discipline) => [
+          discipline,
+          nominationGenderStats(data?.nominations ?? [], (nomination) => nomination.discipline.nameRu === discipline),
+        ]),
+      ),
+    [allDisciplines, data?.nominations],
   );
   const leftWeights = allWeights.slice(0, Math.ceil(allWeights.length / 2));
   const rightWeights = allWeights.slice(Math.ceil(allWeights.length / 2));
@@ -221,9 +240,9 @@ export default function CompetitionAwardsFeature() {
                 <td><input type="checkbox" defaultChecked /></td>
                 <td>{data.competition.nameRu}</td>
                 <td>{new Date(data.competition.startDate).toLocaleDateString('ru-RU')}</td>
-                <td className="text-right">{data.accounting.totalNominations}</td>
-                <td className="text-right">-</td>
-                <td className="text-right">-</td>
+                <td className="text-right">{competitionGenderStats.total}</td>
+                <td className="text-right">{competitionGenderStats.women}</td>
+                <td className="text-right">{competitionGenderStats.men}</td>
               </tr>
             </tbody>
           </table>
@@ -306,9 +325,9 @@ export default function CompetitionAwardsFeature() {
                       />
                     </td>
                     <td>{discipline}</td>
-                    <td className="text-right">{data.scoreboardRows.filter((row) => row.discipline === discipline).length}</td>
-                    <td className="text-right">-</td>
-                    <td className="text-right">-</td>
+                    <td className="text-right">{disciplineGenderStats.get(discipline)?.total ?? 0}</td>
+                    <td className="text-right">{disciplineGenderStats.get(discipline)?.women ?? 0}</td>
+                    <td className="text-right">{disciplineGenderStats.get(discipline)?.men ?? 0}</td>
                   </tr>
                 ))}
               </tbody>
@@ -329,7 +348,7 @@ export default function CompetitionAwardsFeature() {
                 <tr key={`${row.nominationId}-${key}`} className={index === currentAwardIndex ? 'is-selected' : index % 4 === 0 ? 'is-gray' : undefined}>
                   <td>{row.discipline}</td>
                   <td>{row.division}</td>
-                  <td>-</td>
+                  <td>{genderShortLabel(nominationById.get(row.nominationId)?.division.gender)}</td>
                   <td>{key.split(' / ')[0]}</td>
                   <td className="font-bold">{row.weightClass}</td>
                   <td>{row.athleteName}</td>
