@@ -84,7 +84,7 @@ For reg.ru-specific SSH, nginx, systemd, and GitHub Actions setup, use [reg-ru-d
    pnpm release:seed
    ```
 
-4a. Provision a federation-scoped login when a federation account should open its legacy reference system-style workspace directly:
+4a. Provision a federation-scoped login when a federation account should open its workspace directly:
 
 ```bash
 FEDERATION_CODE=<federation-code> \

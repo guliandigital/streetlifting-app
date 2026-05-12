@@ -4,19 +4,21 @@ import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
+import { validateUuidParams } from '../lib/params.js';
 
 const log = moduleLogger('public-registration');
 
-const CLOSED_STATUSES = ['registration_closed', 'finalized', 'archived'] satisfies CompetitionStatus[];
+const CLOSED_STATUSES = [
+  'registration_closed',
+  'finalized',
+  'archived',
+] satisfies CompetitionStatus[];
 const CLOSED_STATUS_SET = new Set<string>(CLOSED_STATUSES);
 const CONSENT_TEXT_VERSION = '2026-05-11.v1';
 const CONSENT_TEXTS = {
-  data_processing:
-    'I consent to personal data processing for participation in the competition.',
-  public_results:
-    'I consent to publication of my competition results on public result pages.',
-  photo_publication:
-    'I consent to publication of my athlete photo and event media materials.',
+  data_processing: 'I consent to personal data processing for participation in the competition.',
+  public_results: 'I consent to publication of my competition results on public result pages.',
+  photo_publication: 'I consent to publication of my athlete photo and event media materials.',
 } as const;
 
 class PublicRegistrationError extends Error {
@@ -36,7 +38,8 @@ function registrationAvailability(competition: {
   registrationDeadline: Date | null;
 }): { isAvailable: boolean; reason: string | null } {
   if (!competition.isOnlineRegistrationOpen) return { isAvailable: false, reason: 'closed' };
-  if (CLOSED_STATUS_SET.has(competition.status)) return { isAvailable: false, reason: competition.status };
+  if (CLOSED_STATUS_SET.has(competition.status))
+    return { isAvailable: false, reason: competition.status };
   if (competition.registrationDeadline && competition.registrationDeadline.getTime() < Date.now()) {
     return { isAvailable: false, reason: 'deadline_passed' };
   }
@@ -82,14 +85,16 @@ function validateWeightClass(
 ): boolean {
   return Boolean(
     weightClass &&
-      weightClass.divisionId === divisionId &&
-      (!weightClass.disciplineId || weightClass.disciplineId === disciplineId),
+    weightClass.divisionId === divisionId &&
+    (!weightClass.disciplineId || weightClass.disciplineId === disciplineId),
   );
 }
 
 export const publicRegistrationPlugin: FeaturePlugin = {
   name: 'public-registration',
   register: async (app) => {
+    app.addHook('preHandler', validateUuidParams(['id']));
+
     app.get('/health/public-registration', async () => ({
       status: 'ok',
       module: 'public-registration',
@@ -185,7 +190,11 @@ export const publicRegistrationPlugin: FeaturePlugin = {
 
         if (!competition) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -205,7 +214,11 @@ export const publicRegistrationPlugin: FeaturePlugin = {
         const parsed = PublicCompetitionRegistrationCreate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -224,7 +237,11 @@ export const publicRegistrationPlugin: FeaturePlugin = {
         });
         if (!competition) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Competition not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -259,22 +276,38 @@ export const publicRegistrationPlugin: FeaturePlugin = {
 
         if (!discipline) {
           return reply.code(400).send({
-            error: { code: 'discipline_not_found', message: 'Discipline not found', requestId: req.requestId },
+            error: {
+              code: 'discipline_not_found',
+              message: 'Discipline not found',
+              requestId: req.requestId,
+            },
           });
         }
         if (!division || division.competitionId !== competition.id) {
           return reply.code(400).send({
-            error: { code: 'division_out_of_scope', message: 'Division is not in this competition', requestId: req.requestId },
+            error: {
+              code: 'division_out_of_scope',
+              message: 'Division is not in this competition',
+              requestId: req.requestId,
+            },
           });
         }
         if (division.gender !== data.athlete.gender) {
           return reply.code(400).send({
-            error: { code: 'division_gender_mismatch', message: 'Division gender mismatch', requestId: req.requestId },
+            error: {
+              code: 'division_gender_mismatch',
+              message: 'Division gender mismatch',
+              requestId: req.requestId,
+            },
           });
         }
         if (!validateWeightClass(weightClass, division.id, discipline.id)) {
           return reply.code(400).send({
-            error: { code: 'weight_class_out_of_scope', message: 'Weight class is not in this division', requestId: req.requestId },
+            error: {
+              code: 'weight_class_out_of_scope',
+              message: 'Weight class is not in this division',
+              requestId: req.requestId,
+            },
           });
         }
         if (

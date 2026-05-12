@@ -1,10 +1,10 @@
-# legacy reference system functional map
+# Workspace reference functional map
 
 Reference for V2 parity. Pulled from screenshots taken 2026-05-07.
 
 ## Sidebar (main navigation)
 
-| legacy reference system section       | V2 page                               | Domain entities             |
+| Reference section                     | V2 page                               | Domain entities             |
 | ------------------------------------- | ------------------------------------- | --------------------------- |
 | Справочники                           | global admin route                    | (cross-cutting)             |
 | Соревнования                          | `/competitions`                       | Competition                 |
@@ -20,7 +20,7 @@ Reference for V2 parity. Pulled from screenshots taken 2026-05-07.
 | Уведомления                           | `/federation/notifications`           | NotificationPreference      |
 | Информационные таблицы для трансляций | `/broadcast/...` (public read-only)   | (broadcast subscriber)      |
 
-## Federation home page (legacy reference system "Начальная страница")
+## Federation home page ("Начальная страница")
 
 Sections seen on screenshot:
 
@@ -34,7 +34,7 @@ Sections seen on screenshot:
 
 V2 parity: yes, all of it. Charts via `recharts`. File uploads via S3-compatible (we'll use the same reg.ru host's filesystem in V1; abstract behind a service).
 
-## Settings / feedback page (legacy reference system "Обращения, настройки")
+## Settings / feedback page ("Обращения, настройки")
 
 - Language switch (RU ⇄ EN)
 - Contact info: phone, telegram, vk, email
@@ -49,13 +49,13 @@ V2 parity: yes, all of it. Charts via `recharts`. File uploads via S3-compatible
 
 V2 parity: yes. The feedback thread is just SupportTicket with replies; the changelog link is a static markdown page; the test letter button is `POST /federation/:id/test-email`.
 
-## Tab strip (legacy reference system opened tabs)
+## Tab strip
 
-legacy reference system runs many tabs simultaneously: Начальная, Соревнования, Спортсмены, Склад, Номинации спортсменов, athlete card. Modern web doesn't need this — TanStack Router handles deep linking and back/forward. We **do not** replicate the tabbed window.
+The reference workflow keeps many tabs open simultaneously: Начальная, Соревнования, Спортсмены, Склад, Номинации спортсменов, athlete card. Modern web doesn't need this — TanStack Router handles deep linking and back/forward. We **do not** replicate the tabbed window.
 
 ## Connection-quality widget
 
-Bottom-left of legacy reference system: "Среднее значение качества связи с сервером [302мс]" with rolling history.
+Bottom-left of the reference screenshots: "Среднее значение качества связи с сервером [302мс]" with rolling history.
 
 V2: yes — it's actually useful. Bottom-status bar component subscribes to WS heartbeats, shows online/offline + RTT.
 
@@ -65,11 +65,11 @@ V2: yes — it's actually useful. Bottom-status bar component subscribes to WS h
 - The 1С splash screen
 - Any 1С-specific configuration UI
 
-## What we add (no legacy reference system equivalent)
+## What we add
 
 - Modern keyboard navigation (j/k row movement, `/` to focus search, `?` for shortcut help)
 - Command palette (`Cmd+K` / `Ctrl+K`) for cross-app navigation
-- Dark mode (legacy reference system is light-only)
+- Dark mode
 - Real-time collaboration indicators ("3 secretaries viewing this competition")
 - Mobile-friendly judge tablet PWA
 - OBS-ready broadcast overlays

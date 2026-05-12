@@ -65,7 +65,7 @@ This costs lines of code. Per-feature error boundaries, per-feature plugins, per
 
 Accepted because:
 
-- legacy reference system parity means many features. A monolithic break in one would degrade the whole product.
+- Reference workflow parity means many features. A monolithic break in one would degrade the whole product.
 - Tournament day is unforgiving. Operators can't restart the whole app to recover the awards module.
 - Multi-role clients amplify the cost of failure: judge tablet crashing because of a scoreboard bug is unacceptable.
 

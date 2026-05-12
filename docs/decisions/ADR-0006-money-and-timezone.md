@@ -29,7 +29,7 @@ JavaScript `number` is IEEE-754 double. Operations on currency-as-float silently
 0.1 + 0.2 === 0.30000000000000004
 ```
 
-Multiplying a float tariff (e.g. 0.41 RUB) by a writeoff count of 1000 nominations and rounding back can drift by full rubles over a federation's history. legacy reference system's billing reconciliation already operates on integer "tariff × count" arithmetic for exactly this reason.
+Multiplying a float tariff (e.g. 0.41 RUB) by a writeoff count of 1000 nominations and rounding back can drift by full rubles over a federation's history. Billing reconciliation already operates on integer "tariff × count" arithmetic for exactly this reason.
 
 Storing as integer kopecks gives:
 

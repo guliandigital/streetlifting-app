@@ -1,6 +1,6 @@
 # V2 Roadmap
 
-Target: full legacy reference system functional parity with a production web launch first.
+Target: full reference workflow parity with a production web launch first.
 
 Scope update 2026-05-09: the first release is **web-first** (`apps/web` + `apps/api` + Postgres). Desktop/Tauri, local SQLite, offline sync, auto-update, and signing remain in the architecture but are no longer launch blockers. They move to a post-web-launch milestone after the browser workflow is stable in pilot use.
 
@@ -131,10 +131,10 @@ Features must not import from each other. Shared shapes live in `packages/domain
 
 ## Risks and mitigations
 
-| Risk                                                            | Mitigation                                                                                                |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Sync engine more complex than estimated                         | M5 is the single biggest milestone; budget extra week if event log gets messy                             |
-| Pilot federations resist switching from legacy reference system | Run M9 pilot with a friendly federation we already know; legacy reference system parity is non-negotiable |
-| Tauri auto-update key rotation breaks v1.x users                | Re-using v1.4.1 pubkey in V2 (`AE2C…8968`) — old binaries already trust this signer                       |
-| reg.ru server can't handle broadcast fanout                     | Profile early in M5; if needed, move WS to Cloudflare or self-host in front of reg.ru                     |
-| Russian regulatory changes (data localization)                  | Already on RU infra; ИП Гулян А. Г. is RU resident; aligned with project legal memo                       |
+| Risk                                                          | Mitigation                                                                                           |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Sync engine more complex than estimated                       | M5 is the single biggest milestone; budget extra week if event log gets messy                        |
+| Pilot federations resist switching from the previous workflow | Run M9 pilot with a friendly federation we already know; reference workflow parity is non-negotiable |
+| Tauri auto-update key rotation breaks v1.x users              | Re-using v1.4.1 pubkey in V2 (`AE2C…8968`) — old binaries already trust this signer                  |
+| reg.ru server can't handle broadcast fanout                   | Profile early in M5; if needed, move WS to Cloudflare or self-host in front of reg.ru                |
+| Russian regulatory changes (data localization)                | Already on RU infra; ИП Гулян А. Г. is RU resident; aligned with project legal memo                  |

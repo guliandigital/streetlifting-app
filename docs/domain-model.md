@@ -1,6 +1,6 @@
 # Domain Model
 
-Derived from legacy reference system screenshots and operational behavior. See `packages/domain/src/*.ts` for canonical Zod schemas — this document explains intent.
+Derived from reference screenshots and operational behavior. See `packages/domain/src/*.ts` for canonical Zod schemas — this document explains intent.
 
 ## Aggregate map
 
@@ -64,7 +64,7 @@ Tenant boundary. Every competition belongs to one federation. Federation owns:
 - accountant + cashier names (for invoice templates)
 - a balance of pre-paid nominations, computed as `sum(receipts) − sum(writeoffs)`
 
-legacy reference system shows this on the federation's home page: receipts list (left), writeoffs list (middle), balance (right), and a chart comparing federation activity within the region. We replicate all four.
+The federation home page shows receipts list (left), writeoffs list (middle), balance (right), and a chart comparing federation activity within the region. We replicate all four.
 
 ### User + RoleAssignment
 
@@ -83,7 +83,7 @@ Global reference data, not federation-scoped — the rule book is shared. Each d
 - `equipment`: pull_up_bar | dip_bars | bench | etc.
 - `attemptCount`: 3 by default; multi-rep disciplines often 1
 - `fixedWeightKg`: nullable; for "русский жим" style fixed-load events
-- `applyVeteranCoefficient`: bool; legacy reference system feedback flagged that some federations exclude veteran coefficient on ELITE-tier norms — this is the field that controls it
+- `applyVeteranCoefficient`: bool; federation feedback flagged that some federations exclude veteran coefficient on ELITE-tier norms — this is the field that controls it
 
 ### Division + WeightClass
 
@@ -105,7 +105,7 @@ Person record, federation-agnostic. Same athlete competes across federations; we
 - flight + group assignment
 - final result + place
 
-legacy reference system's "Номинации спортсменов" page is the secretary's primary work surface.
+The "Номинации спортсменов" page is the secretary's primary work surface.
 
 ### Attempt
 
@@ -115,7 +115,7 @@ Three judge decisions per attempt (head + 2 sides). Result derived: 2/3 white = 
 
 ### Flight + Group + Platform
 
-Flight = a session on a platform with a defined start time. Group = a subdivision within a flight (typically by weight class or by lot range). legacy reference system's "Распределение по потокам и группам" is the page that produces these.
+Flight = a session on a platform with a defined start time. Group = a subdivision within a flight (typically by weight class or by lot range). The "Распределение по потокам и группам" page produces these.
 
 ### Judge + JudgeAssignment
 
@@ -125,7 +125,7 @@ Judge is a person record (separate from User — many judges don't have system a
 
 Receipt = "federation paid for N nominations until date X at tariff T". Writeoff = "federation consumed K nominations on competition Y". The federation balance is the running sum.
 
-legacy reference system computes "выступивших номинаций за период" — nominations whose final status is `finished` or `disqualified` — and bills against that count, not against draft / withdrawn registrations. We do the same.
+Billing computes "выступивших номинаций за период" — nominations whose final status is `finished` or `disqualified` — and bills against that count, not against draft / withdrawn registrations.
 
 ### Award + Certificate
 
@@ -183,5 +183,5 @@ pending → good_lift | no_lift | withdrawn
 - Sponsors / sponsor placements per competition
 - Live commentator notes / speaker scripts
 - Drug-test sample tracking
-- Detailed warehouse/inventory (legacy reference system's "Склад") — modeled as flat InventoryItem in M5; richer SKU/serial tracking pushed to V2.1
+- Detailed warehouse/inventory ("Склад") — modeled as flat InventoryItem in M5; richer SKU/serial tracking pushed to V2.1
 - Multi-currency (RUB only in V1; multi-currency comes with the international ООО track per legal memory)

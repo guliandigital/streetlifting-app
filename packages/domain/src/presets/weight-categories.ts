@@ -1,7 +1,7 @@
 /**
  * ISF v5.1 weight categories.
  *
- * Source: legacy reference system «Весовые категории» tab cross-validated with the ISF
+ * Source: reference screenshots for «Весовые категории» cross-validated with the ISF
  * rulebook. Boundary rule per ISF §7.2: athlete weighed exactly at upper
  * bound counts as "up to N kg" — upper-inclusive.
  *
@@ -35,7 +35,7 @@ export const ISF_V51_WEIGHT_CATEGORIES: ReadonlyArray<WeightCategoryPreset> = [
   { code: 'F_67_5_PLUS', sex: 'F', minKg: 67.5, maxKg: null },
 
   // ─── Men — 12 categories ─────────────────────────────────────────────────
-  // M_52 youth/junior only per legacy reference system «Доступно для: Юноши, девушки»:
+  // M_52 youth/junior only per reference screenshots: «Доступно для: Юноши, девушки».
   { code: 'M_52', sex: 'M', minKg: null, maxKg: 52, ageCategoryCodes: ['youth', 'junior'] },
   { code: 'M_56', sex: 'M', minKg: 52, maxKg: 56 },
   { code: 'M_60', sex: 'M', minKg: 56, maxKg: 60 },

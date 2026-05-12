@@ -32,6 +32,7 @@ import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
+import { validateUuidParams } from '../lib/params.js';
 
 const log = moduleLogger('references');
 
@@ -46,6 +47,8 @@ function stripUndefined<T extends object>(obj: T): Partial<T> {
 export const referencesPlugin: FeaturePlugin = {
   name: 'references',
   register: async (app) => {
+    app.addHook('preHandler', validateUuidParams(['id']));
+
     app.get('/health/references', async () => ({ status: 'ok', module: 'references' }));
 
     // ─── Countries ──────────────────────────────────────────────────────
@@ -53,7 +56,11 @@ export const referencesPlugin: FeaturePlugin = {
       const parsed = CountryListQuery.safeParse(req.query);
       if (!parsed.success) {
         return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
         });
       }
       const where: Prisma.CountryWhereInput = parsed.data.activeOnly ? { isActive: true } : {};
@@ -85,7 +92,11 @@ export const referencesPlugin: FeaturePlugin = {
         const parsed = CountryCreate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const data = parsed.data;
@@ -117,7 +128,11 @@ export const referencesPlugin: FeaturePlugin = {
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'conflict', message: 'codeIso2 already exists', requestId: req.requestId },
+              error: {
+                code: 'conflict',
+                message: 'codeIso2 already exists',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -132,7 +147,11 @@ export const referencesPlugin: FeaturePlugin = {
         const parsed = CountryUpdate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const before = await prisma.country.findUnique({ where: { id: req.params.id } });
@@ -165,7 +184,11 @@ export const referencesPlugin: FeaturePlugin = {
       const parsed = RegionListQuery.safeParse(req.query);
       if (!parsed.success) {
         return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
         });
       }
       const where: Prisma.RegionWhereInput = {
@@ -200,7 +223,11 @@ export const referencesPlugin: FeaturePlugin = {
         const parsed = RegionCreate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const data = parsed.data;
@@ -233,12 +260,20 @@ export const referencesPlugin: FeaturePlugin = {
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'conflict', message: 'codeIso already exists for this country', requestId: req.requestId },
+              error: {
+                code: 'conflict',
+                message: 'codeIso already exists for this country',
+                requestId: req.requestId,
+              },
             });
           }
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
             return reply.code(400).send({
-              error: { code: 'invalid_country', message: 'countryId does not exist', requestId: req.requestId },
+              error: {
+                code: 'invalid_country',
+                message: 'countryId does not exist',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -253,7 +288,11 @@ export const referencesPlugin: FeaturePlugin = {
         const parsed = RegionUpdate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const before = await prisma.region.findUnique({ where: { id: req.params.id } });
@@ -286,7 +325,11 @@ export const referencesPlugin: FeaturePlugin = {
       const parsed = CityListQuery.safeParse(req.query);
       if (!parsed.success) {
         return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
         });
       }
       const { regionId, countryId, q, activeOnly, limit, offset } = parsed.data;
@@ -341,7 +384,11 @@ export const referencesPlugin: FeaturePlugin = {
         const parsed = CityCreate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const data = parsed.data;
@@ -372,12 +419,20 @@ export const referencesPlugin: FeaturePlugin = {
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'conflict', message: 'City already exists in this region', requestId: req.requestId },
+              error: {
+                code: 'conflict',
+                message: 'City already exists in this region',
+                requestId: req.requestId,
+              },
             });
           }
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
             return reply.code(400).send({
-              error: { code: 'invalid_region', message: 'regionId does not exist', requestId: req.requestId },
+              error: {
+                code: 'invalid_region',
+                message: 'regionId does not exist',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -392,7 +447,11 @@ export const referencesPlugin: FeaturePlugin = {
         const parsed = CityUpdate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const before = await prisma.city.findUnique({ where: { id: req.params.id } });
@@ -425,7 +484,11 @@ export const referencesPlugin: FeaturePlugin = {
       const parsed = LookupValueListQuery.safeParse(req.query);
       if (!parsed.success) {
         return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
         });
       }
       const where: Prisma.LookupValueWhereInput = {
@@ -446,7 +509,11 @@ export const referencesPlugin: FeaturePlugin = {
         const lookup = await prisma.lookupValue.findUnique({ where: { id: req.params.id } });
         if (!lookup) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Lookup value not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Lookup value not found',
+              requestId: req.requestId,
+            },
           });
         }
         return { lookup };
@@ -460,7 +527,11 @@ export const referencesPlugin: FeaturePlugin = {
         const parsed = LookupValueCreate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const data = parsed.data;
@@ -494,7 +565,11 @@ export const referencesPlugin: FeaturePlugin = {
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'conflict', message: 'A value with this code already exists for this kind', requestId: req.requestId },
+              error: {
+                code: 'conflict',
+                message: 'A value with this code already exists for this kind',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -509,13 +584,21 @@ export const referencesPlugin: FeaturePlugin = {
         const parsed = LookupValueUpdate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const before = await prisma.lookupValue.findUnique({ where: { id: req.params.id } });
         if (!before) {
           return reply.code(404).send({
-            error: { code: 'not_found', message: 'Lookup value not found', requestId: req.requestId },
+            error: {
+              code: 'not_found',
+              message: 'Lookup value not found',
+              requestId: req.requestId,
+            },
           });
         }
         const updateData = stripUndefined({

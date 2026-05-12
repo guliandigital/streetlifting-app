@@ -6,7 +6,7 @@
  *    6 Weighted Calisthenics (PU / DI / MU bar / MU ring / SQ /
  *      4-event total)                                            — formula = isf_points
  *
- * Source: legacy reference system «Дисциплины» tab + ISF v5.1 §§2, 4.
+ * Source: reference screenshots for «Дисциплины» + ISF v5.1 §§2, 4.
  *
  * WC notes per ISF v5.1 §4.3–4.4:
  * - Bar Muscle-Up: men's default; women may opt-in by request before start

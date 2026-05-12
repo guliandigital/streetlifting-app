@@ -7,7 +7,7 @@
 
 V1 (`streetlifting-os-legacy`) was Tauri-only desktop. The "boxed" form factor solved offline reliability on tournament day but blocked four important workflows: zero-install browser registration, federation portal, public results, and broadcast surfaces.
 
-V2 must be browser-primary, with desktop as the offline tournament-day client. The same code should run in both. The product is a legacy reference system replacement, so the data model is heavy (federation directories, billing journals, audit trails, multi-role permissions, broadcast publisher).
+V2 must be browser-primary, with desktop as the offline tournament-day client. The same code should run in both. The product replaces a heavy federation operations workflow, so the data model is heavy (federation directories, billing journals, audit trails, multi-role permissions, broadcast publisher).
 
 ## Decision
 
@@ -31,7 +31,7 @@ V2 must be browser-primary, with desktop as the offline tournament-day client. T
 
 ## Alternatives considered
 
-- **1С:Предприятие** (legacy reference system's stack): rejected — proprietary, locks us into 1С licensing, dated UX
+- **1С:Предприятие**: rejected — proprietary, locks us into 1С licensing, dated UX
 - **Next.js**: rejected — server components add complexity for what is effectively a SPA + API, and SSR has no value for an authenticated admin tool
 - **Electron**: rejected — Tauri is smaller, faster, and we already have a working signed-update chain
 - **Supabase / Firebase**: rejected — RU jurisdiction, ИП Гулян А. Г. legal entity, owned reg.ru server (per project legal memo)
