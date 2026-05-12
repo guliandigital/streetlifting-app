@@ -15,6 +15,7 @@ import {
 import { useAuthStore } from '../../lib/auth/store.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import { useCountries, useRegions } from '../../lib/references-api.js';
+import { setLocale } from '../../lib/i18n/index.js';
 import { formatRub, rubToKopecks } from './format.js';
 import {
   type FederationDashboardResponse,
@@ -309,6 +310,15 @@ export default function FederationDetailFeature() {
     }
   }
 
+  function showFederationInfo() {
+    toast.success(`${f.code} · ${countryLabel}`);
+  }
+
+  function switchToEnglish() {
+    setLocale('en');
+    toast.success('Language switched to English');
+  }
+
   return (
     <PowerTablePage
       title={`${f.nameRu} (Федерация)`}
@@ -378,20 +388,20 @@ export default function FederationDetailFeature() {
           {primaryCompetitionId ? (
             <Link to="/broadcast/competitions/$id" params={{ id: primaryCompetitionId }} className="pt-link pt-inline-icon"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</Link>
           ) : (
-            <a className="pt-link pt-inline-icon" href="#broadcast"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</a>
+            <Link className="pt-link pt-inline-icon" to="/competitions"><PowerTableIcon name="scoreboard" />Информационные таблицы для трансляций</Link>
           )}
         </aside>
 
         <main className="space-y-3">
           <PowerTableToolbar>
-            <PowerTableButton icon="info" aria-label="Информация" />
+            <PowerTableButton type="button" icon="info" aria-label="Информация" onClick={showFederationInfo} />
             <Link to="/federations/$id/settings" params={{ id }} className="pt-link-button"><PowerTableIcon name="settings" />Обращения, настройки / Feedback, settings</Link>
             <Link to="/federations/$id/logins" params={{ id }} className="pt-link-button"><PowerTableIcon name="history" />Входы в программу</Link>
           </PowerTableToolbar>
 
           <div className="grid grid-cols-[42px_205px_42px_minmax(160px,1fr)_minmax(160px,1fr)_110px] gap-6 max-xl:grid-cols-1">
             <div className="pt-lang-badge">RU</div>
-            <PowerTableButton>Switch the language to English</PowerTableButton>
+            <PowerTableButton type="button" onClick={switchToEnglish}>Switch the language to English</PowerTableButton>
             <div className="pt-lang-badge">EN</div>
             <input className="pt-field" value={f.contactPhone ?? ''} readOnly />
             <input className="pt-field" value={f.telegramHandle ?? ''} readOnly />

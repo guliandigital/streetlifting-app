@@ -1,5 +1,7 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
+import { toast } from '@streetlifting/ui';
 import {
   PowerTableButton,
   PowerTableIcon,
@@ -11,7 +13,57 @@ import { usePublicScoreboard } from './operations-api.js';
 export default function CompetitionBroadcastFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/broadcast/competitions/$id' });
-  const { data, isLoading, error } = usePublicScoreboard(id);
+  const { data, isLoading, error, isFetching, refetch } = usePublicScoreboard(id);
+  const [selectedPlatform, setSelectedPlatform] = useState<'1' | 'admin'>('1');
+  const [timerSeconds, setTimerSeconds] = useState(60);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [localDecision, setLocalDecision] = useState<'good_lift' | 'no_lift' | null>(null);
+
+  const current = useMemo(
+    () => data?.nominations.find((nomination) => nomination.status === 'on_platform') ?? data?.nominations[0] ?? null,
+    [data?.nominations],
+  );
+  const athleteName = current
+    ? [current.athlete.lastName, current.athlete.firstName, current.athlete.middleName].filter(Boolean).join(' ')
+    : '';
+
+  useEffect(() => {
+    if (!timerRunning) return undefined;
+    const timer = window.setInterval(() => {
+      setTimerSeconds((seconds) => {
+        if (seconds <= 1) {
+          window.clearInterval(timer);
+          setTimerRunning(false);
+          return 0;
+        }
+        return seconds - 1;
+      });
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [timerRunning]);
+
+  async function refreshList() {
+    const result = await refetch();
+    if (result.error) {
+      toast.error(result.error instanceof Error ? result.error.message : 'Error');
+      return;
+    }
+    toast.success('Список трансляции обновлен');
+  }
+
+  function startTimer(seconds = 60) {
+    setTimerSeconds(seconds);
+    setTimerRunning(true);
+  }
+
+  function pauseTimer() {
+    setTimerRunning(false);
+  }
+
+  function markDecision(decision: 'good_lift' | 'no_lift') {
+    setLocalDecision(decision);
+    toast.success(decision === 'good_lift' ? 'На табло отмечен зачет' : 'На табло отмечен не зачет');
+  }
 
   if (isLoading) {
     return <div className="pt-page p-6 text-sm text-gray-600">{t('common.loading')}</div>;
@@ -24,16 +76,15 @@ export default function CompetitionBroadcastFeature() {
     );
   }
 
-  const current = data.nominations.find((nomination) => nomination.status === 'on_platform') ?? data.nominations[0] ?? null;
-  const athleteName = current
-    ? [current.athlete.lastName, current.athlete.firstName, current.athlete.middleName].filter(Boolean).join(' ')
-    : '';
-
   return (
     <PowerTablePage
-      title="Помост №0"
+      title={`Помост №${selectedPlatform === 'admin' ? 'Admin' : selectedPlatform}`}
       subtitle={`${data.competition.nameRu} · обновлено ${new Date(data.generatedAt).toLocaleTimeString('ru-RU')}`}
-      actions={<PowerTableButton icon="refresh">Обновить список</PowerTableButton>}
+      actions={(
+        <PowerTableButton type="button" icon="refresh" onClick={() => void refreshList()} disabled={isFetching}>
+          {isFetching ? t('common.loading') : 'Обновить список'}
+        </PowerTableButton>
+      )}
       federationBar={<><span>{data.competition.federation.code}</span><span>{data.competition.federation.nameRu}</span></>}
       tabs={[
         { label: 'Параметры', icon: 'settings' },
@@ -51,10 +102,24 @@ export default function CompetitionBroadcastFeature() {
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="font-bold text-red-700">Выберите номер помоста:</span>
-            <PowerTableButton>1</PowerTableButton>
-            <PowerTableButton>Admin</PowerTableButton>
+            <PowerTableButton
+              type="button"
+              {...(selectedPlatform === '1' ? { tone: 'green' as const } : {})}
+              onClick={() => setSelectedPlatform('1')}
+            >
+              1
+            </PowerTableButton>
+            <PowerTableButton
+              type="button"
+              {...(selectedPlatform === 'admin' ? { tone: 'green' as const } : {})}
+              onClick={() => setSelectedPlatform('admin')}
+            >
+              Admin
+            </PowerTableButton>
           </div>
-          <PowerTableButton icon="refresh">Обновить список</PowerTableButton>
+          <PowerTableButton type="button" icon="refresh" onClick={() => void refreshList()} disabled={isFetching}>
+            {isFetching ? t('common.loading') : 'Обновить список'}
+          </PowerTableButton>
 
           <table className="pt-grid">
             <thead><tr><th></th><th></th><th><PowerTableIcon name="timer" className="mx-auto" /></th><th>Начало</th><th>Ном</th><th>Жен</th><th>Муж</th></tr></thead>
@@ -72,13 +137,22 @@ export default function CompetitionBroadcastFeature() {
           </table>
 
           <div className="pt-live-controls mt-2">
-            <div className="pt-black-display">{athleteName || '-'}</div>
-            <PowerTableButton icon="break" aria-label="Пауза" />
-            <PowerTableButton>60s Старт</PowerTableButton>
-            <button className="pt-big-green" type="button"><PowerTableIcon name="timer" />Старт [0 сек]</button>
-            <PowerTableButton icon="break" aria-label="Пауза таймера" />
-            <button className="pt-big-green" type="button"><PowerTableIcon name="flag" />Зачёт</button>
-            <button className="pt-big-pink" type="button"><PowerTableIcon name="flag" />Не зачёт</button>
+            <div className="pt-black-display">
+              {athleteName || '-'}
+              {localDecision ? (
+                <span className="ml-3 text-sm font-bold">
+                  {localDecision === 'good_lift' ? 'Зачет' : 'Не зачет'}
+                </span>
+              ) : null}
+            </div>
+            <PowerTableButton type="button" icon="break" aria-label="Пауза" onClick={pauseTimer} />
+            <PowerTableButton type="button" onClick={() => startTimer(60)}>60s Старт</PowerTableButton>
+            <button className="pt-big-green" type="button" onClick={() => setTimerRunning((running) => !running)}>
+              <PowerTableIcon name="timer" />{timerRunning ? 'Пауза' : 'Старт'} [{timerSeconds} сек]
+            </button>
+            <PowerTableButton type="button" icon="break" aria-label="Пауза таймера" onClick={pauseTimer} />
+            <button className="pt-big-green" type="button" onClick={() => markDecision('good_lift')}><PowerTableIcon name="flag" />Зачёт</button>
+            <button className="pt-big-pink" type="button" onClick={() => markDecision('no_lift')}><PowerTableIcon name="flag" />Не зачёт</button>
           </div>
 
           <table className="pt-grid">

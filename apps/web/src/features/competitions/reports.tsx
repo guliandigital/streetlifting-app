@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
@@ -31,7 +32,32 @@ function downloadBlob(filename: string, blob: Blob): void {
 export default function CompetitionReportsFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/competitions/$id/reports' });
-  const { data, isLoading, error } = useCompetitionOps(id);
+  const { data, isLoading, error, isFetching, refetch } = useCompetitionOps(id);
+  const [query, setQuery] = useState('');
+  const [showMore, setShowMore] = useState(false);
+  const visibleRows = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!data || !normalized) return data?.scoreboardRows ?? [];
+    return data.scoreboardRows.filter((row) =>
+      [
+        row.entryNumber?.toString() ?? '',
+        row.athleteName,
+        row.discipline,
+        row.division,
+        row.weightClass,
+        t(`competitionOps.status.${row.status}`),
+      ].some((value) => value.toLowerCase().includes(normalized)),
+    );
+  }, [data, query, t]);
+
+  async function refreshReport() {
+    const result = await refetch();
+    if (result.error) {
+      toast.error(result.error instanceof Error ? result.error.message : 'Error');
+      return;
+    }
+    toast.success('Отчет обновлен');
+  }
 
   async function exportFile(kind: 'protocol' | 'accounting', format: 'csv' | 'xlsx') {
     if (!data) return;
@@ -128,28 +154,42 @@ export default function CompetitionReportsFeature() {
 
         <PowerTablePanel className="p-3">
           <PowerTableToolbar>
-            <PowerTableButton icon="check">Обновить</PowerTableButton>
-            <input className="pt-field ml-auto max-w-xs" placeholder="Поиск (Ctrl+F)" />
-            <PowerTableButton>Еще</PowerTableButton>
+            <PowerTableButton type="button" icon="check" onClick={() => void refreshReport()} disabled={isFetching}>
+              {isFetching ? t('common.loading') : 'Обновить'}
+            </PowerTableButton>
+            <input className="pt-field ml-auto max-w-xs" placeholder="Поиск (Ctrl+F)" value={query} onChange={(event) => setQuery(event.target.value)} />
+            <PowerTableButton type="button" onClick={() => setShowMore((value) => !value)}>
+              {showMore ? 'Скрыть' : 'Еще'}
+            </PowerTableButton>
           </PowerTableToolbar>
+          {showMore ? (
+            <div className="pt-info-yellow mb-2">
+              Отображено строк: {visibleRows.length} из {data.scoreboardRows.length}. Дополнительные колонки включены в таблицу ниже.
+            </div>
+          ) : null}
           <table className="pt-grid">
             <thead>
               <tr>
-                <th>№</th><th>Спортсмен</th><th>Дисциплина</th><th>Весовая</th><th>Лучший</th><th>Очки</th><th>Статус</th>
+                <th>№</th><th>Спортсмен</th><th>Дисциплина</th>{showMore ? <th>Возраст</th> : null}<th>Весовая</th><th>Лучший</th><th>Очки</th>{showMore ? <th>Место</th> : null}<th>Статус</th>
               </tr>
             </thead>
             <tbody>
-              {data.scoreboardRows.map((row, index) => (
+              {visibleRows.map((row, index) => (
                 <tr key={row.nominationId} className={index === 0 ? 'is-selected' : index % 2 ? 'is-yellow' : 'is-green'}>
                   <td>{row.entryNumber ?? '-'}</td>
                   <td>{row.athleteName}</td>
                   <td>{row.discipline}</td>
+                  {showMore ? <td>{row.division}</td> : null}
                   <td>{row.weightClass}</td>
                   <td className="text-right tabular-nums">{row.bestSuccessfulAttemptKg ?? '-'}</td>
                   <td className="text-right tabular-nums">{row.finalScore ?? '-'}</td>
+                  {showMore ? <td className="text-right tabular-nums">{row.placeInClass ?? '-'}</td> : null}
                   <td>{t(`competitionOps.status.${row.status}`)}</td>
                 </tr>
               ))}
+              {visibleRows.length === 0 ? (
+                <tr><td colSpan={showMore ? 9 : 7} className="italic">Строки не найдены.</td></tr>
+              ) : null}
             </tbody>
           </table>
         </PowerTablePanel>

@@ -12,6 +12,7 @@ import {
 } from '../../components/powertable.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import { useAuthStore } from '../../lib/auth/store.js';
+import { setLocale } from '../../lib/i18n/index.js';
 import {
   type FederationAuditEntryDto,
   useCreateFederationFeedback,
@@ -135,6 +136,11 @@ export default function FederationNotificationsFeature() {
     }
   }
 
+  function switchToEnglish() {
+    setLocale('en');
+    toast.success('Language switched to English');
+  }
+
   return (
     <PowerTablePage
       title="Уведомления"
@@ -166,7 +172,7 @@ export default function FederationNotificationsFeature() {
             <PowerTableSectionTitle>Ваши контактные данные. Будут публиковаться на персональной странице федерации</PowerTableSectionTitle>
             <div className="grid grid-cols-[42px_205px_42px_minmax(160px,1fr)] gap-6 max-lg:grid-cols-1">
               <div className="pt-lang-badge">RU</div>
-              <PowerTableButton type="button">Switch the language to English</PowerTableButton>
+              <PowerTableButton type="button" onClick={switchToEnglish}>Switch the language to English</PowerTableButton>
               <div className="pt-lang-badge">EN</div>
               <input className="pt-field" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} disabled={!canManage} />
             </div>
