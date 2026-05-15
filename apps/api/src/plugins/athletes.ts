@@ -80,6 +80,138 @@ export const athletesPlugin: FeaturePlugin = {
       },
     );
 
+    // ─── Appearances (cross-meet competition history) ─────────────────
+    app.get<{ Params: { id: string } }>(
+      '/athletes/:id/appearances',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const exists = await prisma.athlete.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!exists) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
+          });
+        }
+        const nominations = await prisma.nomination.findMany({
+          where: { athleteId: req.params.id },
+          include: {
+            competition: {
+              select: { id: true, nameRu: true, startDate: true, city: true },
+            },
+            discipline: { select: { code: true, nameRu: true } },
+            division: { select: { code: true, nameRu: true } },
+            weightClass: { select: { code: true, nameRu: true } },
+          },
+          orderBy: [{ competition: { startDate: 'desc' } }],
+        });
+        const appearances = nominations.map((n) => ({
+          id: n.id,
+          competitionId: n.competitionId,
+          competitionName: n.competition.nameRu,
+          competitionStartDate: n.competition.startDate.toISOString(),
+          competitionCity: n.competition.city,
+          disciplineCode: n.discipline.code,
+          disciplineName: n.discipline.nameRu,
+          divisionCode: n.division.code,
+          divisionName: n.division.nameRu,
+          weightClassCode: n.weightClass.code,
+          weightClassName: n.weightClass.nameRu,
+          bodyWeightAtWeighIn: n.bodyWeightAtWeighIn,
+          bestSuccessfulAttemptKg: n.bestSuccessfulAttemptKg,
+          finalScore: n.finalScore,
+          placeOverall: n.placeOverall,
+          placeInDivision: n.placeInDivision,
+          placeInClass: n.placeInClass,
+          status: n.status,
+        }));
+        return { appearances, total: appearances.length };
+      },
+    );
+
+    // ─── Records (federation/national/continental/world held by athlete) ──
+    app.get<{ Params: { id: string } }>(
+      '/athletes/:id/records',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const exists = await prisma.athlete.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!exists) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
+          });
+        }
+        const records = await prisma.record.findMany({
+          where: { athleteId: req.params.id },
+          include: {
+            discipline: { select: { code: true, nameRu: true } },
+            division: { select: { code: true, nameRu: true } },
+            weightClass: { select: { code: true, nameRu: true } },
+            competition: { select: { id: true, nameRu: true } },
+          },
+          orderBy: [{ achievedOn: 'desc' }],
+        });
+        const items = records.map((r) => ({
+          id: r.id,
+          scope: r.scope,
+          achievedOn: r.achievedOn.toISOString(),
+          disciplineCode: r.discipline.code,
+          disciplineName: r.discipline.nameRu,
+          divisionCode: r.division.code,
+          divisionName: r.division.nameRu,
+          weightClassCode: r.weightClass.code,
+          weightClassName: r.weightClass.nameRu,
+          result: r.result,
+          pointsScore: r.pointsScore,
+          competitionId: r.competitionId,
+          competitionName: r.competition.nameRu,
+          ratifiedAt: r.ratifiedAt ? r.ratifiedAt.toISOString() : null,
+        }));
+        return { records: items, total: items.length };
+      },
+    );
+
+    // ─── Documents (attachments linked to athlete) ─────────────────────
+    app.get<{ Params: { id: string } }>(
+      '/athletes/:id/documents',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const exists = await prisma.athlete.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!exists) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
+          });
+        }
+        const attachments = await prisma.attachment.findMany({
+          where: { athleteId: req.params.id, deletedAt: null },
+          select: {
+            id: true,
+            kind: true,
+            filename: true,
+            mimeType: true,
+            sizeBytes: true,
+            uploadedAt: true,
+          },
+          orderBy: [{ uploadedAt: 'desc' }],
+        });
+        const documents = attachments.map((a) => ({
+          id: a.id,
+          kind: a.kind,
+          filename: a.filename,
+          mimeType: a.mimeType,
+          sizeBytes: a.sizeBytes.toString(),
+          uploadedAt: a.uploadedAt.toISOString(),
+        }));
+        return { documents, total: documents.length };
+      },
+    );
+
     // ─── Create ───────────────────────────────────────────────────────
     // V1: platform_admin only. M3 will add a public registration flow
     // gated by federation invite + 152-ФЗ consent capture.
