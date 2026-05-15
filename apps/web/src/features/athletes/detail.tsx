@@ -12,9 +12,48 @@ import {
   type WorkspaceIconName,
 } from '../../components/workspace.js';
 import { useAuthStore } from '../../lib/auth/store.js';
-import { useAthlete, useUpdateAthlete } from './api.js';
+import {
+  useAthlete,
+  useAthleteAppearances,
+  useAthleteDocuments,
+  useAthleteRecords,
+  useUpdateAthlete,
+} from './api.js';
 import { calculateAge, formatDateOfBirth } from './format.js';
 import { useCountries, useRegions } from '../../lib/references-api.js';
+
+const RECORD_SCOPE_LABEL: Record<string, string> = {
+  federation: 'Федерация',
+  national: 'Россия',
+  continental: 'Континент',
+  world: 'Мир',
+};
+
+const ATTACHMENT_KIND_LABEL: Record<string, string> = {
+  athlete_photo: 'Фото',
+  federation_file: 'Файл федерации',
+  competition_file: 'Файл соревнования',
+  certificate_pdf: 'Сертификат',
+  protocol_pdf: 'Протокол',
+  misc: 'Прочее',
+};
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('ru-RU');
+}
+
+function formatFileSize(bytes: string): string {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  if (n < 1024) return `${n} Б`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`;
+  return `${(n / (1024 * 1024)).toFixed(2)} МБ`;
+}
+
+function formatPlace(value: number | null): string {
+  if (value === null || value === undefined) return '—';
+  return String(value);
+}
 
 type AthleteTab = 'main' | 'appearances' | 'records' | 'documents';
 
@@ -39,6 +78,9 @@ export default function AthleteDetailFeature() {
   const { id } = useParams({ from: '/athletes/$id' });
   const { data, isLoading, error } = useAthlete(id);
   const update = useUpdateAthlete(id);
+  const appearancesQuery = useAthleteAppearances(id);
+  const recordsQuery = useAthleteRecords(id);
+  const documentsQuery = useAthleteDocuments(id);
   const user = useAuthStore((s) => s.user);
   const { data: countriesData } = useCountries();
   const countryRow = countriesData?.countries.find((c) => c.codeIso2 === data?.athlete.countryCode);
@@ -141,13 +183,19 @@ export default function AthleteDetailFeature() {
           </WorkspaceButton>
         </>
       }
-      tabs={ATHLETE_TABS.map((tab) => ({
-        label: tab.key === 'appearances' ? `${tab.label} (0)` : tab.label,
-        icon: tab.icon,
-        active: activeTab === tab.key,
-        onClick: () => setActiveTab(tab.key),
-        testId: `athlete-tab-${tab.key}`,
-      }))}
+      tabs={ATHLETE_TABS.map((tab) => {
+        let count: number | null = null;
+        if (tab.key === 'appearances') count = appearancesQuery.data?.total ?? null;
+        else if (tab.key === 'records') count = recordsQuery.data?.total ?? null;
+        else if (tab.key === 'documents') count = documentsQuery.data?.total ?? null;
+        return {
+          label: count !== null && count > 0 ? `${tab.label} (${count})` : tab.label,
+          icon: tab.icon,
+          active: activeTab === tab.key,
+          onClick: () => setActiveTab(tab.key),
+          testId: `athlete-tab-${tab.key}`,
+        };
+      })}
     >
       <div className="space-y-3">
         {activeTab === 'main' && (
@@ -291,29 +339,71 @@ export default function AthleteDetailFeature() {
         {activeTab === 'appearances' && (
           <WorkspacePanel className="p-3 space-y-3">
             <WorkspaceSectionTitle>История выступлений</WorkspaceSectionTitle>
-            <div className="pt-info-yellow">
-              Кросс-соревновательная история спортсмена. После накопления выступлений тут появятся
-              номинации, веса, места и очки.
-            </div>
             <table className="pt-grid">
               <thead>
                 <tr>
                   <th>Дата</th>
                   <th className="text-left">Соревнование</th>
+                  <th className="text-left">Город</th>
                   <th className="text-left">Дисциплина</th>
+                  <th className="text-left">Дивизион</th>
                   <th>ВК</th>
-                  <th>Возр.</th>
-                  <th>Лучший</th>
+                  <th>Соб. вес</th>
+                  <th>Лучший, кг</th>
                   <th>Очки</th>
                   <th>Место</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td colSpan={8} className="pt-muted italic text-center">
-                    Выступлений ещё нет.
-                  </td>
-                </tr>
+                {appearancesQuery.isLoading ? (
+                  <tr>
+                    <td colSpan={10} className="pt-muted italic text-center">
+                      {t('common.loading')}
+                    </td>
+                  </tr>
+                ) : appearancesQuery.error ? (
+                  <tr>
+                    <td
+                      colSpan={10}
+                      className="pt-muted italic text-center text-[var(--pt-danger)]"
+                    >
+                      {appearancesQuery.error instanceof Error
+                        ? appearancesQuery.error.message
+                        : t('common.error')}
+                    </td>
+                  </tr>
+                ) : !appearancesQuery.data || appearancesQuery.data.appearances.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="pt-muted italic text-center">
+                      Выступлений ещё нет.
+                    </td>
+                  </tr>
+                ) : (
+                  appearancesQuery.data.appearances.map((row) => (
+                    <tr key={row.id}>
+                      <td className="text-center">{formatDate(row.competitionStartDate)}</td>
+                      <td>{row.competitionName}</td>
+                      <td>{row.competitionCity ?? '—'}</td>
+                      <td>{row.disciplineName}</td>
+                      <td>{row.divisionName}</td>
+                      <td className="text-center">{row.weightClassCode}</td>
+                      <td className="text-center">
+                        {row.bodyWeightAtWeighIn !== null
+                          ? row.bodyWeightAtWeighIn.toFixed(2)
+                          : '—'}
+                      </td>
+                      <td className="text-center">
+                        {row.bestSuccessfulAttemptKg !== null
+                          ? row.bestSuccessfulAttemptKg.toFixed(1)
+                          : '—'}
+                      </td>
+                      <td className="text-center">
+                        {row.finalScore !== null ? row.finalScore.toFixed(2) : '—'}
+                      </td>
+                      <td className="text-center font-medium">{formatPlace(row.placeOverall)}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </WorkspacePanel>
@@ -322,26 +412,58 @@ export default function AthleteDetailFeature() {
         {activeTab === 'records' && (
           <WorkspacePanel className="p-3 space-y-3">
             <WorkspaceSectionTitle>Рекорды спортсмена</WorkspaceSectionTitle>
-            <div className="pt-info-yellow">
-              Список рекордов федерации, России и мира, удерживаемых спортсменом. Подсистема
-              рекордов будет включена в следующем релизе.
-            </div>
             <table className="pt-grid">
               <thead>
                 <tr>
                   <th>Дата</th>
+                  <th className="text-left">Уровень</th>
                   <th className="text-left">Дисциплина</th>
+                  <th className="text-left">Дивизион</th>
                   <th>ВК</th>
-                  <th>Результат</th>
-                  <th>Тип рекорда</th>
+                  <th>Результат, кг</th>
+                  <th>Очки</th>
+                  <th className="text-left">На соревновании</th>
+                  <th>Утв.</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td colSpan={5} className="pt-muted italic text-center">
-                    Рекорды не зафиксированы.
-                  </td>
-                </tr>
+                {recordsQuery.isLoading ? (
+                  <tr>
+                    <td colSpan={9} className="pt-muted italic text-center">
+                      {t('common.loading')}
+                    </td>
+                  </tr>
+                ) : recordsQuery.error ? (
+                  <tr>
+                    <td colSpan={9} className="pt-muted italic text-center text-[var(--pt-danger)]">
+                      {recordsQuery.error instanceof Error
+                        ? recordsQuery.error.message
+                        : t('common.error')}
+                    </td>
+                  </tr>
+                ) : !recordsQuery.data || recordsQuery.data.records.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="pt-muted italic text-center">
+                      Рекорды не зафиксированы.
+                    </td>
+                  </tr>
+                ) : (
+                  recordsQuery.data.records.map((row) => (
+                    <tr key={row.id}>
+                      <td className="text-center">{formatDate(row.achievedOn)}</td>
+                      <td>{RECORD_SCOPE_LABEL[row.scope] ?? row.scope}</td>
+                      <td>{row.disciplineName}</td>
+                      <td>{row.divisionName}</td>
+                      <td className="text-center">{row.weightClassCode}</td>
+                      <td className="text-center font-medium">{row.result.toFixed(1)}</td>
+                      <td className="text-center">
+                        {row.pointsScore !== null ? row.pointsScore.toFixed(2) : '—'}
+                      </td>
+                      <td>{row.competitionName}</td>
+                      <td className="text-center">{row.ratifiedAt ? '✓' : '—'}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </WorkspacePanel>
@@ -365,16 +487,42 @@ export default function AthleteDetailFeature() {
                   <th>Дата</th>
                   <th className="text-left">Тип</th>
                   <th className="text-left">Имя файла</th>
-                  <th>Срок до</th>
-                  <th>Статус</th>
+                  <th className="text-left">MIME</th>
+                  <th>Размер</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td colSpan={5} className="pt-muted italic text-center">
-                    Документы не загружены.
-                  </td>
-                </tr>
+                {documentsQuery.isLoading ? (
+                  <tr>
+                    <td colSpan={5} className="pt-muted italic text-center">
+                      {t('common.loading')}
+                    </td>
+                  </tr>
+                ) : documentsQuery.error ? (
+                  <tr>
+                    <td colSpan={5} className="pt-muted italic text-center text-[var(--pt-danger)]">
+                      {documentsQuery.error instanceof Error
+                        ? documentsQuery.error.message
+                        : t('common.error')}
+                    </td>
+                  </tr>
+                ) : !documentsQuery.data || documentsQuery.data.documents.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="pt-muted italic text-center">
+                      Документы не загружены.
+                    </td>
+                  </tr>
+                ) : (
+                  documentsQuery.data.documents.map((row) => (
+                    <tr key={row.id}>
+                      <td className="text-center">{formatDate(row.uploadedAt)}</td>
+                      <td>{ATTACHMENT_KIND_LABEL[row.kind] ?? row.kind}</td>
+                      <td>{row.filename}</td>
+                      <td className="font-mono text-xs">{row.mimeType}</td>
+                      <td className="text-right">{formatFileSize(row.sizeBytes)}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </WorkspacePanel>
