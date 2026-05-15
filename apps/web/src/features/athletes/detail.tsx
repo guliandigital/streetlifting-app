@@ -488,6 +488,18 @@ export default function AthleteDetailFeature() {
         {activeTab === 'appearances' && (
           <WorkspacePanel className="p-3 space-y-3">
             <WorkspaceSectionTitle>История выступлений</WorkspaceSectionTitle>
+            <div className="pt-muted text-xs">
+              ISF Points — формула vNext-K (open_absolute),{' '}
+              <a
+                href="https://github.com/guliandigital/streetlifting-app#isfpoints"
+                className="pt-link"
+                target="_blank"
+                rel="noreferrer"
+              >
+                docs
+              </a>
+              . Прочерк — событие не Classic (PU/DI/PUDI) или нет веса/результата.
+            </div>
             <table className="pt-grid">
               <thead>
                 <tr>
@@ -499,21 +511,22 @@ export default function AthleteDetailFeature() {
                   <th>ВК</th>
                   <th>Соб. вес</th>
                   <th>Лучший, кг</th>
-                  <th>Очки</th>
+                  <th>Сум, кг</th>
+                  <th>ISF Очки</th>
                   <th>Место</th>
                 </tr>
               </thead>
               <tbody>
                 {appearancesQuery.isLoading ? (
                   <tr>
-                    <td colSpan={10} className="pt-muted italic text-center">
+                    <td colSpan={11} className="pt-muted italic text-center">
                       {t('common.loading')}
                     </td>
                   </tr>
                 ) : appearancesQuery.error ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       className="pt-muted italic text-center text-[var(--pt-danger)]"
                     >
                       {appearancesQuery.error instanceof Error
@@ -523,7 +536,7 @@ export default function AthleteDetailFeature() {
                   </tr>
                 ) : !appearancesQuery.data || appearancesQuery.data.appearances.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="pt-muted italic text-center">
+                    <td colSpan={11} className="pt-muted italic text-center">
                       Выступлений ещё нет.
                     </td>
                   </tr>
@@ -556,6 +569,9 @@ export default function AthleteDetailFeature() {
                       </td>
                       <td className="text-center">
                         {row.finalScore !== null ? row.finalScore.toFixed(2) : '—'}
+                      </td>
+                      <td className="text-center font-medium">
+                        {row.isfPointsPub !== null ? row.isfPointsPub.toFixed(2) : '—'}
                       </td>
                       <td className="text-center font-medium">{formatPlace(row.placeOverall)}</td>
                     </tr>

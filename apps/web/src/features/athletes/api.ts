@@ -42,6 +42,10 @@ export interface AthleteAppearanceDto {
   bodyWeightAtWeighIn: number | null;
   bestSuccessfulAttemptKg: number | null;
   finalScore: number | null;
+  /** ISFpoints (vNext_K_RC1.1_full_refit, open_absolute). Null for non-Classic events or when bw/result is missing. */
+  isfPointsRaw: number | null;
+  isfPointsPub: number | null;
+  isfCurveVersion: string | null;
   placeOverall: number | null;
   placeInDivision: number | null;
   placeInClass: number | null;

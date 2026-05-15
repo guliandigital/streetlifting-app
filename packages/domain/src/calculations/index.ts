@@ -1,1 +1,17 @@
-export { isfAbsoluteCoefficient } from './isf-coefficient.js';
+export {
+  isfPoints,
+  isfPointsS,
+  mapEventToISFClassicDiscipline,
+  ISFPOINTS_K_PARAMS,
+  ISFPOINTS_AGE_FACTORS,
+  ISFPOINTS_K,
+  ISFPOINTS_CURVE_VERSION,
+  ISFPOINTS_RELEASE_STATUS,
+  ISFPOINTS_RELEASE_DATE,
+  type ISFSex,
+  type ISFClassicDiscipline,
+  type ISFAgeGroup,
+  type ISFRankingMode,
+  type ISFPointsInput,
+  type ISFPointsResult,
+} from './isfpoints.js';

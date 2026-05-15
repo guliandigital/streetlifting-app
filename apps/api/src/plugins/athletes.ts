@@ -2,7 +2,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { AthleteCreate, AthleteUpdate, AthleteListQuery } from '@streetlifting/domain';
+import {
+  AthleteCreate,
+  AthleteUpdate,
+  AthleteListQuery,
+  calculations,
+  presets,
+} from '@streetlifting/domain';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma } from '../lib/db.js';
 import type { Prisma } from '../lib/db.js';
@@ -10,6 +16,38 @@ import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
 import { validateUuidParams } from '../lib/params.js';
+
+const PRESET_BY_DISCIPLINE_CODE = new Map(presets.ISF_V51_DISCIPLINES.map((p) => [p.code, p]));
+
+function isfClassicDisciplineForCode(code: string): calculations.ISFClassicDiscipline | null {
+  const preset = PRESET_BY_DISCIPLINE_CODE.get(code);
+  if (!preset) return null;
+  return calculations.mapEventToISFClassicDiscipline(preset.event);
+}
+
+function computeAppearanceIsfPoints(
+  disciplineCode: string,
+  sex: 'M' | 'F',
+  bodyWeightAtWeighIn: number | null,
+  bestSuccessfulAttemptKg: number | null,
+): { isfPointsRaw: number | null; isfPointsPub: number | null; isfCurveVersion: string | null } {
+  const classicDiscipline = isfClassicDisciplineForCode(disciplineCode);
+  if (!classicDiscipline || bodyWeightAtWeighIn === null || bestSuccessfulAttemptKg === null) {
+    return { isfPointsRaw: null, isfPointsPub: null, isfCurveVersion: null };
+  }
+  const r = calculations.isfPoints({
+    result: bestSuccessfulAttemptKg,
+    bodyWeightKg: bodyWeightAtWeighIn,
+    sex,
+    discipline: classicDiscipline,
+  });
+  if (!r) return { isfPointsRaw: null, isfPointsPub: null, isfCurveVersion: null };
+  return {
+    isfPointsRaw: r.pointsRaw,
+    isfPointsPub: r.pointsPub,
+    isfCurveVersion: r.curveVersion,
+  };
+}
 
 const log = moduleLogger('athletes');
 
@@ -159,11 +197,11 @@ export const athletesPlugin: FeaturePlugin = {
       '/athletes/:id/appearances',
       { preHandler: requireAuth() },
       async (req, reply) => {
-        const exists = await prisma.athlete.findUnique({
+        const athlete = await prisma.athlete.findUnique({
           where: { id: req.params.id },
-          select: { id: true },
+          select: { id: true, gender: true },
         });
-        if (!exists) {
+        if (!athlete) {
           return reply.code(404).send({
             error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
           });
@@ -180,26 +218,37 @@ export const athletesPlugin: FeaturePlugin = {
           },
           orderBy: [{ competition: { startDate: 'desc' } }],
         });
-        const appearances = nominations.map((n) => ({
-          id: n.id,
-          competitionId: n.competitionId,
-          competitionName: n.competition.nameRu,
-          competitionStartDate: n.competition.startDate.toISOString(),
-          competitionCity: n.competition.city,
-          disciplineCode: n.discipline.code,
-          disciplineName: n.discipline.nameRu,
-          divisionCode: n.division.code,
-          divisionName: n.division.nameRu,
-          weightClassCode: n.weightClass.code,
-          weightClassName: n.weightClass.nameRu,
-          bodyWeightAtWeighIn: n.bodyWeightAtWeighIn,
-          bestSuccessfulAttemptKg: n.bestSuccessfulAttemptKg,
-          finalScore: n.finalScore,
-          placeOverall: n.placeOverall,
-          placeInDivision: n.placeInDivision,
-          placeInClass: n.placeInClass,
-          status: n.status,
-        }));
+        const appearances = nominations.map((n) => {
+          const points = computeAppearanceIsfPoints(
+            n.discipline.code,
+            athlete.gender,
+            n.bodyWeightAtWeighIn,
+            n.bestSuccessfulAttemptKg,
+          );
+          return {
+            id: n.id,
+            competitionId: n.competitionId,
+            competitionName: n.competition.nameRu,
+            competitionStartDate: n.competition.startDate.toISOString(),
+            competitionCity: n.competition.city,
+            disciplineCode: n.discipline.code,
+            disciplineName: n.discipline.nameRu,
+            divisionCode: n.division.code,
+            divisionName: n.division.nameRu,
+            weightClassCode: n.weightClass.code,
+            weightClassName: n.weightClass.nameRu,
+            bodyWeightAtWeighIn: n.bodyWeightAtWeighIn,
+            bestSuccessfulAttemptKg: n.bestSuccessfulAttemptKg,
+            finalScore: n.finalScore,
+            isfPointsRaw: points.isfPointsRaw,
+            isfPointsPub: points.isfPointsPub,
+            isfCurveVersion: points.isfCurveVersion,
+            placeOverall: n.placeOverall,
+            placeInDivision: n.placeInDivision,
+            placeInClass: n.placeInClass,
+            status: n.status,
+          };
+        });
         return { appearances, total: appearances.length };
       },
     );
