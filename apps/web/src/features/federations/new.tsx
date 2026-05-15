@@ -1,16 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  toast,
-} from '@streetlifting/ui';
+import { Button, Card, CardContent, Input, Label, toast } from '@streetlifting/ui';
+import { WorkspacePage } from '../../components/workspace.js';
 import { useCreateFederation } from './api.js';
 import { rubToKopecks } from './format.js';
 import { ApiClientError } from '../../lib/api-client.js';
@@ -58,24 +50,30 @@ export default function FederationNewFeature() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-10">
+    <WorkspacePage title={t('federations.newTitle')} subtitle={t('federations.subtitle')}>
       <Card>
-        <CardHeader>
-          <CardTitle>{t('federations.newTitle')}</CardTitle>
-        </CardHeader>
         <CardContent>
           <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="code">{t('federations.fields.code')}</Label>
-                <Input id="code" value={code} onChange={(e) => setCode(e.target.value)} required maxLength={16} />
+                <Input
+                  id="code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  required
+                  maxLength={16}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="countryCode">{t('federations.fields.country')}</Label>
                 <select
                   id="countryCode"
                   value={countryCode}
-                  onChange={(e) => { setCountryCode(e.target.value); setRegionCode(''); }}
+                  onChange={(e) => {
+                    setCountryCode(e.target.value);
+                    setRegionCode('');
+                  }}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   required
                 >
@@ -108,12 +106,22 @@ export default function FederationNewFeature() {
 
             <div className="space-y-2">
               <Label htmlFor="nameRu">{t('federations.fields.nameRu')}</Label>
-              <Input id="nameRu" value={nameRu} onChange={(e) => setNameRu(e.target.value)} required />
+              <Input
+                id="nameRu"
+                value={nameRu}
+                onChange={(e) => setNameRu(e.target.value)}
+                required
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="nameEn">{t('federations.fields.nameEn')}</Label>
-              <Input id="nameEn" value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+              <Input
+                id="nameEn"
+                value={nameEn}
+                onChange={(e) => setNameEn(e.target.value)}
+                required
+              />
             </div>
 
             <div className="space-y-2">
@@ -146,6 +154,6 @@ export default function FederationNewFeature() {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

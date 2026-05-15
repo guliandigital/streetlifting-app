@@ -1,25 +1,26 @@
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
 import {
-  PowerTableButton,
-  PowerTableCheckbox,
-  PowerTablePage,
-  PowerTablePanel,
-  PowerTableSectionTitle,
-  PowerTableToolbar,
-} from '../../components/powertable.js';
+  WorkspaceButton,
+  WorkspaceCheckbox,
+  WorkspacePage,
+  WorkspacePanel,
+  WorkspaceSectionTitle,
+  WorkspaceToolbar,
+} from '../../components/workspace.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import { useAuthStore } from '../../lib/auth/store.js';
+import { setLocale } from '../../lib/i18n/index.js';
 import {
   type FederationAuditEntryDto,
-  useCreateFederationFeedback,
   useFederationAudit,
   useFederationDashboard,
   useTestFederationEmail,
   useUpdateFederation,
 } from './api.js';
+import { SupportTicketsPanel } from './support-tickets-panel.js';
 
 function nullableText(value: string): string | null {
   const trimmed = value.trim();
@@ -30,25 +31,26 @@ function auditComment(entry: FederationAuditEntryDto): string {
   if (!entry.after || typeof entry.after !== 'object') return entry.notes ?? '-';
   const payload = entry.after as Record<string, unknown>;
   const message = typeof payload.message === 'string' ? payload.message : null;
+  const subject = typeof payload.subject === 'string' ? payload.subject : null;
   const recipient = typeof payload.recipient === 'string' ? payload.recipient : null;
-  return message ?? recipient ?? entry.notes ?? '-';
+  const status = typeof payload.status === 'string' ? payload.status : null;
+  return message ?? subject ?? recipient ?? status ?? entry.notes ?? '-';
 }
 
 export default function FederationNotificationsFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/federations/$id/notifications' });
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const { data, isLoading, error } = useFederationDashboard(id);
   const { data: auditData, isLoading: auditLoading } = useFederationAudit(id);
   const update = useUpdateFederation(id);
   const testEmail = useTestFederationEmail(id);
-  const createFeedback = useCreateFederationFeedback(id);
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [telegramHandle, setTelegramHandle] = useState('');
   const [notificationsDisabled, setNotificationsDisabled] = useState(false);
   const [isPublicResultsClosed, setIsPublicResultsClosed] = useState(false);
-  const [feedbackMessage, setFeedbackMessage] = useState('');
 
   useEffect(() => {
     if (!data) return;
@@ -73,18 +75,26 @@ export default function FederationNotificationsFeature() {
   const canManage =
     user?.roles.some(
       (r) =>
-        r.role === 'platform_admin' ||
-        (r.role === 'federation_admin' && r.federationId === id),
+        r.role === 'platform_admin' || (r.role === 'federation_admin' && r.federationId === id),
     ) ?? false;
   const notificationHistory =
     auditData?.audit.filter((entry) =>
-      ['federation.feedback.created', 'federation.updated', 'federation.test_email.requested'].includes(
-        entry.action,
-      ),
+      [
+        'federation.feedback.created',
+        'federation.updated',
+        'federation.test_email.sent',
+        'federation.test_email.failed',
+        'federation.support_ticket.created',
+        'federation.support_ticket.message_created',
+        'federation.support_ticket.status_updated',
+      ].includes(entry.action),
     ) ?? [];
 
-  async function submit(e: FormEvent) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const closeAfterSave =
+      ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.dataset.intent ===
+      'save-close';
     try {
       await update.mutateAsync({
         contactPhone: nullableText(contactPhone),
@@ -94,6 +104,7 @@ export default function FederationNotificationsFeature() {
         isPublicResultsClosed,
       });
       toast.success('Настройки уведомлений сохранены');
+      if (closeAfterSave) await navigate({ to: '/federations/$id', params: { id } });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error');
     }
@@ -102,69 +113,103 @@ export default function FederationNotificationsFeature() {
   async function sendTestEmail() {
     try {
       const result = await testEmail.mutateAsync();
-      toast.success(
-        result.smtpConfigured
-          ? `Тестовое письмо поставлено в очередь: ${result.recipient}`
-          : `Email заполнен: ${result.recipient}. SMTP-доставка пока не настроена.`,
-      );
+      toast.success(`Тестовое письмо отправлено: ${result.recipient}`);
     } catch (err) {
       if (err instanceof ApiClientError && err.code === 'contact_email_missing') {
         toast.error('Заполните email федерации');
+      } else if (err instanceof ApiClientError && err.code === 'mailer_not_configured') {
+        toast.error('Почтовая доставка не настроена на сервере');
+      } else if (err instanceof ApiClientError && err.code === 'mailer_delivery_failed') {
+        toast.error('Почтовый сервер отклонил тестовое письмо');
       } else {
         toast.error(err instanceof Error ? err.message : 'Error');
       }
     }
   }
 
-  async function submitFeedback() {
-    const message = feedbackMessage.trim();
-    if (message.length < 3) {
-      toast.error('Напишите текст обращения');
-      return;
-    }
-    try {
-      await createFeedback.mutateAsync({ message });
-      setFeedbackMessage('');
-      toast.success('Обращение сохранено в истории');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error');
-    }
+  function switchToEnglish() {
+    setLocale('en');
+    toast.success('Language switched to English');
   }
 
   return (
-    <PowerTablePage
+    <WorkspacePage
       title="Уведомления"
       subtitle={data.federation.nameRu}
-      actions={(
+      actions={
         <>
-          <PowerTableButton tone="danger" form="federationNotificationsForm" type="submit" disabled={!canManage || update.isPending}>
+          <WorkspaceButton
+            tone="danger"
+            form="federationNotificationsForm"
+            type="submit"
+            data-intent="save-close"
+            disabled={!canManage || update.isPending}
+          >
             Записать и закрыть
-          </PowerTableButton>
-          <PowerTableButton form="federationNotificationsForm" type="submit" disabled={!canManage || update.isPending}>
+          </WorkspaceButton>
+          <WorkspaceButton
+            form="federationNotificationsForm"
+            type="submit"
+            disabled={!canManage || update.isPending}
+          >
             {update.isPending ? t('common.saving') : 'Записать'}
-          </PowerTableButton>
-          <Link to="/federations/$id" params={{ id }} className="pt-link-button">К федерации</Link>
+          </WorkspaceButton>
+          <Link to="/federations/$id" params={{ id }} className="pt-link-button">
+            К федерации
+          </Link>
         </>
-      )}
-      federationBar={<><span>{data.federation.code}</span><span>{data.federation.nameRu}</span></>}
+      }
+      federationBar={
+        <>
+          <span>{data.federation.code}</span>
+          <span>{data.federation.nameRu}</span>
+        </>
+      }
       tabs={[
         { label: 'Фильтры', icon: 'filter' },
         { label: 'Каналы связи', icon: 'notifications', active: true },
         { label: 'Почта', icon: 'mail' },
         { label: 'Telegram', icon: 'telegram' },
-        { label: <Link to="/federations/$id/logins" params={{ id }}>История</Link>, icon: 'history' },
-        { label: <Link to="/federations/$id/files" params={{ id }}>Файлы</Link>, icon: 'files' },
+        {
+          label: (
+            <Link to="/federations/$id/logins" params={{ id }}>
+              История
+            </Link>
+          ),
+          icon: 'history',
+        },
+        {
+          label: (
+            <Link to="/federations/$id/files" params={{ id }}>
+              Файлы
+            </Link>
+          ),
+          icon: 'files',
+        },
       ]}
     >
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <PowerTablePanel className="p-3">
-          <form id="federationNotificationsForm" onSubmit={(e) => void submit(e)} className="space-y-3">
-            <PowerTableSectionTitle>Ваши контактные данные. Будут публиковаться на персональной странице федерации</PowerTableSectionTitle>
+        <WorkspacePanel className="p-3">
+          <form
+            id="federationNotificationsForm"
+            onSubmit={(e) => void submit(e)}
+            className="space-y-3"
+          >
+            <WorkspaceSectionTitle>
+              Ваши контактные данные. Будут публиковаться на персональной странице федерации
+            </WorkspaceSectionTitle>
             <div className="grid grid-cols-[42px_205px_42px_minmax(160px,1fr)] gap-6 max-lg:grid-cols-1">
               <div className="pt-lang-badge">RU</div>
-              <PowerTableButton type="button">Switch the language to English</PowerTableButton>
+              <WorkspaceButton type="button" onClick={switchToEnglish}>
+                Switch the language to English
+              </WorkspaceButton>
               <div className="pt-lang-badge">EN</div>
-              <input className="pt-field" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} disabled={!canManage} />
+              <input
+                className="pt-field"
+                value={contactPhone}
+                onChange={(event) => setContactPhone(event.target.value)}
+                disabled={!canManage}
+              />
             </div>
 
             <div className="pt-form-grid max-w-4xl">
@@ -186,17 +231,21 @@ export default function FederationNotificationsFeature() {
                 disabled={!canManage}
               />
               <label>Код подключения:</label>
-              <input className="pt-field font-mono" value={data.telegramSubscriptionCode} readOnly />
+              <input
+                className="pt-field font-mono"
+                value={data.telegramSubscriptionCode}
+                readOnly
+              />
             </div>
 
             <div className="pt-info-green space-y-2">
-              <PowerTableCheckbox
+              <WorkspaceCheckbox
                 checked={notificationsDisabled}
                 disabled={!canManage}
                 onChange={setNotificationsDisabled}
                 label="Не отправлять уведомления о новых регистрациях заявок на участие"
               />
-              <PowerTableCheckbox
+              <WorkspaceCheckbox
                 checked={isPublicResultsClosed}
                 disabled={!canManage}
                 onChange={setIsPublicResultsClosed}
@@ -204,54 +253,95 @@ export default function FederationNotificationsFeature() {
               />
             </div>
 
-            <PowerTableToolbar>
-              <PowerTableButton type="submit" tone="green" icon="refresh" disabled={!canManage || update.isPending}>Обновить</PowerTableButton>
-              <PowerTableButton type="button" icon="add" onClick={() => void submitFeedback()} disabled={createFeedback.isPending}>Добавить обращение</PowerTableButton>
-              <PowerTableButton type="button" icon="mail" onClick={() => void sendTestEmail()} disabled={!canManage || testEmail.isPending}>Тест письмо</PowerTableButton>
-            </PowerTableToolbar>
-            <textarea
-              className="pt-textarea w-full"
-              value={feedbackMessage}
-              onChange={(event) => setFeedbackMessage(event.target.value)}
-              rows={3}
-              placeholder="Текст обращения"
-            />
+            <WorkspaceToolbar>
+              <WorkspaceButton
+                type="submit"
+                tone="green"
+                icon="refresh"
+                disabled={!canManage || update.isPending}
+              >
+                Обновить
+              </WorkspaceButton>
+              <WorkspaceButton
+                type="button"
+                icon="mail"
+                onClick={() => void sendTestEmail()}
+                disabled={!canManage || testEmail.isPending}
+              >
+                Тест письмо
+              </WorkspaceButton>
+            </WorkspaceToolbar>
           </form>
 
           <table className="pt-grid mt-2">
-            <thead><tr><th>Автор</th><th>Дата</th><th>Содержание</th><th>Ответ</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Автор</th>
+                <th>Дата</th>
+                <th>Содержание</th>
+                <th>Ответ</th>
+              </tr>
+            </thead>
             <tbody>
-              {auditLoading ? <tr><td colSpan={4}>Загружаем...</td></tr> : null}
-              {!auditLoading && notificationHistory.map((entry, index) => (
-                <tr key={entry.id} className={index === 0 ? 'is-green' : undefined}>
-                  <td>{entry.actorUser?.displayName ?? data.federation.nameRu}</td>
-                  <td>{new Date(entry.occurredAt).toLocaleDateString('ru-RU')}</td>
-                  <td>{auditComment(entry)}</td>
-                  <td>{entry.result === 'success' ? 'Принято' : 'Ошибка'}</td>
+              {auditLoading ? (
+                <tr>
+                  <td colSpan={4}>Загружаем...</td>
                 </tr>
-              ))}
+              ) : null}
+              {!auditLoading &&
+                notificationHistory.map((entry, index) => (
+                  <tr key={entry.id} className={index === 0 ? 'is-green' : undefined}>
+                    <td>{entry.actorUser?.displayName ?? data.federation.nameRu}</td>
+                    <td>{new Date(entry.occurredAt).toLocaleDateString('ru-RU')}</td>
+                    <td>{auditComment(entry)}</td>
+                    <td>{entry.result === 'success' ? 'Принято' : 'Ошибка'}</td>
+                  </tr>
+                ))}
               {!auditLoading && notificationHistory.length === 0 ? (
-                <tr><td colSpan={4} className="italic">История уведомлений пока пуста.</td></tr>
+                <tr>
+                  <td colSpan={4} className="italic">
+                    История уведомлений пока пуста.
+                  </td>
+                </tr>
               ) : null}
             </tbody>
           </table>
-        </PowerTablePanel>
+        </WorkspacePanel>
 
-        <PowerTablePanel className="p-3">
-          <PowerTableSectionTitle>Справка по каналам</PowerTableSectionTitle>
+        <WorkspacePanel className="p-3">
+          <WorkspaceSectionTitle>Справка по каналам</WorkspaceSectionTitle>
           <div className="pt-info-yellow mb-3">
-            Для Telegram: @PowerTable_bot, код подключения {data.telegramSubscriptionCode}.
+            Для Telegram: отправьте код подключения {data.telegramSubscriptionCode} в боте
+            Streetlifting.
           </div>
           <table className="pt-grid">
-            <thead><tr><th>Канал</th><th>Статус</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Канал</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr className="is-selected"><td>Email</td><td>{contactEmail ? 'Заполнен' : 'Не заполнен'}</td></tr>
-              <tr className="is-green"><td>Telegram</td><td>{telegramHandle ? 'Заполнен' : 'Ожидает подключения'}</td></tr>
-              <tr className="is-yellow"><td>Публичные результаты</td><td>{isPublicResultsClosed ? 'Закрыты' : 'Открыты'}</td></tr>
+              <tr className="is-selected">
+                <td>Email</td>
+                <td>{contactEmail ? 'Заполнен' : 'Не заполнен'}</td>
+              </tr>
+              <tr className="is-green">
+                <td>Telegram</td>
+                <td>{telegramHandle ? 'Заполнен' : 'Ожидает подключения'}</td>
+              </tr>
+              <tr className="is-yellow">
+                <td>Публичные результаты</td>
+                <td>{isPublicResultsClosed ? 'Закрыты' : 'Открыты'}</td>
+              </tr>
             </tbody>
           </table>
-        </PowerTablePanel>
+        </WorkspacePanel>
       </div>
-    </PowerTablePage>
+
+      <div className="mt-3">
+        <SupportTicketsPanel federationId={id} />
+      </div>
+    </WorkspacePage>
   );
 }

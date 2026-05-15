@@ -11,7 +11,8 @@
   },
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "dev": "pnpm build:packages && turbo run dev --parallel",
+    "dev": "node scripts/dev.mjs",
+    "dev:turbo": "pnpm build:packages && turbo run dev --parallel",
     "build:packages": "pnpm --filter=@streetlifting/domain build",
     "build": "turbo run build",
     "release:check": "pnpm build:packages && pnpm --filter=@streetlifting/api db:generate && pnpm --filter=@streetlifting/api db:validate && pnpm lint && pnpm typecheck && pnpm test && pnpm --filter=@streetlifting/api build && pnpm --filter=@streetlifting/web build",

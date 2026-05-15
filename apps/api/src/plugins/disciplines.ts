@@ -4,6 +4,7 @@ import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
+import { validateUuidParams } from '../lib/params.js';
 
 const log = moduleLogger('disciplines');
 
@@ -18,6 +19,8 @@ function stripUndefined<T extends object>(obj: T): Partial<T> {
 export const disciplinesPlugin: FeaturePlugin = {
   name: 'disciplines',
   register: async (app) => {
+    app.addHook('preHandler', validateUuidParams(['id']));
+
     app.get('/health/disciplines', async () => ({ status: 'ok', module: 'disciplines' }));
 
     // ─── List ───────────────────────────────────────────────────────────
@@ -44,45 +47,49 @@ export const disciplinesPlugin: FeaturePlugin = {
     );
 
     // ─── Create ─────────────────────────────────────────────────────────
-    app.post(
-      '/disciplines',
-      { preHandler: requireRole('platform_admin') },
-      async (req, reply) => {
-        const parsed = DisciplineCreate.safeParse(req.body);
-        if (!parsed.success) {
-          return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+    app.post('/disciplines', { preHandler: requireRole('platform_admin') }, async (req, reply) => {
+      const parsed = DisciplineCreate.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
+        });
+      }
+      const data = parsed.data;
+
+      try {
+        const discipline = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'discipline.created',
+            scopeFederationId: null,
+            scopeCompetitionId: null,
+            targetType: 'discipline',
+            targetId: '00000000-0000-0000-0000-000000000000',
+            before: null,
+            after: { code: data.code, nameRu: data.nameRu },
+          },
+          (tx) => tx.discipline.create({ data }),
+        );
+        log.info({ disciplineId: discipline.id, code: discipline.code }, 'discipline created');
+        return reply.code(201).send({ discipline });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          return reply.code(409).send({
+            error: {
+              code: 'code_taken',
+              message: 'Discipline code already in use',
+              requestId: req.requestId,
+            },
           });
         }
-        const data = parsed.data;
-
-        try {
-          const discipline = await audit.withAudit(
-            {
-              ...audit.fromRequest(req),
-              actorUserId: req.user!.id,
-              action: 'discipline.created',
-              scopeFederationId: null,
-              scopeCompetitionId: null,
-              targetType: 'discipline',
-              targetId: '00000000-0000-0000-0000-000000000000',
-              before: null,
-              after: { code: data.code, nameRu: data.nameRu },
-            },
-            (tx) => tx.discipline.create({ data }),
-          );
-          log.info({ disciplineId: discipline.id, code: discipline.code }, 'discipline created');
-          return reply.code(201).send({ discipline });
-        } catch (err) {
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-            return reply.code(409).send({
-              error: { code: 'code_taken', message: 'Discipline code already in use', requestId: req.requestId },
-            });
-          }
-          throw err;
-        }
-      },
-    );
+        throw err;
+      }
+    });
 
     // ─── Update ─────────────────────────────────────────────────────────
     app.patch<{ Params: { id: string } }>(
@@ -92,7 +99,11 @@ export const disciplinesPlugin: FeaturePlugin = {
         const parsed = DisciplineUpdate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const before = await prisma.discipline.findUnique({ where: { id: req.params.id } });

@@ -1,16 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  toast,
-} from '@streetlifting/ui';
+import { Button, Card, CardContent, Input, Label, toast } from '@streetlifting/ui';
+import { WorkspacePage } from '../../components/workspace.js';
 import { useCreateJudge } from './api.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import { useLookups } from '../../lib/references-api.js';
@@ -52,27 +44,38 @@ export default function JudgeNewFeature() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-10">
+    <WorkspacePage title={t('judges.newTitle')} subtitle={t('judges.subtitle')}>
       <Card>
-        <CardHeader>
-          <CardTitle>{t('judges.newTitle')}</CardTitle>
-        </CardHeader>
         <CardContent>
           <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="lastName">{t('judges.fields.lastName')}</Label>
-                <Input id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+                <Input
+                  id="lastName"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="firstName">{t('judges.fields.firstName')}</Label>
-                <Input id="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+                <Input
+                  id="firstName"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="middleName">{t('judges.fields.middleName')}</Label>
-              <Input id="middleName" value={middleName} onChange={(e) => setMiddleName(e.target.value)} />
+              <Input
+                id="middleName"
+                value={middleName}
+                onChange={(e) => setMiddleName(e.target.value)}
+              />
             </div>
 
             <div className="space-y-2">
@@ -96,16 +99,28 @@ export default function JudgeNewFeature() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="cardNumber">{t('judges.fields.cardNumber')}</Label>
-                <Input id="cardNumber" value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} />
+                <Input
+                  id="cardNumber"
+                  value={cardNumber}
+                  onChange={(e) => setCardNumber(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cityRegion">{t('judges.fields.cityRegion')}</Label>
-                <Input id="cityRegion" value={cityRegion} onChange={(e) => setCityRegion(e.target.value)} />
+                <Input
+                  id="cityRegion"
+                  value={cityRegion}
+                  onChange={(e) => setCityRegion(e.target.value)}
+                />
               </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => void navigate({ to: '/judges' })}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void navigate({ to: '/judges' })}
+              >
                 {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={create.isPending}>
@@ -115,6 +130,6 @@ export default function JudgeNewFeature() {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

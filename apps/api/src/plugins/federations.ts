@@ -2,12 +2,24 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { FederationCreate, FederationUpdate } from '@streetlifting/domain';
+import {
+  FederationCreate,
+  FederationUpdate,
+  PlateSetCreate,
+  PlateSetUpdate,
+} from '@streetlifting/domain';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
+import { validateUuidParams } from '../lib/params.js';
+import {
+  MailerDeliveryError,
+  MailerNotConfiguredError,
+  mailerConfigured,
+  sendMail,
+} from '../lib/mailer.js';
 
 const log = moduleLogger('federations');
 const MAX_FEDERATION_ATTACHMENT_BYTES = 5 * 1024 * 1024;
@@ -23,6 +35,26 @@ const FederationAttachmentCreateInput = z
 const FederationFeedbackCreateInput = z
   .object({
     message: z.string().min(3).max(4000),
+  })
+  .strict();
+
+const SupportTicketCreateInput = z
+  .object({
+    subject: z.string().trim().min(1).max(180).optional(),
+    message: z.string().trim().min(3).max(4000),
+  })
+  .strict();
+
+const SupportTicketMessageCreateInput = z
+  .object({
+    message: z.string().trim().min(3).max(4000),
+    isInternal: z.boolean().optional(),
+  })
+  .strict();
+
+const SupportTicketUpdateInput = z
+  .object({
+    status: z.enum(['open', 'in_progress', 'resolved', 'closed']),
   })
   .strict();
 
@@ -72,11 +104,13 @@ function uploadRoot(): string {
 }
 
 function sanitizeFilename(filename: string): string {
-  return filename
-    .replace(/[\\/:"*?<>|]+/g, '-')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 180) || 'file';
+  return (
+    filename
+      .replace(/[\\/:"*?<>|]+/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180) || 'file'
+  );
 }
 
 function contentDispositionFilename(filename: string): string {
@@ -101,8 +135,15 @@ function canManageFederation(
 ): boolean {
   if (!user) return false;
   return user.roles.some(
-    (r) => r.role === 'platform_admin' || (roles.includes(r.role) && r.federationId === federationId),
+    (r) =>
+      r.role === 'platform_admin' || (roles.includes(r.role) && r.federationId === federationId),
   );
+}
+
+function isPlatformAdmin(
+  user: { roles: Array<{ role: string; federationId: string | null }> } | null,
+): boolean {
+  return user?.roles.some((r) => r.role === 'platform_admin') ?? false;
 }
 
 function dateOnly(value: Date): Date {
@@ -112,6 +153,8 @@ function dateOnly(value: Date): Date {
 export const federationsPlugin: FeaturePlugin = {
   name: 'federations',
   register: async (app) => {
+    app.addHook('preHandler', validateUuidParams(['id', 'plateSetId', 'ticketId', 'attachmentId']));
+
     app.get('/health/federations', async () => ({ status: 'ok', module: 'federations' }));
 
     // ─── List ───────────────────────────────────────────────────────────
@@ -126,21 +169,25 @@ export const federationsPlugin: FeaturePlugin = {
     });
 
     // ─── Get one ────────────────────────────────────────────────────────
-    app.get<{ Params: { id: string } }>('/federations/:id', { preHandler: requireAuth() }, async (req, reply) => {
-      const visible = visibleFederationIds(req.user);
-      if (!('all' in visible) && !visible.ids.includes(req.params.id)) {
-        return reply.code(403).send({
-          error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
-        });
-      }
-      const federation = await prisma.federation.findUnique({ where: { id: req.params.id } });
-      if (!federation) {
-        return reply.code(404).send({
-          error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
-        });
-      }
-      return { federation };
-    });
+    app.get<{ Params: { id: string } }>(
+      '/federations/:id',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const visible = visibleFederationIds(req.user);
+        if (!('all' in visible) && !visible.ids.includes(req.params.id)) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+        const federation = await prisma.federation.findUnique({ where: { id: req.params.id } });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+        return { federation };
+      },
+    );
 
     app.get<{ Params: { id: string } }>(
       '/federations/:id/dashboard',
@@ -301,14 +348,194 @@ export const federationsPlugin: FeaturePlugin = {
             result: row.result,
             actorIp: row.actorIp,
             actorUserAgent: row.actorUserAgent,
-            actorUser: row.actorUserId ? usersById.get(row.actorUserId) ?? null : null,
+            actorUser: row.actorUserId ? (usersById.get(row.actorUserId) ?? null) : null,
             targetType: row.targetType,
             targetId: row.targetId,
-            targetUser: row.targetType === 'user' ? usersById.get(row.targetId) ?? null : null,
+            targetUser: row.targetType === 'user' ? (usersById.get(row.targetId) ?? null) : null,
             after: row.after,
             notes: row.notes,
           })),
         };
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/federations/:id/plate-sets',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const parsed = PlateSetCreate.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        const federation = await prisma.federation.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+
+        const plateSet = await prisma.$transaction(async (tx) => {
+          const created = await tx.plateSet.create({
+            data: {
+              federationId: req.params.id,
+              competitionId: null,
+              name: parsed.data.name.trim(),
+              incrementKg: parsed.data.incrementKg,
+              barWeightKg: parsed.data.barWeightKg,
+              collarWeightKg: parsed.data.collarWeightKg,
+              plates: parsed.data.plates as Prisma.InputJsonValue,
+            },
+          });
+          await audit.record(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'federation.plate_set.created',
+              result: 'success',
+              scopeFederationId: req.params.id,
+              scopeCompetitionId: null,
+              targetType: 'plate_set',
+              targetId: created.id,
+              before: null,
+              after: parsed.data,
+            },
+            tx,
+          );
+          return created;
+        });
+        return reply.code(201).send({ plateSet });
+      },
+    );
+
+    app.patch<{ Params: { id: string; plateSetId: string } }>(
+      '/federations/:id/plate-sets/:plateSetId',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const parsed = PlateSetUpdate.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        const before = await prisma.plateSet.findFirst({
+          where: {
+            id: req.params.plateSetId,
+            federationId: req.params.id,
+            competitionId: null,
+          },
+        });
+        if (!before) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Plate set not found', requestId: req.requestId },
+          });
+        }
+
+        const updateData: Prisma.PlateSetUpdateInput = {};
+        if (parsed.data.name !== undefined) updateData.name = parsed.data.name.trim();
+        if (parsed.data.incrementKg !== undefined) updateData.incrementKg = parsed.data.incrementKg;
+        if (parsed.data.barWeightKg !== undefined) updateData.barWeightKg = parsed.data.barWeightKg;
+        if (parsed.data.collarWeightKg !== undefined)
+          updateData.collarWeightKg = parsed.data.collarWeightKg;
+        if (parsed.data.plates !== undefined)
+          updateData.plates = parsed.data.plates as Prisma.InputJsonValue;
+
+        const plateSet = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.plate_set.updated',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'plate_set',
+            targetId: req.params.plateSetId,
+            before,
+            after: parsed.data,
+          },
+          (tx) =>
+            tx.plateSet.update({
+              where: { id: req.params.plateSetId },
+              data: updateData,
+            }),
+        );
+        return { plateSet };
+      },
+    );
+
+    app.delete<{ Params: { id: string; plateSetId: string } }>(
+      '/federations/:id/plate-sets/:plateSetId',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const before = await prisma.plateSet.findFirst({
+          where: {
+            id: req.params.plateSetId,
+            federationId: req.params.id,
+            competitionId: null,
+          },
+        });
+        if (!before) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Plate set not found', requestId: req.requestId },
+          });
+        }
+
+        await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.plate_set.deleted',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'plate_set',
+            targetId: req.params.plateSetId,
+            before,
+            after: null,
+          },
+          (tx) =>
+            tx.plateSet.delete({
+              where: { id: req.params.plateSetId },
+            }),
+        );
+        return { status: 'ok' };
       },
     );
 
@@ -318,7 +545,11 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -333,32 +564,90 @@ export const federationsPlugin: FeaturePlugin = {
         }
         if (!federation.contactEmail) {
           return reply.code(400).send({
-            error: { code: 'contact_email_missing', message: 'Federation contact email is empty', requestId: req.requestId },
+            error: {
+              code: 'contact_email_missing',
+              message: 'Federation contact email is empty',
+              requestId: req.requestId,
+            },
           });
         }
 
-        const smtpConfigured = Boolean(process.env.SMTP_HOST || process.env.MAILER_ENDPOINT);
-        await audit.record({
-          ...audit.fromRequest(req),
-          actorUserId: req.user!.id,
-          action: 'federation.test_email.requested',
-          result: 'success',
-          scopeFederationId: req.params.id,
-          scopeCompetitionId: null,
-          targetType: 'federation',
-          targetId: req.params.id,
-          before: null,
-          after: { recipient: federation.contactEmail, smtpConfigured },
-          ...(!smtpConfigured && {
-            notes: 'SMTP delivery is not configured; contact email validation only',
-          }),
-        });
+        try {
+          const delivery = await sendMail({
+            to: federation.contactEmail,
+            subject: 'Тестовое письмо Streetlifting App',
+            text: [
+              'Streetlifting App: тестовая доставка уведомлений федерации работает.',
+              '',
+              `Федерация ID: ${federation.id}`,
+              `Время: ${new Date().toISOString()}`,
+            ].join('\n'),
+            html: [
+              '<p>Streetlifting App: тестовая доставка уведомлений федерации работает.</p>',
+              `<p><strong>Федерация ID:</strong> ${federation.id}</p>`,
+              `<p><strong>Время:</strong> ${new Date().toISOString()}</p>`,
+            ].join(''),
+          });
 
-        return {
-          status: smtpConfigured ? 'queued' : 'configuration_checked',
-          recipient: federation.contactEmail,
-          smtpConfigured,
-        };
+          await audit.record({
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.test_email.sent',
+            result: 'success',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'federation',
+            targetId: req.params.id,
+            before: null,
+            after: {
+              recipient: federation.contactEmail,
+              provider: delivery.provider,
+              messageId: delivery.messageId,
+            },
+          });
+
+          return {
+            status: 'sent',
+            recipient: federation.contactEmail,
+            smtpConfigured: mailerConfigured(),
+            provider: delivery.provider,
+            messageId: delivery.messageId,
+          };
+        } catch (err) {
+          const isNotConfigured = err instanceof MailerNotConfiguredError;
+          const isDeliveryError = err instanceof MailerDeliveryError;
+          await audit.record({
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.test_email.failed',
+            result: 'failure',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'federation',
+            targetId: req.params.id,
+            before: null,
+            after: { recipient: federation.contactEmail },
+            notes: err instanceof Error ? err.message : 'unknown mailer error',
+          });
+
+          if (isNotConfigured) {
+            return reply.code(503).send({
+              error: {
+                code: 'mailer_not_configured',
+                message: 'Mail delivery is not configured',
+                requestId: req.requestId,
+              },
+            });
+          }
+          log.error({ err, federationId: req.params.id }, 'test email delivery failed');
+          return reply.code(502).send({
+            error: {
+              code: isDeliveryError ? 'mailer_delivery_failed' : 'mailer_error',
+              message: 'Mail delivery failed',
+              requestId: req.requestId,
+            },
+          });
+        }
       },
     );
 
@@ -375,7 +664,11 @@ export const federationsPlugin: FeaturePlugin = {
         const parsed = FederationFeedbackCreateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const federation = await prisma.federation.findUnique({
@@ -388,17 +681,38 @@ export const federationsPlugin: FeaturePlugin = {
           });
         }
 
-        await audit.record({
-          ...audit.fromRequest(req),
-          actorUserId: req.user!.id,
-          action: 'federation.feedback.created',
-          result: 'success',
-          scopeFederationId: req.params.id,
-          scopeCompetitionId: null,
-          targetType: 'federation',
-          targetId: req.params.id,
-          before: null,
-          after: { message: parsed.data.message.trim() },
+        const subject = parsed.data.message.trim().slice(0, 80);
+        const ticket = await prisma.$transaction(async (tx) => {
+          const created = await tx.supportTicket.create({
+            data: {
+              federationId: req.params.id,
+              authorUserId: req.user!.id,
+              subject,
+            },
+          });
+          await tx.supportTicketMessage.create({
+            data: {
+              ticketId: created.id,
+              authorUserId: req.user!.id,
+              body: parsed.data.message.trim(),
+            },
+          });
+          await audit.record(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'federation.support_ticket.created',
+              result: 'success',
+              scopeFederationId: req.params.id,
+              scopeCompetitionId: null,
+              targetType: 'support_ticket',
+              targetId: created.id,
+              before: null,
+              after: { subject, message: parsed.data.message.trim(), legacyEndpoint: true },
+            },
+            tx,
+          );
+          return created;
         });
 
         return reply.code(201).send({
@@ -406,8 +720,289 @@ export const federationsPlugin: FeaturePlugin = {
             author: req.user!.displayName,
             message: parsed.data.message.trim(),
             status: 'new',
+            ticketId: ticket.id,
           },
         });
+      },
+    );
+
+    app.get<{ Params: { id: string } }>(
+      '/federations/:id/support-tickets',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const visible = visibleFederationIds(req.user);
+        if (!('all' in visible) && !visible.ids.includes(req.params.id)) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+
+        const federation = await prisma.federation.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+
+        const canReadInternal = isPlatformAdmin(req.user);
+        const tickets = await prisma.supportTicket.findMany({
+          where: { federationId: req.params.id },
+          orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+          take: 50,
+          include: {
+            author: { select: { id: true, email: true, displayName: true } },
+            messages: {
+              where: canReadInternal ? {} : { isInternal: false },
+              orderBy: { createdAt: 'asc' },
+              include: { author: { select: { id: true, email: true, displayName: true } } },
+            },
+          },
+        });
+
+        return { tickets };
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/federations/:id/support-tickets',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const visible = visibleFederationIds(req.user);
+        if (!('all' in visible) && !visible.ids.includes(req.params.id)) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+        const parsed = SupportTicketCreateInput.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const federation = await prisma.federation.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+
+        const subject = parsed.data.subject?.trim() || parsed.data.message.slice(0, 80);
+        const ticket = await prisma.$transaction(async (tx) => {
+          const created = await tx.supportTicket.create({
+            data: {
+              federationId: req.params.id,
+              authorUserId: req.user!.id,
+              subject,
+            },
+          });
+          await tx.supportTicketMessage.create({
+            data: {
+              ticketId: created.id,
+              authorUserId: req.user!.id,
+              body: parsed.data.message,
+            },
+          });
+          await audit.record(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'federation.support_ticket.created',
+              result: 'success',
+              scopeFederationId: req.params.id,
+              scopeCompetitionId: null,
+              targetType: 'support_ticket',
+              targetId: created.id,
+              before: null,
+              after: { subject, message: parsed.data.message },
+            },
+            tx,
+          );
+          return created;
+        });
+
+        const fullTicket = await prisma.supportTicket.findUnique({
+          where: { id: ticket.id },
+          include: {
+            author: { select: { id: true, email: true, displayName: true } },
+            messages: {
+              orderBy: { createdAt: 'asc' },
+              include: { author: { select: { id: true, email: true, displayName: true } } },
+            },
+          },
+        });
+        return reply.code(201).send({ ticket: fullTicket });
+      },
+    );
+
+    app.post<{ Params: { id: string; ticketId: string } }>(
+      '/federations/:id/support-tickets/:ticketId/messages',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const visible = visibleFederationIds(req.user);
+        if (!('all' in visible) && !visible.ids.includes(req.params.id)) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+        const parsed = SupportTicketMessageCreateInput.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const ticket = await prisma.supportTicket.findFirst({
+          where: { id: req.params.ticketId, federationId: req.params.id },
+          select: { id: true, status: true },
+        });
+        if (!ticket) {
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Support ticket not found',
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (ticket.status === 'closed') {
+          return reply.code(409).send({
+            error: {
+              code: 'ticket_closed',
+              message: 'Closed ticket cannot receive messages',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const canCreateInternal = isPlatformAdmin(req.user);
+        const isInternal = canCreateInternal ? Boolean(parsed.data.isInternal) : false;
+        const nextStatus = canCreateInternal ? 'in_progress' : 'open';
+        const message = await prisma.$transaction(async (tx) => {
+          const created = await tx.supportTicketMessage.create({
+            data: {
+              ticketId: ticket.id,
+              authorUserId: req.user!.id,
+              body: parsed.data.message,
+              isInternal,
+            },
+            include: { author: { select: { id: true, email: true, displayName: true } } },
+          });
+          await tx.supportTicket.update({
+            where: { id: ticket.id },
+            data: {
+              status: nextStatus,
+              lastMessageAt: created.createdAt,
+              resolvedAt: null,
+              closedAt: null,
+            },
+          });
+          await audit.record(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'federation.support_ticket.message_created',
+              result: 'success',
+              scopeFederationId: req.params.id,
+              scopeCompetitionId: null,
+              targetType: 'support_ticket',
+              targetId: ticket.id,
+              before: { status: ticket.status },
+              after: { status: nextStatus, message: parsed.data.message, isInternal },
+            },
+            tx,
+          );
+          return created;
+        });
+
+        return reply.code(201).send({ message });
+      },
+    );
+
+    app.patch<{ Params: { id: string; ticketId: string } }>(
+      '/federations/:id/support-tickets/:ticketId',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const parsed = SupportTicketUpdateInput.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const before = await prisma.supportTicket.findFirst({
+          where: { id: req.params.ticketId, federationId: req.params.id },
+        });
+        if (!before) {
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Support ticket not found',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const now = new Date();
+        const ticket = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.support_ticket.status_updated',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'support_ticket',
+            targetId: before.id,
+            before: { status: before.status },
+            after: { status: parsed.data.status },
+          },
+          (tx) =>
+            tx.supportTicket.update({
+              where: { id: before.id },
+              data: {
+                status: parsed.data.status,
+                resolvedAt: parsed.data.status === 'resolved' ? now : null,
+                closedAt: parsed.data.status === 'closed' ? now : null,
+              },
+              include: {
+                author: { select: { id: true, email: true, displayName: true } },
+                messages: {
+                  where: isPlatformAdmin(req.user) ? {} : { isInternal: false },
+                  orderBy: { createdAt: 'asc' },
+                  include: { author: { select: { id: true, email: true, displayName: true } } },
+                },
+              },
+            }),
+        );
+
+        return { ticket };
       },
     );
 
@@ -417,13 +1012,21 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin', 'accountant'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation accounting role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation accounting role required',
+              requestId: req.requestId,
+            },
           });
         }
         const parsed = ReceiptCreateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const federation = await prisma.federation.findUnique({
@@ -475,7 +1078,11 @@ export const federationsPlugin: FeaturePlugin = {
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'number_taken', message: 'Receipt number already exists', requestId: req.requestId },
+              error: {
+                code: 'number_taken',
+                message: 'Receipt number already exists',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -489,13 +1096,21 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin', 'accountant'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation accounting role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation accounting role required',
+              requestId: req.requestId,
+            },
           });
         }
         const parsed = WriteoffCreateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const federation = await prisma.federation.findUnique({
@@ -514,7 +1129,11 @@ export const federationsPlugin: FeaturePlugin = {
           });
           if (!competition || competition.federationId !== req.params.id) {
             return reply.code(400).send({
-              error: { code: 'competition_out_of_scope', message: 'Competition is not in federation', requestId: req.requestId },
+              error: {
+                code: 'competition_out_of_scope',
+                message: 'Competition is not in federation',
+                requestId: req.requestId,
+              },
             });
           }
         }
@@ -525,7 +1144,11 @@ export const federationsPlugin: FeaturePlugin = {
           });
           if (!receipt || receipt.federationId !== req.params.id) {
             return reply.code(400).send({
-              error: { code: 'receipt_out_of_scope', message: 'Receipt is not in federation', requestId: req.requestId },
+              error: {
+                code: 'receipt_out_of_scope',
+                message: 'Receipt is not in federation',
+                requestId: req.requestId,
+              },
             });
           }
         }
@@ -567,7 +1190,11 @@ export const federationsPlugin: FeaturePlugin = {
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'number_taken', message: 'Writeoff number already exists', requestId: req.requestId },
+              error: {
+                code: 'number_taken',
+                message: 'Writeoff number already exists',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -581,13 +1208,21 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
           });
         }
         const parsed = FederationAttachmentCreateInput.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const federation = await prisma.federation.findUnique({
@@ -662,7 +1297,11 @@ export const federationsPlugin: FeaturePlugin = {
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
-            error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
           });
         }
         const before = await prisma.attachment.findFirst({
@@ -732,7 +1371,11 @@ export const federationsPlugin: FeaturePlugin = {
         const absolutePath = path.resolve(root, attachment.storagePath);
         if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`)) {
           return reply.code(500).send({
-            error: { code: 'invalid_storage_path', message: 'Attachment storage path is invalid', requestId: req.requestId },
+            error: {
+              code: 'invalid_storage_path',
+              message: 'Attachment storage path is invalid',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -747,7 +1390,11 @@ export const federationsPlugin: FeaturePlugin = {
         } catch (err) {
           log.error({ err, attachmentId: attachment.id }, 'attachment file read failed');
           return reply.code(404).send({
-            error: { code: 'file_missing', message: 'Attachment file is missing from storage', requestId: req.requestId },
+            error: {
+              code: 'file_missing',
+              message: 'Attachment file is missing from storage',
+              requestId: req.requestId,
+            },
           });
         }
       },
@@ -759,7 +1406,11 @@ export const federationsPlugin: FeaturePlugin = {
       const parsed = FederationCreate.safeParse(req.body);
       if (!parsed.success) {
         return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
         });
       }
       const data = parsed.data;
@@ -789,7 +1440,9 @@ export const federationsPlugin: FeaturePlugin = {
                 ...(data.telegramHandle !== undefined && { telegramHandle: data.telegramHandle }),
                 ...(data.vkUrl !== undefined && { vkUrl: data.vkUrl }),
                 ...(data.websiteUrl !== undefined && { websiteUrl: data.websiteUrl }),
-                ...(data.chiefAccountantName !== undefined && { chiefAccountantName: data.chiefAccountantName }),
+                ...(data.chiefAccountantName !== undefined && {
+                  chiefAccountantName: data.chiefAccountantName,
+                }),
                 ...(data.cashierName !== undefined && { cashierName: data.cashierName }),
                 billingTariffKopecksPerNomination: data.billingTariffKopecksPerNomination,
                 securityKey: randomUUID(),
@@ -801,7 +1454,11 @@ export const federationsPlugin: FeaturePlugin = {
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
           return reply.code(409).send({
-            error: { code: 'code_taken', message: 'Federation code already in use', requestId: req.requestId },
+            error: {
+              code: 'code_taken',
+              message: 'Federation code already in use',
+              requestId: req.requestId,
+            },
           });
         }
         throw err;
@@ -809,67 +1466,83 @@ export const federationsPlugin: FeaturePlugin = {
     });
 
     // ─── Update ─────────────────────────────────────────────────────────
-    app.patch<{ Params: { id: string } }>('/federations/:id', { preHandler: requireAuth() }, async (req, reply) => {
-      const visible = visibleFederationIds(req.user);
-      const isPlatformAdmin = 'all' in visible;
-      const isMember = isPlatformAdmin || visible.ids.includes(req.params.id);
-      if (!isMember) {
-        return reply.code(403).send({
-          error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
-        });
-      }
-      // Federation_admin (or platform_admin) only can update.
-      const canEdit =
-        isPlatformAdmin ||
-        (req.user?.roles.some(
-          (r) => r.role === 'federation_admin' && r.federationId === req.params.id,
-        ) ??
-          false);
-      if (!canEdit) {
-        return reply.code(403).send({
-          error: { code: 'forbidden', message: 'federation_admin role required', requestId: req.requestId },
-        });
-      }
+    app.patch<{ Params: { id: string } }>(
+      '/federations/:id',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const visible = visibleFederationIds(req.user);
+        const isPlatformAdmin = 'all' in visible;
+        const isMember = isPlatformAdmin || visible.ids.includes(req.params.id);
+        if (!isMember) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+        // Federation_admin (or platform_admin) only can update.
+        const canEdit =
+          isPlatformAdmin ||
+          (req.user?.roles.some(
+            (r) => r.role === 'federation_admin' && r.federationId === req.params.id,
+          ) ??
+            false);
+        if (!canEdit) {
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
+          });
+        }
 
-      const parsed = FederationUpdate.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
-        });
-      }
-      const before = await prisma.federation.findUnique({ where: { id: req.params.id } });
-      if (!before) {
-        return reply.code(404).send({
-          error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
-        });
-      }
+        const parsed = FederationUpdate.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        const before = await prisma.federation.findUnique({ where: { id: req.params.id } });
+        if (!before) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
 
-      // exactOptionalPropertyTypes forbids `key: undefined`. Strip out
-      // undefined keys before passing to Prisma.
-      const updateData: Prisma.FederationUpdateInput = {};
-      for (const [k, v] of Object.entries(parsed.data)) {
-        if (v !== undefined) (updateData as Record<string, unknown>)[k] = v;
-      }
+        // exactOptionalPropertyTypes forbids `key: undefined`. Strip out
+        // undefined keys before passing to Prisma.
+        const updateData: Prisma.FederationUpdateInput = {};
+        for (const [k, v] of Object.entries(parsed.data)) {
+          if (v !== undefined) (updateData as Record<string, unknown>)[k] = v;
+        }
 
-      const updated = await audit.withAudit(
-        {
-          ...audit.fromRequest(req),
-          actorUserId: req.user!.id,
-          action: 'federation.updated',
-          scopeFederationId: req.params.id,
-          scopeCompetitionId: null,
-          targetType: 'federation',
-          targetId: req.params.id,
-          before: { ...before, billingTariffKopecksPerNomination: before.billingTariffKopecksPerNomination.toString() },
-          after: parsed.data,
-        },
-        (tx) =>
-          tx.federation.update({
-            where: { id: req.params.id },
-            data: updateData,
-          }),
-      );
-      return { federation: updated };
-    });
+        const updated = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.updated',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'federation',
+            targetId: req.params.id,
+            before: {
+              ...before,
+              billingTariffKopecksPerNomination:
+                before.billingTariffKopecksPerNomination.toString(),
+            },
+            after: parsed.data,
+          },
+          (tx) =>
+            tx.federation.update({
+              where: { id: req.params.id },
+              data: updateData,
+            }),
+        );
+        return { federation: updated };
+      },
+    );
   },
 };

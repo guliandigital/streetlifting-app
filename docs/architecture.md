@@ -29,7 +29,7 @@
 
 ## Why browser-first
 
-PowerTable runs as a 1С thin client over the internet — when connection drops, secretaries lose work. Our V1 (legacy `streetlifting-os`) over-corrected and went desktop-only via Tauri, which fixed offline but lost the zero-install web experience federations need for online registration, public results, and broadcast.
+The previous 1С thin-client workflow ran over the internet — when connection dropped, secretaries lost work. Our V1 (legacy `streetlifting-os`) over-corrected and went desktop-only via Tauri, which fixed offline but lost the zero-install web experience federations need for online registration, public results, and broadcast.
 
 V2 keeps both: web is the default; desktop is the tournament-day fallback that mirrors the server locally.
 
@@ -48,7 +48,7 @@ Conflict resolution is **per-aggregate, field-level last-writer-wins** (with ori
 
 The same WebSocket channel used for sync also serves the **broadcast publisher** (V3 unlock from legacy memory): scoreboard, judge tablets, public viewer pages, and OBS overlays subscribe to `competition:{id}:scoreboard` / `:awards` / `:flight:{flightId}` topics. The publisher fans out attempt decisions, lift cards, and award announcements as they happen.
 
-This replaces the awkward HTML-table "Информационные таблицы для трансляций" PowerTable exposes — instead of static refresh, broadcast surfaces are first-class real-time consumers.
+This replaces the awkward HTML-table "Информационные таблицы для трансляций" reference flow — instead of static refresh, broadcast surfaces are first-class real-time consumers.
 
 ## Roles
 

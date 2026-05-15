@@ -2,7 +2,7 @@
 
 **Status**: Accepted (2026-05-07)
 **Decision-makers**: Ararat Gulyan + Claude
-**Stated as**: the *main* architectural principle ("главный принцип")
+**Stated as**: the _main_ architectural principle ("главный принцип")
 
 ## Decision
 
@@ -64,7 +64,8 @@ Each of these is a module that must be independently failable:
 This costs lines of code. Per-feature error boundaries, per-feature plugins, per-aggregate sync queues — they all add structure that a 1-page MVP wouldn't have.
 
 Accepted because:
-- PowerTable parity means many features. A monolithic break in one would degrade the whole product.
+
+- Reference workflow parity means many features. A monolithic break in one would degrade the whole product.
 - Tournament day is unforgiving. Operators can't restart the whole app to recover the awards module.
 - Multi-role clients amplify the cost of failure: judge tablet crashing because of a scoreboard bug is unacceptable.
 

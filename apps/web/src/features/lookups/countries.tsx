@@ -17,7 +17,13 @@ import {
   TableRow,
   toast,
 } from '@streetlifting/ui';
-import { useCountries, useCreateCountry, useUpdateCountry, type CountryDto } from '../../lib/references-api.js';
+import { WorkspacePage } from '../../components/workspace.js';
+import {
+  useCountries,
+  useCreateCountry,
+  useUpdateCountry,
+  type CountryDto,
+} from '../../lib/references-api.js';
 import { ApiClientError } from '../../lib/api-client.js';
 
 export default function LookupsCountriesFeature() {
@@ -25,12 +31,10 @@ export default function LookupsCountriesFeature() {
   const { data, isLoading, error } = useCountries();
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{t('lookups.cards.countries.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('lookups.cards.countries.desc')}</p>
-      </div>
-
+    <WorkspacePage
+      title={t('lookups.cards.countries.title')}
+      subtitle={t('lookups.cards.countries.desc')}
+    >
       <CreateCountryCard />
 
       <Card>
@@ -57,7 +61,9 @@ export default function LookupsCountriesFeature() {
                   <TableHead className="w-[80px]">{t('lookups.cols.code')}</TableHead>
                   <TableHead>{t('lookups.cols.nameRu')}</TableHead>
                   <TableHead>{t('lookups.cols.nameEn')}</TableHead>
-                  <TableHead className="text-right w-[100px]">{t('lookups.cols.sortOrder')}</TableHead>
+                  <TableHead className="text-right w-[100px]">
+                    {t('lookups.cols.sortOrder')}
+                  </TableHead>
                   <TableHead className="text-right w-[100px]">{t('lookups.cols.active')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -70,7 +76,7 @@ export default function LookupsCountriesFeature() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }
 
@@ -109,12 +115,22 @@ function CountryRow({ country }: { country: CountryDto }) {
           <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} />
         </TableCell>
         <TableCell className="text-right">
-          <Input className="text-right tabular-nums" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
+          <Input
+            className="text-right tabular-nums"
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+          />
         </TableCell>
         <TableCell className="text-right">
           <label className="flex items-center justify-end gap-1 text-xs">
-            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-            <span className="text-muted-foreground">{isActive ? t('common.yes') : t('common.no')}</span>
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+            />
+            <span className="text-muted-foreground">
+              {isActive ? t('common.yes') : t('common.no')}
+            </span>
           </label>
           <div className="flex gap-1 mt-2 justify-end">
             <Button size="sm" variant="outline" onClick={() => setEditing(false)} type="button">
@@ -159,7 +175,10 @@ function CreateCountryCard() {
         nameEn: nameEn.trim(),
       });
       toast.success(t('lookups.created'));
-      setCodeIso2(''); setNameRu(''); setNameEn(''); setOpen(false);
+      setCodeIso2('');
+      setNameRu('');
+      setNameEn('');
+      setOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiClientError ? err.message : 'Error');
     }
@@ -179,21 +198,42 @@ function CreateCountryCard() {
         <CardTitle>{t('lookups.cards.countries.create')}</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={(e) => void onSubmit(e)} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <form
+          onSubmit={(e) => void onSubmit(e)}
+          className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end"
+        >
           <div className="space-y-2">
             <Label htmlFor="codeIso2">{t('lookups.fields.codeIso2')}</Label>
-            <Input id="codeIso2" value={codeIso2} onChange={(e) => setCodeIso2(e.target.value)} required maxLength={2} />
+            <Input
+              id="codeIso2"
+              value={codeIso2}
+              onChange={(e) => setCodeIso2(e.target.value)}
+              required
+              maxLength={2}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="nameRu">{t('lookups.fields.nameRu')}</Label>
-            <Input id="nameRu" value={nameRu} onChange={(e) => setNameRu(e.target.value)} required />
+            <Input
+              id="nameRu"
+              value={nameRu}
+              onChange={(e) => setNameRu(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="nameEn">{t('lookups.fields.nameEn')}</Label>
-            <Input id="nameEn" value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+            <Input
+              id="nameEn"
+              value={nameEn}
+              onChange={(e) => setNameEn(e.target.value)}
+              required
+            />
           </div>
           <div className="md:col-span-3 flex gap-2 justify-end">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              {t('common.cancel')}
+            </Button>
             <Button type="submit" disabled={create.isPending}>
               {create.isPending ? t('common.saving') : t('common.save')}
             </Button>

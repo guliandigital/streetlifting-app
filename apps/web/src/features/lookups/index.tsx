@@ -1,12 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@streetlifting/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@streetlifting/ui';
+import { WorkspacePage } from '../../components/workspace.js';
 import { useCountries, useRegions, useCities, useLookups } from '../../lib/references-api.js';
 
 interface SectionLink {
@@ -24,22 +19,41 @@ export default function LookupsLandingFeature() {
   const { data: lookups } = useLookups();
 
   const sections: ReadonlyArray<SectionLink> = [
-    { to: '/lookups/countries', titleKey: 'lookups.cards.countries.title', descKey: 'lookups.cards.countries.desc', count: countries?.countries.length },
-    { to: '/lookups/regions',   titleKey: 'lookups.cards.regions.title',   descKey: 'lookups.cards.regions.desc',   count: regions?.regions.length },
-    { to: '/lookups/cities',    titleKey: 'lookups.cards.cities.title',    descKey: 'lookups.cards.cities.desc',    count: cities?.total },
-    { to: '/lookups/values',    titleKey: 'lookups.cards.values.title',    descKey: 'lookups.cards.values.desc',    count: lookups?.lookups.length },
+    {
+      to: '/lookups/countries',
+      titleKey: 'lookups.cards.countries.title',
+      descKey: 'lookups.cards.countries.desc',
+      count: countries?.countries.length,
+    },
+    {
+      to: '/lookups/regions',
+      titleKey: 'lookups.cards.regions.title',
+      descKey: 'lookups.cards.regions.desc',
+      count: regions?.regions.length,
+    },
+    {
+      to: '/lookups/cities',
+      titleKey: 'lookups.cards.cities.title',
+      descKey: 'lookups.cards.cities.desc',
+      count: cities?.total,
+    },
+    {
+      to: '/lookups/values',
+      titleKey: 'lookups.cards.values.title',
+      descKey: 'lookups.cards.values.desc',
+      count: lookups?.lookups.length,
+    },
   ];
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{t('lookups.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('lookups.subtitle')}</p>
-      </div>
-
+    <WorkspacePage title={t('lookups.title')} subtitle={t('lookups.subtitle')}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {sections.map((s) => (
-          <Link key={s.to} to={s.to} className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-lg">
+          <Link
+            key={s.to}
+            to={s.to}
+            className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-lg"
+          >
             <Card className="hover:border-primary transition-colors">
               <CardHeader>
                 <CardTitle className="flex items-baseline justify-between">
@@ -55,6 +69,6 @@ export default function LookupsLandingFeature() {
           </Link>
         ))}
       </div>
-    </div>
+    </WorkspacePage>
   );
 }

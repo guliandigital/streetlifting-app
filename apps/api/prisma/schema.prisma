@@ -172,6 +172,13 @@ enum AuditResult {
   denied
 }
 
+enum SupportTicketStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
 // ─── Identity & access ────────────────────────────────────────────────────
 
 model User {
@@ -189,6 +196,8 @@ model User {
   consents        Consent[]
   attachments     Attachment[]    @relation("AttachmentUploader")
   refreshTokens   RefreshToken[]
+  supportTickets  SupportTicket[] @relation("SupportTicketAuthor")
+  supportMessages SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
 
   @@map("user")
 }
@@ -271,6 +280,7 @@ model Federation {
   consents          Consent[]
   roleAssignments   RoleAssignment[]
   records           Record[]
+  supportTickets    SupportTicket[]
 
   @@map("federation")
 }
@@ -339,6 +349,43 @@ model Writeoff {
   @@unique([federationId, number])
   @@index([federationId, date])
   @@map("writeoff")
+}
+
+model SupportTicket {
+  id            String              @id @default(uuid()) @db.Uuid
+  federationId  String              @db.Uuid
+  authorUserId  String              @db.Uuid
+  subject       String
+  status        SupportTicketStatus @default(open)
+  createdAt     DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @db.Timestamptz(6)
+  lastMessageAt DateTime            @default(now()) @db.Timestamptz(6)
+  resolvedAt    DateTime?           @db.Timestamptz(6)
+  closedAt      DateTime?           @db.Timestamptz(6)
+
+  federation    Federation          @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  author        User                @relation("SupportTicketAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  messages      SupportTicketMessage[]
+
+  @@index([federationId, status, lastMessageAt])
+  @@index([authorUserId, createdAt])
+  @@map("support_ticket")
+}
+
+model SupportTicketMessage {
+  id            String        @id @default(uuid()) @db.Uuid
+  ticketId      String        @db.Uuid
+  authorUserId  String        @db.Uuid
+  body          String
+  isInternal    Boolean       @default(false)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(6)
+
+  ticket        SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author        User          @relation("SupportTicketMessageAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, createdAt])
+  @@index([authorUserId, createdAt])
+  @@map("support_ticket_message")
 }
 
 // ─── Competition graph ────────────────────────────────────────────────────

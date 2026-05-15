@@ -1,25 +1,16 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactElement } from 'react';
 import { Link, useLocation, useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { JudgeRole } from '@streetlifting/domain';
+import { toast } from '@streetlifting/ui';
 import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  toast,
-} from '@streetlifting/ui';
+  WorkspaceButton,
+  WorkspacePage,
+  WorkspacePanel,
+  WorkspaceSectionTitle,
+  WorkspaceState,
+} from '../../components/workspace.js';
 import { api, ApiClientError } from '../../lib/api-client.js';
 import { formatRub } from '../../lib/money.js';
 import {
@@ -55,7 +46,16 @@ const PAYMENT_STATUSES = ['unpaid', 'partial', 'paid', 'waived', 'refunded'] as 
 const PAYMENT_METHODS = ['bank_transfer', 'card', 'sbp', 'cash', 'other'] as const;
 const ATTEMPT_RESULTS = ['pending', 'good_lift', 'no_lift', 'withdrawn'] as const;
 const JUDGE_ROLES = ['head', 'side_left', 'side_right', 'technical', 'jury'] as const;
-const TABS = ['setup', 'nominations', 'mandate', 'flights', 'judges', 'attempts', 'scoreboard', 'exports'] as const;
+const TABS = [
+  'setup',
+  'nominations',
+  'mandate',
+  'flights',
+  'judges',
+  'attempts',
+  'scoreboard',
+  'exports',
+] as const;
 const ASSIGNMENT_FILTERS = ['all', 'assigned', 'unassigned'] as const;
 const MANDATE_FILTERS = ['all', 'passed', 'missing'] as const;
 const MINUTES_PER_ATTEMPT = 1;
@@ -65,10 +65,11 @@ type TabKey = (typeof TABS)[number];
 type AssignmentFilter = (typeof ASSIGNMENT_FILTERS)[number];
 type MandateFilter = (typeof MANDATE_FILTERS)[number];
 
-const controlClass =
-  'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
-
-function fullName(person: { lastName: string; firstName: string; middleName?: string | null }): string {
+function fullName(person: {
+  lastName: string;
+  firstName: string;
+  middleName?: string | null;
+}): string {
   return [person.lastName, person.firstName, person.middleName].filter(Boolean).join(' ');
 }
 
@@ -108,9 +109,13 @@ function weightClassesForDivision(divisions: DivisionDto[], divisionId: string):
   return divisions.find((division) => division.id === divisionId)?.weightClasses ?? [];
 }
 
-function weightClassesForNomination(divisions: DivisionDto[], nomination: NominationDto): WeightClassDto[] {
+function weightClassesForNomination(
+  divisions: DivisionDto[],
+  nomination: NominationDto,
+): WeightClassDto[] {
   return weightClassesForDivision(divisions, nomination.divisionId).filter(
-    (weightClass) => !weightClass.disciplineId || weightClass.disciplineId === nomination.disciplineId,
+    (weightClass) =>
+      !weightClass.disciplineId || weightClass.disciplineId === nomination.disciplineId,
   );
 }
 
@@ -154,7 +159,10 @@ function attemptSummary(nomination: NominationDto): string {
 }
 
 function hasSetup(data: CompetitionOpsResponse): boolean {
-  return data.divisions.length > 0 && data.divisions.some((division) => division.weightClasses.length > 0);
+  return (
+    data.divisions.length > 0 &&
+    data.divisions.some((division) => division.weightClasses.length > 0)
+  );
 }
 
 function tabFromPath(pathname: string): TabKey {
@@ -167,13 +175,19 @@ function tabFromPath(pathname: string): TabKey {
 
 function attemptsPerNomination(nomination: NominationDto): number {
   if (nomination.discipline.components.length > 0) {
-    return nomination.discipline.components.reduce((total, component) => total + component.attemptCount, 0);
+    return nomination.discipline.components.reduce(
+      (total, component) => total + component.attemptCount,
+      0,
+    );
   }
   return nomination.discipline.attemptCount;
 }
 
 function estimateDurationMinutes(nominations: NominationDto[]): number {
-  return nominations.reduce((total, nomination) => total + attemptsPerNomination(nomination), 0) * MINUTES_PER_ATTEMPT;
+  return (
+    nominations.reduce((total, nomination) => total + attemptsPerNomination(nomination), 0) *
+    MINUTES_PER_ATTEMPT
+  );
 }
 
 function formatDateTime(value: string | null): string {
@@ -182,6 +196,24 @@ function formatDateTime(value: string | null): string {
 
 function formatTime(value: Date | null): string {
   return value ? value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+}
+
+function nominationRowToneClass(status: NominationDto['status']): string {
+  switch (status) {
+    case 'draft':
+      return 'is-yellow';
+    case 'weighed_in':
+    case 'finished':
+      return 'is-green';
+    case 'on_platform':
+      return 'is-selected';
+    case 'disqualified':
+      return 'is-pink';
+    case 'withdrawn':
+      return 'is-gray';
+    default:
+      return '';
+  }
 }
 
 function nominationMatchesSearch(nomination: NominationDto, search: string): boolean {
@@ -199,31 +231,36 @@ function nominationMatchesSearch(nomination: NominationDto, search: string): boo
     .some((value) => String(value).toLowerCase().includes(normalized));
 }
 
-function SetupRequiredCard({
-  pending,
-  onApply,
-}: {
-  pending: boolean;
-  onApply: () => void;
-}) {
+function SetupRequiredCard({ pending, onApply }: { pending: boolean; onApply: () => void }) {
   const { t } = useTranslation();
 
   return (
-    <Card data-testid="ops-setup-required">
-      <CardHeader>
-        <CardTitle>{t('competitionOps.setupTitle')}</CardTitle>
-        <CardDescription>{t('competitionOps.setupDesc')}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button data-testid="ops-setup-required-apply" type="button" onClick={onApply} disabled={pending}>
+    <WorkspacePanel className="p-3 space-y-3" data-testid="ops-setup-required">
+      <div className="mb-2">
+        <WorkspaceSectionTitle>{t('competitionOps.setupTitle')}</WorkspaceSectionTitle>
+        <div className="pt-muted text-xs">{t('competitionOps.setupDesc')}</div>
+      </div>
+      <div>
+        <WorkspaceButton
+          data-testid="ops-setup-required-apply"
+          type="button"
+          onClick={onApply}
+          disabled={pending}
+        >
           {pending ? t('common.saving') : t('competitionOps.applySetup')}
-        </Button>
-      </CardContent>
-    </Card>
+        </WorkspaceButton>
+      </div>
+    </WorkspacePanel>
   );
 }
 
-function NominationCreateForm({ competitionId, divisions }: { competitionId: string; divisions: DivisionDto[] }) {
+function NominationCreateForm({
+  competitionId,
+  divisions,
+}: {
+  competitionId: string;
+  divisions: DivisionDto[];
+}) {
   const { t } = useTranslation();
   const create = useCreateNomination(competitionId);
   const { data: athletesData } = useQuery({
@@ -249,7 +286,8 @@ function NominationCreateForm({ competitionId, divisions }: { competitionId: str
 
   useEffect(() => {
     if (!athleteId && athletesData?.athletes[0]) setAthleteId(athletesData.athletes[0].id);
-    if (!disciplineId && disciplinesData?.disciplines[0]) setDisciplineId(disciplinesData.disciplines[0].id);
+    if (!disciplineId && disciplinesData?.disciplines[0])
+      setDisciplineId(disciplinesData.disciplines[0].id);
     if (!divisionId && divisions[0]) setDivisionId(divisions[0].id);
   }, [athleteId, athletesData, disciplineId, disciplinesData, divisionId, divisions]);
 
@@ -291,25 +329,27 @@ function NominationCreateForm({ competitionId, divisions }: { competitionId: str
   const canSubmit = Boolean(athleteId && disciplineId && divisionId && declaredWeightClassId);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('competitionOps.createNomination')}</CardTitle>
-        <CardDescription>{t('competitionOps.createNominationDesc')}</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <WorkspacePanel className="p-3 space-y-3">
+      <div className="mb-2">
+        <WorkspaceSectionTitle>{t('competitionOps.createNomination')}</WorkspaceSectionTitle>
+        <div className="pt-muted text-xs">{t('competitionOps.createNominationDesc')}</div>
+      </div>
+      <div>
         <form
           data-testid="nomination-create-form"
           onSubmit={(e) => void onSubmit(e)}
           className="grid grid-cols-1 gap-3 xl:grid-cols-12"
         >
           <div className="space-y-2 xl:col-span-3">
-            <Label htmlFor="nominationAthlete">{t('competitionOps.fields.athlete')}</Label>
+            <label className="pt-label" htmlFor="nominationAthlete">
+              {t('competitionOps.fields.athlete')}
+            </label>
             <select
               id="nominationAthlete"
               data-testid="nomination-athlete"
               value={athleteId}
               onChange={(e) => setAthleteId(e.target.value)}
-              className={controlClass}
+              className="pt-select"
               required
             >
               {(athletesData?.athletes ?? []).map((athlete) => (
@@ -320,13 +360,15 @@ function NominationCreateForm({ competitionId, divisions }: { competitionId: str
             </select>
           </div>
           <div className="space-y-2 xl:col-span-3">
-            <Label htmlFor="nominationDiscipline">{t('competitionOps.fields.discipline')}</Label>
+            <label className="pt-label" htmlFor="nominationDiscipline">
+              {t('competitionOps.fields.discipline')}
+            </label>
             <select
               id="nominationDiscipline"
               data-testid="nomination-discipline"
               value={disciplineId}
               onChange={(e) => setDisciplineId(e.target.value)}
-              className={controlClass}
+              className="pt-select"
               required
             >
               {(disciplinesData?.disciplines ?? []).map((discipline) => (
@@ -337,13 +379,15 @@ function NominationCreateForm({ competitionId, divisions }: { competitionId: str
             </select>
           </div>
           <div className="space-y-2 xl:col-span-2">
-            <Label htmlFor="nominationDivision">{t('competitionOps.fields.division')}</Label>
+            <label className="pt-label" htmlFor="nominationDivision">
+              {t('competitionOps.fields.division')}
+            </label>
             <select
               id="nominationDivision"
               data-testid="nomination-division"
               value={divisionId}
               onChange={(e) => setDivisionId(e.target.value)}
-              className={controlClass}
+              className="pt-select"
               required
             >
               {divisions.map((division) => (
@@ -354,13 +398,15 @@ function NominationCreateForm({ competitionId, divisions }: { competitionId: str
             </select>
           </div>
           <div className="space-y-2 xl:col-span-2">
-            <Label htmlFor="nominationWeightClass">{t('competitionOps.fields.declaredWeightClass')}</Label>
+            <label className="pt-label" htmlFor="nominationWeightClass">
+              {t('competitionOps.fields.declaredWeightClass')}
+            </label>
             <select
               id="nominationWeightClass"
               data-testid="nomination-weight-class"
               value={declaredWeightClassId}
               onChange={(e) => setDeclaredWeightClassId(e.target.value)}
-              className={controlClass}
+              className="pt-select"
               required
             >
               {weightClasses.map((weightClass) => (
@@ -371,8 +417,11 @@ function NominationCreateForm({ competitionId, divisions }: { competitionId: str
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="nominationEntry">{t('competitionOps.fields.entryNumber')}</Label>
-            <Input
+            <label className="pt-label" htmlFor="nominationEntry">
+              {t('competitionOps.fields.entryNumber')}
+            </label>
+            <input
+              className="pt-field"
               id="nominationEntry"
               data-testid="nomination-entry"
               type="number"
@@ -382,17 +431,29 @@ function NominationCreateForm({ competitionId, divisions }: { competitionId: str
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="nominationNotes">{t('competitionOps.fields.notes')}</Label>
-            <Input id="nominationNotes" data-testid="nomination-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <label className="pt-label" htmlFor="nominationNotes">
+              {t('competitionOps.fields.notes')}
+            </label>
+            <input
+              className="pt-field"
+              id="nominationNotes"
+              data-testid="nomination-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
           </div>
           <div className="flex items-end justify-end xl:col-span-12">
-            <Button data-testid="nomination-submit" type="submit" disabled={!canSubmit || create.isPending}>
+            <WorkspaceButton
+              data-testid="nomination-submit"
+              type="submit"
+              disabled={!canSubmit || create.isPending}
+            >
               {create.isPending ? t('common.saving') : t('common.save')}
-            </Button>
+            </WorkspaceButton>
           </div>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </WorkspacePanel>
   );
 }
 
@@ -412,14 +473,20 @@ function NominationEditorRow({
   const [entryNumber, setEntryNumber] = useState(nomination.entryNumber?.toString() ?? '');
   const [bodyWeight, setBodyWeight] = useState(nomination.bodyWeightAtWeighIn?.toString() ?? '');
   const [status, setStatus] = useState<NominationDto['status']>(nomination.status);
-  const [declaredWeightClassId, setDeclaredWeightClassId] = useState(nomination.declaredWeightClassId ?? nomination.weightClassId);
+  const [declaredWeightClassId, setDeclaredWeightClassId] = useState(
+    nomination.declaredWeightClassId ?? nomination.weightClassId,
+  );
   const [weightClassId, setWeightClassId] = useState(nomination.weightClassId);
   const [weightClassTouched, setWeightClassTouched] = useState(false);
   const [flightId, setFlightId] = useState(nomination.flightId ?? '');
   const [groupId, setGroupId] = useState(nomination.groupId ?? '');
-  const [paymentStatus, setPaymentStatus] = useState<NominationDto['paymentStatus']>(nomination.paymentStatus);
+  const [paymentStatus, setPaymentStatus] = useState<NominationDto['paymentStatus']>(
+    nomination.paymentStatus,
+  );
   const [paidAmountRub, setPaidAmountRub] = useState(kopecksToRub(nomination.paidAmountKopecks));
-  const [paymentMethod, setPaymentMethod] = useState<NominationDto['paymentMethod']>(nomination.paymentMethod);
+  const [paymentMethod, setPaymentMethod] = useState<NominationDto['paymentMethod']>(
+    nomination.paymentMethod,
+  );
   const [paymentComment, setPaymentComment] = useState(nomination.paymentComment ?? '');
   const [isMandatePassed, setIsMandatePassed] = useState(nomination.isMandatePassed);
   const [notes, setNotes] = useState(nomination.notes ?? '');
@@ -481,7 +548,7 @@ function NominationEditorRow({
   }
 
   return (
-    <TableRow
+    <tr
       data-testid="nomination-row"
       data-nomination-id={nomination.id}
       draggable={draggable}
@@ -491,9 +558,11 @@ function NominationEditorRow({
         event.dataTransfer.setData('text/plain', nomination.id);
         event.dataTransfer.effectAllowed = 'move';
       }}
-      className={draggable ? 'cursor-move' : undefined}
+      className={
+        `${nominationRowToneClass(status)}${draggable ? ' cursor-move' : ''}`.trim() || undefined
+      }
     >
-      <TableCell className="min-w-32">
+      <td className="min-w-32">
         {draggable && (
           <span
             data-testid="nomination-row-drag-handle"
@@ -510,22 +579,24 @@ function NominationEditorRow({
           </span>
         )}
         {fullName(nomination.athlete)}
-      </TableCell>
-      <TableCell className="min-w-56">
+      </td>
+      <td className="min-w-56">
         <div>{nomination.discipline.nameRu}</div>
         <div className="text-xs text-muted-foreground">{nomination.division.nameRu}</div>
-      </TableCell>
-      <TableCell className="w-24">
-        <Input
+      </td>
+      <td className="w-24">
+        <input
+          className="pt-field"
           data-testid="nomination-row-entry"
           type="number"
           min="1"
           value={entryNumber}
           onChange={(e) => setEntryNumber(e.target.value)}
         />
-      </TableCell>
-      <TableCell className="w-28">
-        <Input
+      </td>
+      <td className="w-28">
+        <input
+          className="pt-field"
           data-testid="nomination-row-body-weight"
           type="number"
           min="0"
@@ -533,13 +604,13 @@ function NominationEditorRow({
           value={bodyWeight}
           onChange={(e) => updateBodyWeight(e.target.value)}
         />
-      </TableCell>
-      <TableCell className="min-w-36">
+      </td>
+      <td className="min-w-36">
         <select
           data-testid="nomination-row-declared-weight-class"
           value={declaredWeightClassId}
           onChange={(e) => setDeclaredWeightClassId(e.target.value)}
-          className={controlClass}
+          className="pt-select"
         >
           {weightClasses.map((weightClass) => (
             <option key={weightClass.id} value={weightClass.id}>
@@ -547,8 +618,8 @@ function NominationEditorRow({
             </option>
           ))}
         </select>
-      </TableCell>
-      <TableCell className="min-w-36">
+      </td>
+      <td className="min-w-36">
         <select
           data-testid="nomination-row-weight-class"
           value={weightClassId}
@@ -556,7 +627,7 @@ function NominationEditorRow({
             setWeightClassTouched(true);
             setWeightClassId(e.target.value);
           }}
-          className={controlClass}
+          className="pt-select"
         >
           {weightClasses.map((weightClass) => (
             <option key={weightClass.id} value={weightClass.id}>
@@ -565,17 +636,20 @@ function NominationEditorRow({
           ))}
         </select>
         {autoWeightClass && autoWeightClass.id === weightClassId && (
-          <div data-testid="nomination-row-auto-weight-class" className="mt-1 text-xs text-muted-foreground">
+          <div
+            data-testid="nomination-row-auto-weight-class"
+            className="mt-1 text-xs text-muted-foreground"
+          >
             {t('competitionOps.autoWeightClass', { value: autoWeightClass.nameRu })}
           </div>
         )}
-      </TableCell>
-      <TableCell className="min-w-32">
+      </td>
+      <td className="min-w-32">
         <select
           data-testid="nomination-row-payment-status"
           value={paymentStatus}
           onChange={(e) => setPaymentStatus(e.target.value as NominationDto['paymentStatus'])}
-          className={controlClass}
+          className="pt-select"
         >
           {PAYMENT_STATUSES.map((value) => (
             <option key={value} value={value}>
@@ -583,9 +657,10 @@ function NominationEditorRow({
             </option>
           ))}
         </select>
-      </TableCell>
-      <TableCell className="w-28">
-        <Input
+      </td>
+      <td className="w-28">
+        <input
+          className="pt-field"
           data-testid="nomination-row-paid-amount"
           type="number"
           min="0"
@@ -593,13 +668,15 @@ function NominationEditorRow({
           value={paidAmountRub}
           onChange={(e) => setPaidAmountRub(e.target.value)}
         />
-      </TableCell>
-      <TableCell className="min-w-32">
+      </td>
+      <td className="min-w-32">
         <select
           data-testid="nomination-row-payment-method"
           value={paymentMethod ?? ''}
-          onChange={(e) => setPaymentMethod((e.target.value || null) as NominationDto['paymentMethod'])}
-          className={controlClass}
+          onChange={(e) =>
+            setPaymentMethod((e.target.value || null) as NominationDto['paymentMethod'])
+          }
+          className="pt-select"
         >
           <option value="">{t('competitionOps.paymentMethod.none')}</option>
           {PAYMENT_METHODS.map((value) => (
@@ -608,13 +685,13 @@ function NominationEditorRow({
             </option>
           ))}
         </select>
-      </TableCell>
-      <TableCell className="min-w-32">
+      </td>
+      <td className="min-w-32">
         <select
           data-testid="nomination-row-status"
           value={status}
           onChange={(e) => setStatus(e.target.value as NominationDto['status'])}
-          className={controlClass}
+          className="pt-select"
         >
           {NOMINATION_STATUSES.map((value) => (
             <option key={value} value={value}>
@@ -622,13 +699,16 @@ function NominationEditorRow({
             </option>
           ))}
         </select>
-      </TableCell>
-      <TableCell className="min-w-40">
+      </td>
+      <td className="min-w-40">
         <select
           data-testid="nomination-row-flight"
           value={flightId}
-          onChange={(e) => { setFlightId(e.target.value); setGroupId(''); }}
-          className={controlClass}
+          onChange={(e) => {
+            setFlightId(e.target.value);
+            setGroupId('');
+          }}
+          className="pt-select"
         >
           <option value="">{t('competitionOps.fields.noFlight')}</option>
           {platforms.flatMap((platform) =>
@@ -639,13 +719,13 @@ function NominationEditorRow({
             )),
           )}
         </select>
-      </TableCell>
-      <TableCell className="min-w-32">
+      </td>
+      <td className="min-w-32">
         <select
           data-testid="nomination-row-group"
           value={groupId}
           onChange={(e) => setGroupId(e.target.value)}
-          className={controlClass}
+          className="pt-select"
         >
           <option value="">{t('competitionOps.fields.noGroup')}</option>
           {groups.map((group) => (
@@ -654,8 +734,8 @@ function NominationEditorRow({
             </option>
           ))}
         </select>
-      </TableCell>
-      <TableCell className="w-24 text-center">
+      </td>
+      <td className="w-24 text-center">
         <input
           data-testid="nomination-row-mandate"
           type="checkbox"
@@ -663,26 +743,29 @@ function NominationEditorRow({
           onChange={(e) => setIsMandatePassed(e.target.checked)}
           className="h-4 w-4"
         />
-      </TableCell>
-      <TableCell className="min-w-44">
-        <Input
+      </td>
+      <td className="min-w-44">
+        <input
+          className="pt-field"
           data-testid="nomination-row-notes"
           value={paymentComment || notes}
-          onChange={(e) => { setPaymentComment(e.target.value); setNotes(e.target.value); }}
+          onChange={(e) => {
+            setPaymentComment(e.target.value);
+            setNotes(e.target.value);
+          }}
         />
-      </TableCell>
-      <TableCell className="text-right">
-        <Button
+      </td>
+      <td className="text-right">
+        <WorkspaceButton
           data-testid="nomination-row-save"
           type="button"
-          size="sm"
           onClick={() => void save()}
           disabled={updateNomination.isPending}
         >
           {updateNomination.isPending ? t('common.saving') : t('common.save')}
-        </Button>
-      </TableCell>
-    </TableRow>
+        </WorkspaceButton>
+      </td>
+    </tr>
   );
 }
 
@@ -717,22 +800,27 @@ function FlightFilters({
 }) {
   const { t } = useTranslation();
   const disciplines = Array.from(
-    new Map(data.nominations.map((nomination) => [nomination.discipline.id, nomination.discipline])).values(),
+    new Map(
+      data.nominations.map((nomination) => [nomination.discipline.id, nomination.discipline]),
+    ).values(),
   );
   const weightClasses = data.divisions
     .filter((division) => divisionId === 'all' || division.id === divisionId)
     .flatMap((division) => division.weightClasses);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('competitionOps.flightFilters')}</CardTitle>
-        <CardDescription>{t('competitionOps.flightFiltersDesc')}</CardDescription>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-8">
+    <WorkspacePanel className="p-3 space-y-3">
+      <div className="mb-2">
+        <WorkspaceSectionTitle>{t('competitionOps.flightFilters')}</WorkspaceSectionTitle>
+        <div className="pt-muted text-xs">{t('competitionOps.flightFiltersDesc')}</div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-8">
         <div className="space-y-2 md:col-span-2 xl:col-span-2">
-          <Label htmlFor="flightSearch">{t('common.search')}</Label>
-          <Input
+          <label className="pt-label" htmlFor="flightSearch">
+            {t('common.search')}
+          </label>
+          <input
+            className="pt-field"
             id="flightSearch"
             data-testid="flight-filter-search"
             value={search}
@@ -741,13 +829,15 @@ function FlightFilters({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="flightDiscipline">{t('competitionOps.fields.discipline')}</Label>
+          <label className="pt-label" htmlFor="flightDiscipline">
+            {t('competitionOps.fields.discipline')}
+          </label>
           <select
             id="flightDiscipline"
             data-testid="flight-filter-discipline"
             value={disciplineId}
             onChange={(e) => onDisciplineChange(e.target.value)}
-            className={controlClass}
+            className="pt-select"
           >
             <option value="all">{t('competitionOps.allDisciplines')}</option>
             {disciplines.map((discipline) => (
@@ -758,13 +848,15 @@ function FlightFilters({
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="flightDivision">{t('competitionOps.fields.division')}</Label>
+          <label className="pt-label" htmlFor="flightDivision">
+            {t('competitionOps.fields.division')}
+          </label>
           <select
             id="flightDivision"
             data-testid="flight-filter-division"
             value={divisionId}
             onChange={(e) => onDivisionChange(e.target.value)}
-            className={controlClass}
+            className="pt-select"
           >
             <option value="all">{t('competitionOps.allDivisions')}</option>
             {data.divisions.map((division) => (
@@ -775,13 +867,15 @@ function FlightFilters({
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="flightWeightClass">{t('competitionOps.fields.weightClass')}</Label>
+          <label className="pt-label" htmlFor="flightWeightClass">
+            {t('competitionOps.fields.weightClass')}
+          </label>
           <select
             id="flightWeightClass"
             data-testid="flight-filter-weight-class"
             value={weightClassId}
             onChange={(e) => onWeightClassChange(e.target.value)}
-            className={controlClass}
+            className="pt-select"
           >
             <option value="all">{t('competitionOps.allWeightClasses')}</option>
             {weightClasses.map((weightClass) => (
@@ -792,13 +886,15 @@ function FlightFilters({
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="flightAssignment">{t('competitionOps.assignment.title')}</Label>
+          <label className="pt-label" htmlFor="flightAssignment">
+            {t('competitionOps.assignment.title')}
+          </label>
           <select
             id="flightAssignment"
             data-testid="flight-filter-assignment"
             value={assignment}
             onChange={(e) => onAssignmentChange(e.target.value as AssignmentFilter)}
-            className={controlClass}
+            className="pt-select"
           >
             {ASSIGNMENT_FILTERS.map((item) => (
               <option key={item} value={item}>
@@ -808,13 +904,15 @@ function FlightFilters({
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="flightStatus">{t('competitionOps.fields.status')}</Label>
+          <label className="pt-label" htmlFor="flightStatus">
+            {t('competitionOps.fields.status')}
+          </label>
           <select
             id="flightStatus"
             data-testid="flight-filter-status"
             value={status}
             onChange={(e) => onStatusChange(e.target.value as NominationDto['status'] | 'all')}
-            className={controlClass}
+            className="pt-select"
           >
             <option value="all">{t('competitionOps.allStatuses')}</option>
             {NOMINATION_STATUSES.map((item) => (
@@ -824,8 +922,8 @@ function FlightFilters({
             ))}
           </select>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </WorkspacePanel>
   );
 }
 
@@ -864,22 +962,27 @@ function NominationGridFilters({
 }) {
   const { t } = useTranslation();
   const disciplines = Array.from(
-    new Map(data.nominations.map((nomination) => [nomination.discipline.id, nomination.discipline])).values(),
+    new Map(
+      data.nominations.map((nomination) => [nomination.discipline.id, nomination.discipline]),
+    ).values(),
   );
   const weightClasses = data.divisions
     .filter((division) => divisionId === 'all' || division.id === divisionId)
     .flatMap((division) => division.weightClasses);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('competitionOps.nominationFilters')}</CardTitle>
-        <CardDescription>{t('competitionOps.nominationFiltersDesc')}</CardDescription>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
+    <WorkspacePanel className="p-3 space-y-3">
+      <div className="mb-2">
+        <WorkspaceSectionTitle>{t('competitionOps.nominationFilters')}</WorkspaceSectionTitle>
+        <div className="pt-muted text-xs">{t('competitionOps.nominationFiltersDesc')}</div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
         <div className="space-y-2 md:col-span-2 xl:col-span-2">
-          <Label htmlFor="nominationSearch">{t('common.search')}</Label>
-          <Input
+          <label className="pt-label" htmlFor="nominationSearch">
+            {t('common.search')}
+          </label>
+          <input
+            className="pt-field"
             id="nominationSearch"
             data-testid="nomination-filter-search"
             value={search}
@@ -888,13 +991,15 @@ function NominationGridFilters({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="nominationDiscipline">{t('competitionOps.fields.discipline')}</Label>
+          <label className="pt-label" htmlFor="nominationDiscipline">
+            {t('competitionOps.fields.discipline')}
+          </label>
           <select
             id="nominationDiscipline"
             data-testid="nomination-filter-discipline"
             value={disciplineId}
             onChange={(e) => onDisciplineChange(e.target.value)}
-            className={controlClass}
+            className="pt-select"
           >
             <option value="all">{t('competitionOps.allDisciplines')}</option>
             {disciplines.map((discipline) => (
@@ -905,13 +1010,15 @@ function NominationGridFilters({
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="nominationDivision">{t('competitionOps.fields.division')}</Label>
+          <label className="pt-label" htmlFor="nominationDivision">
+            {t('competitionOps.fields.division')}
+          </label>
           <select
             id="nominationDivision"
             data-testid="nomination-filter-division"
             value={divisionId}
             onChange={(e) => onDivisionChange(e.target.value)}
-            className={controlClass}
+            className="pt-select"
           >
             <option value="all">{t('competitionOps.allDivisions')}</option>
             {data.divisions.map((division) => (
@@ -922,13 +1029,15 @@ function NominationGridFilters({
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="nominationWeightClass">{t('competitionOps.fields.weightClass')}</Label>
+          <label className="pt-label" htmlFor="nominationWeightClass">
+            {t('competitionOps.fields.weightClass')}
+          </label>
           <select
             id="nominationWeightClass"
             data-testid="nomination-filter-weight-class"
             value={weightClassId}
             onChange={(e) => onWeightClassChange(e.target.value)}
-            className={controlClass}
+            className="pt-select"
           >
             <option value="all">{t('competitionOps.allWeightClasses')}</option>
             {weightClasses.map((weightClass) => (
@@ -939,13 +1048,15 @@ function NominationGridFilters({
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="nominationStatus">{t('competitionOps.fields.status')}</Label>
+          <label className="pt-label" htmlFor="nominationStatus">
+            {t('competitionOps.fields.status')}
+          </label>
           <select
             id="nominationStatus"
             data-testid="nomination-filter-status"
             value={status}
             onChange={(e) => onStatusChange(e.target.value as NominationDto['status'] | 'all')}
-            className={controlClass}
+            className="pt-select"
           >
             <option value="all">{t('competitionOps.allStatuses')}</option>
             {NOMINATION_STATUSES.map((item) => (
@@ -956,13 +1067,17 @@ function NominationGridFilters({
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="nominationPaymentStatus">{t('competitionOps.fields.paymentStatus')}</Label>
+          <label className="pt-label" htmlFor="nominationPaymentStatus">
+            {t('competitionOps.fields.paymentStatus')}
+          </label>
           <select
             id="nominationPaymentStatus"
             data-testid="nomination-filter-payment"
             value={paymentStatus}
-            onChange={(e) => onPaymentStatusChange(e.target.value as NominationDto['paymentStatus'] | 'all')}
-            className={controlClass}
+            onChange={(e) =>
+              onPaymentStatusChange(e.target.value as NominationDto['paymentStatus'] | 'all')
+            }
+            className="pt-select"
           >
             <option value="all">{t('competitionOps.allPayments')}</option>
             {PAYMENT_STATUSES.map((item) => (
@@ -973,13 +1088,15 @@ function NominationGridFilters({
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="nominationMandate">{t('competitionOps.mandateFilter')}</Label>
+          <label className="pt-label" htmlFor="nominationMandate">
+            {t('competitionOps.mandateFilter')}
+          </label>
           <select
             id="nominationMandate"
             data-testid="nomination-filter-mandate"
             value={mandate}
             onChange={(e) => onMandateChange(e.target.value as MandateFilter)}
-            className={controlClass}
+            className="pt-select"
           >
             {MANDATE_FILTERS.map((item) => (
               <option key={item} value={item}>
@@ -988,8 +1105,8 @@ function NominationGridFilters({
             ))}
           </select>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </WorkspacePanel>
   );
 }
 
@@ -1002,8 +1119,12 @@ function FlightPlanningPanel({
 }) {
   const { t } = useTranslation();
   const flights = data.platforms.flatMap((platform) => platform.flights);
-  const unassigned = data.nominations.filter((nomination) => !nomination.flightId || !nomination.groupId);
-  const assigned = data.nominations.filter((nomination) => nomination.flightId && nomination.groupId);
+  const unassigned = data.nominations.filter(
+    (nomination) => !nomination.flightId || !nomination.groupId,
+  );
+  const assigned = data.nominations.filter(
+    (nomination) => nomination.flightId && nomination.groupId,
+  );
   const nonEmptyFlights = flights.filter((flight) =>
     data.nominations.some((nomination) => nomination.flightId === flight.id),
   );
@@ -1013,15 +1134,17 @@ function FlightPlanningPanel({
 
   return (
     <>
-      <Card data-testid="flight-summary">
-        <CardHeader>
-          <CardTitle>{t('competitionOps.flightPlannerTitle')}</CardTitle>
-          <CardDescription>{t('competitionOps.flightPlannerDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <WorkspacePanel className="p-3 space-y-3" data-testid="flight-summary">
+        <div className="mb-2">
+          <WorkspaceSectionTitle>{t('competitionOps.flightPlannerTitle')}</WorkspaceSectionTitle>
+          <div className="pt-muted text-xs">{t('competitionOps.flightPlannerDesc')}</div>
+        </div>
+        <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <div className="rounded-md border border-border p-3">
-              <div className="text-xs text-muted-foreground">{t('competitionOps.metrics.total')}</div>
+              <div className="text-xs text-muted-foreground">
+                {t('competitionOps.metrics.total')}
+              </div>
               <div className="text-2xl font-semibold tabular-nums">{data.nominations.length}</div>
             </div>
             <div className="rounded-md border border-border p-3">
@@ -1030,42 +1153,55 @@ function FlightPlanningPanel({
             </div>
             <div className="rounded-md border border-border p-3">
               <div className="text-xs text-muted-foreground">{t('competitionOps.unassigned')}</div>
-              <div data-testid="flight-unassigned-count" className="text-2xl font-semibold tabular-nums">
+              <div
+                data-testid="flight-unassigned-count"
+                className="text-2xl font-semibold tabular-nums"
+              >
                 {unassigned.length}
               </div>
             </div>
             <div className="rounded-md border border-border p-3">
-              <div className="text-xs text-muted-foreground">{t('competitionOps.totalEstimated')}</div>
+              <div className="text-xs text-muted-foreground">
+                {t('competitionOps.totalEstimated')}
+              </div>
               <div className="text-2xl font-semibold tabular-nums">
                 {totalDuration} {t('competitionOps.minutesShort')}
               </div>
             </div>
           </div>
-          <p className="text-sm text-muted-foreground">{t('competitionOps.manualAssignmentHint')}</p>
+          <p className="text-sm text-muted-foreground">
+            {t('competitionOps.manualAssignmentHint')}
+          </p>
           {unassigned.length > 0 && (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
               {t('competitionOps.unassignedWarning', { count: unassigned.length })}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </WorkspacePanel>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {data.platforms.map((platform) => (
-          <Card key={platform.id}>
-            <CardHeader>
-              <CardTitle>{platform.name}</CardTitle>
-              <CardDescription>{t('competitionOps.flightCount', { count: platform.flights.length })}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
+          <WorkspacePanel className="p-3 space-y-3" key={platform.id}>
+            <div className="mb-2">
+              <WorkspaceSectionTitle>{platform.name}</WorkspaceSectionTitle>
+              <div className="pt-muted text-xs">
+                {t('competitionOps.flightCount', { count: platform.flights.length })}
+              </div>
+            </div>
+            <div className="space-y-2 text-sm">
               {platform.flights.length === 0 ? (
                 <p className="italic text-muted-foreground">{t('competitionOps.noFlights')}</p>
               ) : (
                 platform.flights.map((flight) => {
-                  const nominationsInFlight = data.nominations.filter((nomination) => nomination.flightId === flight.id);
+                  const nominationsInFlight = data.nominations.filter(
+                    (nomination) => nomination.flightId === flight.id,
+                  );
                   const duration = estimateDurationMinutes(nominationsInFlight);
                   const startedAt = flight.startTime ? new Date(flight.startTime) : null;
-                  const endsAt = startedAt ? new Date(startedAt.getTime() + duration * 60_000) : null;
+                  const endsAt = startedAt
+                    ? new Date(startedAt.getTime() + duration * 60_000)
+                    : null;
 
                   return (
                     <div key={flight.id} className="rounded-md border border-border p-3">
@@ -1074,20 +1210,27 @@ function FlightPlanningPanel({
                           <div className="font-medium">
                             {flight.code} · {flight.name}
                           </div>
-                          <div className="text-xs text-muted-foreground">{formatDateTime(flight.startTime)}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatDateTime(flight.startTime)}
+                          </div>
                         </div>
                         <div className="text-xs tabular-nums text-muted-foreground">
-                          {duration} {t('competitionOps.minutesShort')} · {t('competitionOps.end')}: {formatTime(endsAt)}
+                          {duration} {t('competitionOps.minutesShort')} · {t('competitionOps.end')}:{' '}
+                          {formatTime(endsAt)}
                         </div>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs">
                         {flight.groups.map((group) => {
-                          const count = nominationsInFlight.filter((nomination) => nomination.groupId === group.id).length;
+                          const count = nominationsInFlight.filter(
+                            (nomination) => nomination.groupId === group.id,
+                          ).length;
                           return (
                             <span
                               key={group.id}
                               data-testid={`flight-group-drop-${group.id}`}
-                              title={onAssignNomination ? t('competitionOps.flightDropHint') : undefined}
+                              title={
+                                onAssignNomination ? t('competitionOps.flightDropHint') : undefined
+                              }
                               onDragOver={(event) => {
                                 if (!onAssignNomination) return;
                                 event.preventDefault();
@@ -1114,14 +1257,16 @@ function FlightPlanningPanel({
                         })}
                       </div>
                       <div className="mt-2 text-xs text-muted-foreground">
-                        {t('competitionOps.nominationsInFlight', { count: nominationsInFlight.length })}
+                        {t('competitionOps.nominationsInFlight', {
+                          count: nominationsInFlight.length,
+                        })}
                       </div>
                     </div>
                   );
                 })
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </WorkspacePanel>
         ))}
       </div>
     </>
@@ -1184,14 +1329,16 @@ function FlightBulkAssignmentPanel({
   }
 
   return (
-    <Card data-testid="flight-bulk-assignment">
-      <CardHeader>
-        <CardTitle>{t('competitionOps.flightBulkAssignTitle')}</CardTitle>
-        <CardDescription>{t('competitionOps.flightBulkAssignDesc')}</CardDescription>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+    <WorkspacePanel className="p-3 space-y-3" data-testid="flight-bulk-assignment">
+      <div className="mb-2">
+        <WorkspaceSectionTitle>{t('competitionOps.flightBulkAssignTitle')}</WorkspaceSectionTitle>
+        <div className="pt-muted text-xs">{t('competitionOps.flightBulkAssignDesc')}</div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
         <div className="space-y-2">
-          <Label htmlFor="flightBulkFlight">{t('competitionOps.fields.flight')}</Label>
+          <label className="pt-label" htmlFor="flightBulkFlight">
+            {t('competitionOps.fields.flight')}
+          </label>
           <select
             id="flightBulkFlight"
             data-testid="flight-bulk-flight"
@@ -1200,7 +1347,7 @@ function FlightBulkAssignmentPanel({
               setFlightId(e.target.value);
               setGroupId('');
             }}
-            className={controlClass}
+            className="pt-select"
             disabled={flights.length === 0}
           >
             {flights.length === 0 ? (
@@ -1215,13 +1362,15 @@ function FlightBulkAssignmentPanel({
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="flightBulkGroup">{t('competitionOps.fields.group')}</Label>
+          <label className="pt-label" htmlFor="flightBulkGroup">
+            {t('competitionOps.fields.group')}
+          </label>
           <select
             id="flightBulkGroup"
             data-testid="flight-bulk-group"
             value={groupId}
             onChange={(e) => setGroupId(e.target.value)}
-            className={controlClass}
+            className="pt-select"
             disabled={groups.length === 0}
           >
             {groups.length === 0 ? (
@@ -1235,7 +1384,7 @@ function FlightBulkAssignmentPanel({
             )}
           </select>
         </div>
-        <Button
+        <WorkspaceButton
           data-testid="flight-bulk-assign"
           type="button"
           onClick={() => void assignFiltered()}
@@ -1244,9 +1393,9 @@ function FlightBulkAssignmentPanel({
           {isSaving
             ? t('common.saving')
             : t('competitionOps.flightBulkAssignAction', { count: nominations.length })}
-        </Button>
-      </CardContent>
-    </Card>
+        </WorkspaceButton>
+      </div>
+    </WorkspacePanel>
   );
 }
 
@@ -1265,9 +1414,7 @@ function JudgeAssignmentsPanel({
   const { data: judgesData, isLoading } = useQuery({
     queryKey: ['judges', { assignmentPanel: true, limit: 200, search: judgeSearchTerm }],
     queryFn: () =>
-      api.judges.list(
-        judgeSearchTerm ? { limit: 200, search: judgeSearchTerm } : { limit: 200 },
-      ),
+      api.judges.list(judgeSearchTerm ? { limit: 200, search: judgeSearchTerm } : { limit: 200 }),
   });
   const judges = useMemo(() => judgesData?.judges ?? [], [judgesData?.judges]);
   const [judgeId, setJudgeId] = useState('');
@@ -1310,16 +1457,19 @@ function JudgeAssignmentsPanel({
   }
 
   return (
-    <Card data-testid="judge-assignment-panel">
-      <CardHeader>
-        <CardTitle>{t('competitionOps.judges.title')}</CardTitle>
-        <CardDescription>{t('competitionOps.judges.desc')}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <WorkspacePanel className="p-3 space-y-3" data-testid="judge-assignment-panel">
+      <div className="mb-2">
+        <WorkspaceSectionTitle>{t('competitionOps.judges.title')}</WorkspaceSectionTitle>
+        <div className="pt-muted text-xs">{t('competitionOps.judges.desc')}</div>
+      </div>
+      <div className="space-y-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
           <div className="space-y-2">
-            <Label htmlFor="judgeAssignmentJudge">{t('competitionOps.fields.judge')}</Label>
-            <Input
+            <label className="pt-label" htmlFor="judgeAssignmentJudge">
+              {t('competitionOps.fields.judge')}
+            </label>
+            <input
+              className="pt-field"
               id="judgeAssignmentSearch"
               data-testid="judge-assignment-search"
               value={judgeSearch}
@@ -1331,7 +1481,7 @@ function JudgeAssignmentsPanel({
               data-testid="judge-assignment-judge"
               value={judgeId}
               onChange={(e) => setJudgeId(e.target.value)}
-              className={controlClass}
+              className="pt-select"
               disabled={isLoading || judges.length === 0}
             >
               {judges.length === 0 ? (
@@ -1347,13 +1497,15 @@ function JudgeAssignmentsPanel({
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="judgeAssignmentRole">{t('competitionOps.fields.role')}</Label>
+            <label className="pt-label" htmlFor="judgeAssignmentRole">
+              {t('competitionOps.fields.role')}
+            </label>
             <select
               id="judgeAssignmentRole"
               data-testid="judge-assignment-role"
               value={role}
               onChange={(e) => setRole(e.target.value as JudgeRole)}
-              className={controlClass}
+              className="pt-select"
             >
               {JUDGE_ROLES.map((item) => (
                 <option key={item} value={item}>
@@ -1363,13 +1515,15 @@ function JudgeAssignmentsPanel({
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="judgeAssignmentPlatform">{t('competitionOps.fields.platform')}</Label>
+            <label className="pt-label" htmlFor="judgeAssignmentPlatform">
+              {t('competitionOps.fields.platform')}
+            </label>
             <select
               id="judgeAssignmentPlatform"
               data-testid="judge-assignment-platform"
               value={platformId}
               onChange={(e) => setPlatformId(e.target.value)}
-              className={controlClass}
+              className="pt-select"
             >
               <option value="global">{t('competitionOps.judges.allPlatforms')}</option>
               {data.platforms.map((platform) => (
@@ -1379,65 +1533,65 @@ function JudgeAssignmentsPanel({
               ))}
             </select>
           </div>
-          <Button
+          <WorkspaceButton
             data-testid="judge-assignment-create"
             type="button"
             onClick={() => void assignJudge()}
             disabled={createAssignment.isPending || judges.length === 0}
           >
             {createAssignment.isPending ? t('common.saving') : t('competitionOps.judges.assign')}
-          </Button>
+          </WorkspaceButton>
         </div>
 
         {judges.length === 0 && !isLoading && (
-          <Button asChild variant="outline" size="sm">
-            <Link to="/judges/new">{t('judges.create')}</Link>
-          </Button>
+          <Link to="/judges/new" className="pt-link-button">
+            {t('judges.create')}
+          </Link>
         )}
 
         {data.judgeAssignments.length === 0 ? (
           <p className="text-sm italic text-muted-foreground">{t('competitionOps.judges.empty')}</p>
         ) : (
           <div className="overflow-x-auto rounded-md border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('competitionOps.fields.judge')}</TableHead>
-                  <TableHead>{t('competitionOps.fields.role')}</TableHead>
-                  <TableHead>{t('competitionOps.fields.platform')}</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <table className="pt-grid">
+              <thead>
+                <tr>
+                  <th>{t('competitionOps.fields.judge')}</th>
+                  <th>{t('competitionOps.fields.role')}</th>
+                  <th>{t('competitionOps.fields.platform')}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
                 {data.judgeAssignments.map((assignment) => (
-                  <TableRow key={assignment.id} data-testid="judge-assignment-row">
-                    <TableCell>
+                  <tr key={assignment.id} data-testid="judge-assignment-row">
+                    <td>
                       <div>{fullName(assignment.judge)}</div>
                       <div className="text-xs text-muted-foreground">
                         {assignment.judge.categoryRu ?? assignment.judge.cardNumber ?? '—'}
                       </div>
-                    </TableCell>
-                    <TableCell>{t(`competitionOps.judgeRole.${assignment.role}`)}</TableCell>
-                    <TableCell>{assignment.platform?.name ?? t('competitionOps.judges.allPlatforms')}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
+                    </td>
+                    <td>{t(`competitionOps.judgeRole.${assignment.role}`)}</td>
+                    <td>{assignment.platform?.name ?? t('competitionOps.judges.allPlatforms')}</td>
+                    <td className="text-right">
+                      <WorkspaceButton
                         type="button"
-                        size="sm"
-                        variant="outline"
                         onClick={() => void removeAssignment(assignment.id)}
                         disabled={deleteAssignment.isPending}
                       >
-                        {deleteAssignment.isPending ? t('common.saving') : t('competitionOps.judges.remove')}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                        {deleteAssignment.isPending
+                          ? t('common.saving')
+                          : t('competitionOps.judges.remove')}
+                      </WorkspaceButton>
+                    </td>
+                  </tr>
                 ))}
-              </TableBody>
-            </Table>
+              </tbody>
+            </table>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </WorkspacePanel>
   );
 }
 
@@ -1457,32 +1611,39 @@ function NominationsTable({
   const { t } = useTranslation();
 
   if (nominations.length === 0) {
-    return <p className="text-sm italic text-muted-foreground">{emptyText ?? t('competitionOps.empty')}</p>;
+    return (
+      <p className="text-sm italic text-muted-foreground">
+        {emptyText ?? t('competitionOps.empty')}
+      </p>
+    );
   }
 
   return (
-    <div data-testid="nominations-table" className="overflow-x-auto rounded-md border border-border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t('competitionOps.fields.athlete')}</TableHead>
-            <TableHead>{t('competitionOps.fields.discipline')}</TableHead>
-            <TableHead>{t('competitionOps.fields.entryNumber')}</TableHead>
-            <TableHead>{t('competitionOps.fields.bodyWeight')}</TableHead>
-            <TableHead>{t('competitionOps.fields.declaredWeightClass')}</TableHead>
-            <TableHead>{t('competitionOps.fields.weightClass')}</TableHead>
-            <TableHead>{t('competitionOps.fields.paymentStatus')}</TableHead>
-            <TableHead>{t('competitionOps.fields.paidAmount')}</TableHead>
-            <TableHead>{t('competitionOps.fields.paymentMethod')}</TableHead>
-            <TableHead>{t('competitionOps.fields.status')}</TableHead>
-            <TableHead>{t('competitionOps.fields.flight')}</TableHead>
-            <TableHead>{t('competitionOps.fields.group')}</TableHead>
-            <TableHead>{t('competitionOps.fields.mandate')}</TableHead>
-            <TableHead>{t('competitionOps.fields.notes')}</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+    <div
+      data-testid="nominations-table"
+      className="overflow-x-auto rounded-md border border-border"
+    >
+      <table className="pt-grid">
+        <thead>
+          <tr>
+            <th>{t('competitionOps.fields.athlete')}</th>
+            <th>{t('competitionOps.fields.discipline')}</th>
+            <th>{t('competitionOps.fields.entryNumber')}</th>
+            <th>{t('competitionOps.fields.bodyWeight')}</th>
+            <th>{t('competitionOps.fields.declaredWeightClass')}</th>
+            <th>{t('competitionOps.fields.weightClass')}</th>
+            <th>{t('competitionOps.fields.paymentStatus')}</th>
+            <th>{t('competitionOps.fields.paidAmount')}</th>
+            <th>{t('competitionOps.fields.paymentMethod')}</th>
+            <th>{t('competitionOps.fields.status')}</th>
+            <th>{t('competitionOps.fields.flight')}</th>
+            <th>{t('competitionOps.fields.group')}</th>
+            <th>{t('competitionOps.fields.mandate')}</th>
+            <th>{t('competitionOps.fields.notes')}</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
           {nominations.map((nomination) => (
             <NominationEditorRow
               key={nomination.id}
@@ -1492,8 +1653,8 @@ function NominationsTable({
               draggable={draggableRows ?? false}
             />
           ))}
-        </TableBody>
-      </Table>
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -1560,28 +1721,26 @@ function NominationSecretaryGrid({
       />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">
-          <Button
+          <WorkspaceButton
             data-testid="nomination-bulk-mandate"
             type="button"
-            variant="outline"
             onClick={() => onBulkUpdate('mandate', nominations)}
             disabled={bulkSaving !== null || nominations.length === 0}
           >
             {bulkSaving === 'mandate'
               ? t('common.saving')
               : t('competitionOps.markFilteredMandate', { count: nominations.length })}
-          </Button>
-          <Button
+          </WorkspaceButton>
+          <WorkspaceButton
             data-testid="nomination-bulk-paid"
             type="button"
-            variant="outline"
             onClick={() => onBulkUpdate('paid', nominations)}
             disabled={bulkSaving !== null || nominations.length === 0}
           >
             {bulkSaving === 'paid'
               ? t('common.saving')
               : t('competitionOps.markFilteredPaid', { count: nominations.length })}
-          </Button>
+          </WorkspaceButton>
         </div>
         <div className="text-sm tabular-nums text-muted-foreground">
           {nominations.length} / {data.nominations.length}
@@ -1597,7 +1756,13 @@ function NominationSecretaryGrid({
   );
 }
 
-function AttemptEditor({ competitionId, nomination }: { competitionId: string; nomination: NominationDto }) {
+function AttemptEditor({
+  competitionId,
+  nomination,
+}: {
+  competitionId: string;
+  nomination: NominationDto;
+}) {
   const { t } = useTranslation();
   const upsertAttempt = useUpsertAttempt(competitionId);
   const components = useMemo(
@@ -1606,8 +1771,16 @@ function AttemptEditor({ competitionId, nomination }: { competitionId: string; n
   );
   const [componentId, setComponentId] = useState(components[0]?.id ?? '');
   const component = components.find((item) => item.id === componentId);
-  const used = new Set(nomination.attempts.filter((attempt) => attempt.componentId === componentId).map((attempt) => attempt.attemptNumber));
-  const nextAttempt = Array.from({ length: component?.attemptCount ?? nomination.discipline.attemptCount }, (_, index) => index + 1).find((attempt) => !used.has(attempt)) ?? 1;
+  const used = new Set(
+    nomination.attempts
+      .filter((attempt) => attempt.componentId === componentId)
+      .map((attempt) => attempt.attemptNumber),
+  );
+  const nextAttempt =
+    Array.from(
+      { length: component?.attemptCount ?? nomination.discipline.attemptCount },
+      (_, index) => index + 1,
+    ).find((attempt) => !used.has(attempt)) ?? 1;
   const [attemptNumber, setAttemptNumber] = useState(String(nextAttempt));
   const [weightKg, setWeightKg] = useState(component?.fixedWeightKg?.toString() ?? '');
   const [repsCount, setRepsCount] = useState('');
@@ -1625,7 +1798,11 @@ function AttemptEditor({ competitionId, nomination }: { competitionId: string; n
   async function saveAttempt() {
     const parsedAttemptNumber = Number(attemptNumber);
     const parsedWeight = Number(weightKg);
-    if (!Number.isInteger(parsedAttemptNumber) || parsedAttemptNumber < 1 || parsedAttemptNumber > 5) {
+    if (
+      !Number.isInteger(parsedAttemptNumber) ||
+      parsedAttemptNumber < 1 ||
+      parsedAttemptNumber > 5
+    ) {
       toast.error(t('competitionOps.errors.invalidAttempt'));
       return;
     }
@@ -1654,18 +1831,21 @@ function AttemptEditor({ competitionId, nomination }: { competitionId: string; n
   }
 
   return (
-    <TableRow data-testid="attempt-row" data-nomination-id={nomination.id}>
-      <TableCell className="min-w-44">
-        <div>{nomination.entryNumber ? `#${nomination.entryNumber} · ` : ''}{fullName(nomination.athlete)}</div>
+    <tr data-testid="attempt-row" data-nomination-id={nomination.id}>
+      <td className="min-w-44">
+        <div>
+          {nomination.entryNumber ? `#${nomination.entryNumber} · ` : ''}
+          {fullName(nomination.athlete)}
+        </div>
         <div className="text-xs text-muted-foreground">{nomination.weightClass.nameRu}</div>
-      </TableCell>
-      <TableCell className="min-w-56">{nomination.discipline.nameRu}</TableCell>
-      <TableCell className="min-w-40">
+      </td>
+      <td className="min-w-56">{nomination.discipline.nameRu}</td>
+      <td className="min-w-40">
         <select
           data-testid="attempt-component"
           value={componentId}
           onChange={(e) => setComponentId(e.target.value)}
-          className={controlClass}
+          className="pt-select"
         >
           {components.map((item) => (
             <option key={item.id} value={item.id}>
@@ -1673,9 +1853,10 @@ function AttemptEditor({ competitionId, nomination }: { competitionId: string; n
             </option>
           ))}
         </select>
-      </TableCell>
-      <TableCell className="w-24">
-        <Input
+      </td>
+      <td className="w-24">
+        <input
+          className="pt-field"
           data-testid="attempt-number"
           type="number"
           min="1"
@@ -1683,9 +1864,10 @@ function AttemptEditor({ competitionId, nomination }: { competitionId: string; n
           value={attemptNumber}
           onChange={(e) => setAttemptNumber(e.target.value)}
         />
-      </TableCell>
-      <TableCell className="w-28">
-        <Input
+      </td>
+      <td className="w-28">
+        <input
+          className="pt-field"
           data-testid="attempt-weight"
           type="number"
           min="0"
@@ -1693,22 +1875,23 @@ function AttemptEditor({ competitionId, nomination }: { competitionId: string; n
           value={weightKg}
           onChange={(e) => setWeightKg(e.target.value)}
         />
-      </TableCell>
-      <TableCell className="w-24">
-        <Input
+      </td>
+      <td className="w-24">
+        <input
+          className="pt-field"
           data-testid="attempt-reps"
           type="number"
           min="0"
           value={repsCount}
           onChange={(e) => setRepsCount(e.target.value)}
         />
-      </TableCell>
-      <TableCell className="min-w-32">
+      </td>
+      <td className="min-w-32">
         <select
           data-testid="attempt-result"
           value={result}
           onChange={(e) => setResult(e.target.value as (typeof ATTEMPT_RESULTS)[number])}
-          className={controlClass}
+          className="pt-select"
         >
           {ATTEMPT_RESULTS.map((value) => (
             <option key={value} value={value}>
@@ -1716,77 +1899,331 @@ function AttemptEditor({ competitionId, nomination }: { competitionId: string; n
             </option>
           ))}
         </select>
-      </TableCell>
-      <TableCell data-testid="attempt-summary" className="min-w-80 text-xs text-muted-foreground">{attemptSummary(nomination)}</TableCell>
-      <TableCell className="text-right">
-        <Button
+      </td>
+      <td data-testid="attempt-summary" className="min-w-80 text-xs text-muted-foreground">
+        {attemptSummary(nomination)}
+      </td>
+      <td className="text-right">
+        <WorkspaceButton
           data-testid="attempt-save"
           type="button"
-          size="sm"
           onClick={() => void saveAttempt()}
           disabled={upsertAttempt.isPending}
         >
           {upsertAttempt.isPending ? t('common.saving') : t('competitionOps.saveAttempt')}
-        </Button>
-      </TableCell>
-    </TableRow>
+        </WorkspaceButton>
+      </td>
+    </tr>
   );
 }
 
 function ScoreboardTable({ data }: { data: CompetitionOpsResponse }) {
   const { t } = useTranslation();
-  const rows = data.scoreboardRows.length > 0
-    ? data.scoreboardRows
-    : data.nominations.map((nomination) => ({
-        nominationId: nomination.id,
-        entryNumber: nomination.entryNumber,
-        athleteName: fullName(nomination.athlete),
-        discipline: nomination.discipline.nameRu,
-        division: nomination.division.nameRu,
-        weightClass: nomination.weightClass.nameRu,
-        placeInClass: nomination.placeInClass,
-        placeInDivision: nomination.placeInDivision,
-        placeOverall: nomination.placeOverall,
-        bestSuccessfulAttemptKg: nomination.bestSuccessfulAttemptKg,
-        finalScore: nomination.finalScore,
-        status: nomination.status,
-      }));
+  const rows =
+    data.scoreboardRows.length > 0
+      ? data.scoreboardRows
+      : data.nominations.map((nomination) => ({
+          nominationId: nomination.id,
+          entryNumber: nomination.entryNumber,
+          athleteName: fullName(nomination.athlete),
+          discipline: nomination.discipline.nameRu,
+          division: nomination.division.nameRu,
+          weightClass: nomination.weightClass.nameRu,
+          placeInClass: nomination.placeInClass,
+          placeInDivision: nomination.placeInDivision,
+          placeOverall: nomination.placeOverall,
+          bestSuccessfulAttemptKg: nomination.bestSuccessfulAttemptKg,
+          finalScore: nomination.finalScore,
+          status: nomination.status,
+        }));
 
-  if (rows.length === 0) return <p className="text-sm italic text-muted-foreground">{t('scoreboard.empty')}</p>;
+  if (rows.length === 0)
+    return <p className="text-sm italic text-muted-foreground">{t('scoreboard.empty')}</p>;
 
   return (
     <div data-testid="scoreboard-table" className="overflow-x-auto rounded-md border border-border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t('competitionOps.fields.entryNumber')}</TableHead>
-            <TableHead>{t('competitionOps.fields.athlete')}</TableHead>
-            <TableHead>{t('competitionOps.fields.discipline')}</TableHead>
-            <TableHead>{t('competitionOps.fields.weightClass')}</TableHead>
-            <TableHead>{t('competitionOps.fields.placeInClass')}</TableHead>
-            <TableHead>{t('competitionOps.fields.placeOverall')}</TableHead>
-            <TableHead>{t('scoreboard.best')}</TableHead>
-            <TableHead>{t('scoreboard.score')}</TableHead>
-            <TableHead>{t('competitionOps.fields.status')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+      <table className="pt-grid">
+        <thead>
+          <tr>
+            <th>{t('competitionOps.fields.entryNumber')}</th>
+            <th>{t('competitionOps.fields.athlete')}</th>
+            <th>{t('competitionOps.fields.discipline')}</th>
+            <th>{t('competitionOps.fields.weightClass')}</th>
+            <th>{t('competitionOps.fields.placeInClass')}</th>
+            <th>{t('competitionOps.fields.placeOverall')}</th>
+            <th>{t('scoreboard.best')}</th>
+            <th>{t('scoreboard.score')}</th>
+            <th>{t('competitionOps.fields.status')}</th>
+          </tr>
+        </thead>
+        <tbody>
           {rows.map((row) => (
-            <TableRow key={row.nominationId}>
-              <TableCell className="tabular-nums">{row.entryNumber ?? '—'}</TableCell>
-              <TableCell>{row.athleteName}</TableCell>
-              <TableCell>{row.discipline}</TableCell>
-              <TableCell>{row.weightClass}</TableCell>
-              <TableCell className="tabular-nums">{row.placeInClass ?? '—'}</TableCell>
-              <TableCell className="tabular-nums">{row.placeOverall ?? '—'}</TableCell>
-              <TableCell className="tabular-nums">{row.bestSuccessfulAttemptKg ?? '—'}</TableCell>
-              <TableCell className="tabular-nums">{row.finalScore ?? '—'}</TableCell>
-              <TableCell>{t(`competitionOps.status.${row.status}`)}</TableCell>
-            </TableRow>
+            <tr key={row.nominationId}>
+              <td className="tabular-nums">{row.entryNumber ?? '—'}</td>
+              <td>{row.athleteName}</td>
+              <td>{row.discipline}</td>
+              <td>{row.weightClass}</td>
+              <td className="tabular-nums">{row.placeInClass ?? '—'}</td>
+              <td className="tabular-nums">{row.placeOverall ?? '—'}</td>
+              <td className="tabular-nums">{row.bestSuccessfulAttemptKg ?? '—'}</td>
+              <td className="tabular-nums">{row.finalScore ?? '—'}</td>
+              <td>{t(`competitionOps.status.${row.status}`)}</td>
+            </tr>
           ))}
-        </TableBody>
-      </Table>
+        </tbody>
+      </table>
     </div>
+  );
+}
+
+function FlightNominationsTree({ data }: { data: CompetitionOpsResponse }) {
+  const totalNominations = data.nominations.length;
+  const assignedCount = data.nominations.filter((n) => n.flightId && n.groupId).length;
+  const unassignedCount = totalNominations - assignedCount;
+
+  return (
+    <WorkspacePanel className="p-3">
+      <div className="pt-info-yellow mb-2">
+        Дерево назначений номинаций по помостам, потокам и группам. Всего {totalNominations}, из них
+        назначено: {assignedCount}, не назначено: {unassignedCount}.
+      </div>
+      <table className="pt-grid">
+        <thead>
+          <tr>
+            <th className="text-left">Помост · Поток · Группа</th>
+            <th>Номинаций</th>
+            <th>Старт</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.platforms.length === 0 ? (
+            <tr>
+              <td colSpan={3} className="pt-muted italic text-center">
+                Помосты не настроены.
+              </td>
+            </tr>
+          ) : (
+            data.platforms.flatMap((platform) => {
+              const rows: ReturnType<typeof renderPlatformRows> = renderPlatformRows(
+                platform,
+                data,
+              );
+              return rows;
+            })
+          )}
+          {unassignedCount > 0 ? (
+            <tr className="is-pink">
+              <td>Не назначено</td>
+              <td className="text-right tabular-nums">{unassignedCount}</td>
+              <td>—</td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </WorkspacePanel>
+  );
+}
+
+function renderPlatformRows(platform: PlatformDto, data: CompetitionOpsResponse) {
+  const result: ReactElement[] = [];
+  const platformCount = data.nominations.filter((n) =>
+    platform.flights.some((f) => f.id === n.flightId),
+  ).length;
+  result.push(
+    <tr key={platform.id} className="is-selected">
+      <td>
+        <strong>{platform.name}</strong>
+      </td>
+      <td className="text-right tabular-nums">{platformCount}</td>
+      <td>—</td>
+    </tr>,
+  );
+  for (const flight of platform.flights) {
+    const flightCount = data.nominations.filter((n) => n.flightId === flight.id).length;
+    result.push(
+      <tr key={flight.id} className="is-green">
+        <td>
+          &nbsp;&nbsp;&nbsp;{flight.code} · {flight.name}
+        </td>
+        <td className="text-right tabular-nums">{flightCount}</td>
+        <td>
+          {flight.startTime
+            ? new Date(flight.startTime).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : '—'}
+        </td>
+      </tr>,
+    );
+    for (const group of flight.groups) {
+      const groupCount = data.nominations.filter((n) => n.groupId === group.id).length;
+      result.push(
+        <tr key={group.id}>
+          <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{group.name}</td>
+          <td className="text-right tabular-nums">{groupCount}</td>
+          <td>—</td>
+        </tr>,
+      );
+    }
+  }
+  return result;
+}
+
+interface DurationRow {
+  divisionName: string;
+  weightClassName: string;
+  weightClassGender: 'F' | 'M';
+  componentLabel: string;
+  nominations: number;
+  attempts: number;
+  totalSeconds: number;
+}
+
+function FlightDurationCalculator({
+  data,
+  seconds,
+  onSecondsChange,
+}: {
+  data: CompetitionOpsResponse;
+  seconds: number;
+  onSecondsChange: (n: number) => void;
+}) {
+  const groupedByDivision = useMemo(() => {
+    const map = new Map<string, { division: string; rows: DurationRow[] }>();
+    for (const nom of data.nominations) {
+      const components =
+        nom.discipline.components.length > 0
+          ? nom.discipline.components
+          : [
+              {
+                code: nom.discipline.code,
+                nameRu: nom.discipline.nameRu,
+                attemptCount: nom.discipline.attemptCount,
+                fixedWeightKg: null,
+              } as DisciplineComponentDto,
+            ];
+      for (const comp of components) {
+        const key = `${nom.divisionId}|${nom.weightClassId}|${nom.disciplineId}|${comp.code}`;
+        const divKey = nom.division.nameRu;
+        if (!map.has(divKey)) map.set(divKey, { division: divKey, rows: [] });
+        const bucket = map.get(divKey)!;
+        const existing = bucket.rows.find(
+          (r) =>
+            r.weightClassName === nom.weightClass.nameRu &&
+            r.componentLabel === comp.nameRu &&
+            r.weightClassGender === nom.division.gender,
+        );
+        if (existing) {
+          existing.nominations += 1;
+          existing.attempts += comp.attemptCount;
+          existing.totalSeconds += comp.attemptCount * seconds;
+        } else {
+          bucket.rows.push({
+            divisionName: nom.division.nameRu,
+            weightClassName: nom.weightClass.nameRu,
+            weightClassGender: nom.division.gender,
+            componentLabel: comp.nameRu,
+            nominations: 1,
+            attempts: comp.attemptCount,
+            totalSeconds: comp.attemptCount * seconds,
+          });
+        }
+        // suppress unused vars
+        void key;
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.division.localeCompare(b.division));
+  }, [data.nominations, seconds]);
+
+  return (
+    <WorkspacePanel className="p-3">
+      <div className="flex flex-wrap items-center gap-3 mb-2">
+        <label htmlFor="attempt-seconds" className="pt-label">
+          Длительность одного подхода при отсутствии статистики, секунд:
+        </label>
+        <input
+          id="attempt-seconds"
+          type="number"
+          min="10"
+          max="600"
+          value={seconds}
+          onChange={(e) => onSecondsChange(Number(e.target.value) || 60)}
+          className="pt-field w-24"
+        />
+        <WorkspaceButton type="button" icon="refresh" tone="green">
+          Пересчитать длительность
+        </WorkspaceButton>
+      </div>
+      <table className="pt-grid">
+        <thead>
+          <tr>
+            <th className="text-left">Дисциплина</th>
+            <th>ВК</th>
+            <th className="text-left">Упражнение</th>
+            <th>Номинаций</th>
+            <th>Кол-во подходов</th>
+            <th>Длительность подхода, сек</th>
+            <th>Длительность всех подходов, минут</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groupedByDivision.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="pt-muted italic text-center">
+                Номинации не загружены.
+              </td>
+            </tr>
+          ) : (
+            groupedByDivision.flatMap((bucket) => {
+              const rows: ReactElement[] = [];
+              rows.push(
+                <tr key={`hdr-${bucket.division}`} className="is-selected">
+                  <td colSpan={7}>
+                    <strong>{bucket.division}</strong>
+                  </td>
+                </tr>,
+              );
+              for (let i = 0; i < bucket.rows.length; i += 1) {
+                const r = bucket.rows[i]!;
+                rows.push(
+                  <tr key={`r-${bucket.division}-${i}`}>
+                    <td>{r.divisionName}</td>
+                    <td className="text-center">
+                      {r.weightClassGender === 'F' ? 'Ж' : 'М'} {r.weightClassName}
+                    </td>
+                    <td>{r.componentLabel}</td>
+                    <td className="text-right tabular-nums">{r.nominations}</td>
+                    <td className="text-right tabular-nums">{r.attempts}</td>
+                    <td className="text-right tabular-nums">{seconds}</td>
+                    <td className="text-right tabular-nums">
+                      {Math.round((r.totalSeconds / 60) * 10) / 10}
+                    </td>
+                  </tr>,
+                );
+              }
+              const subtotal = bucket.rows.reduce((s, r) => s + r.totalSeconds, 0);
+              const subtotalNominations = bucket.rows.reduce((s, r) => s + r.nominations, 0);
+              const subtotalAttempts = bucket.rows.reduce((s, r) => s + r.attempts, 0);
+              rows.push(
+                <tr key={`sub-${bucket.division}`} className="is-yellow">
+                  <td colSpan={3}>
+                    <em>ИТОГО {bucket.division}</em>
+                  </td>
+                  <td className="text-right tabular-nums">{subtotalNominations}</td>
+                  <td className="text-right tabular-nums">{subtotalAttempts}</td>
+                  <td>—</td>
+                  <td className="text-right tabular-nums">
+                    {Math.round((subtotal / 60) * 10) / 10}
+                  </td>
+                </tr>,
+              );
+              return rows;
+            })
+          )}
+        </tbody>
+      </table>
+    </WorkspacePanel>
   );
 }
 
@@ -1813,8 +2250,12 @@ export default function CompetitionOperationsFeature() {
   const [nominationDivisionId, setNominationDivisionId] = useState('all');
   const [nominationWeightClassId, setNominationWeightClassId] = useState('all');
   const [nominationStatus, setNominationStatus] = useState<NominationDto['status'] | 'all'>('all');
-  const [nominationPaymentStatus, setNominationPaymentStatus] = useState<NominationDto['paymentStatus'] | 'all'>('all');
+  const [nominationPaymentStatus, setNominationPaymentStatus] = useState<
+    NominationDto['paymentStatus'] | 'all'
+  >('all');
   const [nominationMandate, setNominationMandate] = useState<MandateFilter>('all');
+  const [flightSubTab, setFlightSubTab] = useState<'filters' | 'tree' | 'duration'>('filters');
+  const [attemptSeconds, setAttemptSeconds] = useState(65);
 
   useEffect(() => {
     setTab(initialTab);
@@ -1825,10 +2266,16 @@ export default function CompetitionOperationsFeature() {
     try {
       const filename = `${data?.competition.code ?? 'competition'}-${kind}.${format}`;
       if (format === 'csv') {
-        const text = kind === 'protocol' ? await api.competitions.protocolCsv(id) : await api.competitions.accountingCsv(id);
+        const text =
+          kind === 'protocol'
+            ? await api.competitions.protocolCsv(id)
+            : await api.competitions.accountingCsv(id);
         downloadText(filename, text);
       } else {
-        const blob = kind === 'protocol' ? await api.competitions.protocolXlsx(id) : await api.competitions.accountingXlsx(id);
+        const blob =
+          kind === 'protocol'
+            ? await api.competitions.protocolXlsx(id)
+            : await api.competitions.accountingXlsx(id);
         downloadBlob(filename, blob);
       }
     } catch (err) {
@@ -1886,341 +2333,435 @@ export default function CompetitionOperationsFeature() {
   }
 
   if (isLoading) {
-    return <div className="max-w-7xl mx-auto px-6 py-10 text-sm text-muted-foreground">{t('common.loading')}</div>;
+    return <WorkspaceState>{t('common.loading')}</WorkspaceState>;
   }
 
   if (error || !data) {
     return (
-      <div className="max-w-7xl mx-auto px-6 py-10 text-sm text-destructive">
+      <WorkspaceState tone="danger">
         {t('common.error')}: {error instanceof Error ? error.message : 'not found'}
-      </div>
+      </WorkspaceState>
     );
   }
 
   const setupReady = hasSetup(data);
   const filteredNominationGrid = data.nominations.filter((nomination) => {
     if (!nominationMatchesSearch(nomination, nominationSearch)) return false;
-    if (nominationDisciplineId !== 'all' && nomination.disciplineId !== nominationDisciplineId) return false;
-    if (nominationDivisionId !== 'all' && nomination.divisionId !== nominationDivisionId) return false;
-    if (nominationWeightClassId !== 'all' && nomination.weightClassId !== nominationWeightClassId) return false;
+    if (nominationDisciplineId !== 'all' && nomination.disciplineId !== nominationDisciplineId)
+      return false;
+    if (nominationDivisionId !== 'all' && nomination.divisionId !== nominationDivisionId)
+      return false;
+    if (nominationWeightClassId !== 'all' && nomination.weightClassId !== nominationWeightClassId)
+      return false;
     if (nominationStatus !== 'all' && nomination.status !== nominationStatus) return false;
-    if (nominationPaymentStatus !== 'all' && nomination.paymentStatus !== nominationPaymentStatus) return false;
+    if (nominationPaymentStatus !== 'all' && nomination.paymentStatus !== nominationPaymentStatus)
+      return false;
     if (nominationMandate === 'passed' && !nomination.isMandatePassed) return false;
     if (nominationMandate === 'missing' && nomination.isMandatePassed) return false;
     return true;
   });
   const filteredFlightNominations = data.nominations.filter((nomination) => {
     if (!nominationMatchesSearch(nomination, flightSearch)) return false;
-    if (flightDisciplineId !== 'all' && nomination.disciplineId !== flightDisciplineId) return false;
+    if (flightDisciplineId !== 'all' && nomination.disciplineId !== flightDisciplineId)
+      return false;
     if (flightDivisionId !== 'all' && nomination.divisionId !== flightDivisionId) return false;
-    if (flightWeightClassId !== 'all' && nomination.weightClassId !== flightWeightClassId) return false;
+    if (flightWeightClassId !== 'all' && nomination.weightClassId !== flightWeightClassId)
+      return false;
     if (flightStatus !== 'all' && nomination.status !== flightStatus) return false;
-    if (flightAssignment === 'assigned' && (!nomination.flightId || !nomination.groupId)) return false;
-    if (flightAssignment === 'unassigned' && nomination.flightId && nomination.groupId) return false;
+    if (flightAssignment === 'assigned' && (!nomination.flightId || !nomination.groupId))
+      return false;
+    if (flightAssignment === 'unassigned' && nomination.flightId && nomination.groupId)
+      return false;
     return true;
   });
 
   return (
-    <div data-testid="competition-ops" className="max-w-7xl mx-auto px-6 py-8 space-y-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{t(`competitionOps.sectionTitles.${tab}`)}</h1>
-          <p className="text-sm text-muted-foreground">
-            {data.competition.nameRu} · {data.competition.federation.nameRu}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link to="/competitions/$id" params={{ id }}>
-              {t('competitionOps.backToCompetition')}
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/competitions/$id/scoreboard" params={{ id }}>
-              {t('competitionOps.hallScreen')}
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/competitions/$id/operator" params={{ id }}>
-              {t('competitionOperator.title')}
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/competitions/$id/judge" params={{ id }}>
-              {t('competitionJudge.title')}
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/competitions/$id/reports" params={{ id }}>
-              {t('competitionOps.tabs.exports')}
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/broadcast/competitions/$id" params={{ id }}>
-              Broadcast
-            </Link>
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground">{t('competitionOps.metrics.total')}</div>
-            <div className="text-2xl font-semibold tabular-nums">{data.accounting.totalNominations}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground">{t('competitionOps.metrics.paid')}</div>
-            <div className="text-2xl font-semibold tabular-nums">{data.accounting.paidNominations}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground">{t('competitionOps.metrics.weighedIn')}</div>
-            <div className="text-2xl font-semibold tabular-nums">{data.accounting.weighedInNominations}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground">{t('competitionOps.metrics.entryFees')}</div>
-            <div className="text-lg font-semibold tabular-nums">{formatRub(data.accounting.paidEntryFeeKopecks)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground">{t('competitionOps.metrics.billing')}</div>
-            <div className="text-lg font-semibold tabular-nums">{formatRub(data.accounting.federationBillingKopecks)}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="flex flex-wrap gap-2 border-b border-border pb-2">
-        {TABS.map((item) => (
-          <Button
-            key={item}
-            data-testid={`ops-tab-${item}`}
-            type="button"
-            size="sm"
-            variant={tab === item ? 'default' : 'ghost'}
-            onClick={() => setTab(item)}
-          >
-            {t(`competitionOps.tabs.${item}`)}
-          </Button>
-        ))}
-      </div>
-
-      {tab === 'setup' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('competitionOps.tabs.setup')}</CardTitle>
-            <CardDescription>{setupReady ? t('competitionOps.setupReady') : t('competitionOps.setupDesc')}</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button
-              data-testid="ops-apply-setup"
-              type="button"
-              onClick={() => void applyDefaultSetup()}
-              disabled={applySetup.isPending}
-            >
-              {applySetup.isPending ? t('common.saving') : t('competitionOps.applySetup')}
-            </Button>
-            <Button
-              data-testid="ops-draw-numbers"
-              type="button"
-              variant="outline"
-              onClick={() => void drawNominations.mutateAsync({ overwrite: true }).then(() => toast.success(t('competitionOps.drawApplied')))}
-              disabled={drawNominations.isPending || data.nominations.length === 0}
-            >
-              {drawNominations.isPending ? t('common.saving') : t('competitionOps.drawNumbers')}
-            </Button>
-            <Button
-              data-testid="ops-auto-plan"
-              type="button"
-              variant="outline"
-              onClick={() => void autoPlanFlights.mutateAsync({}).then(() => toast.success(t('competitionOps.planApplied')))}
-              disabled={autoPlanFlights.isPending || data.nominations.length === 0}
-            >
-              {autoPlanFlights.isPending ? t('common.saving') : t('competitionOps.autoPlan')}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 'nominations' && (
-        <div className="space-y-4">
-          {!setupReady && <SetupRequiredCard pending={applySetup.isPending} onApply={() => void applyDefaultSetup()} />}
-          {setupReady && <NominationCreateForm competitionId={id} divisions={data.divisions} />}
-          <NominationSecretaryGrid
-            data={data}
-            nominations={filteredNominationGrid}
-            bulkSaving={bulkSaving}
-            search={nominationSearch}
-            disciplineId={nominationDisciplineId}
-            divisionId={nominationDivisionId}
-            weightClassId={nominationWeightClassId}
-            status={nominationStatus}
-            paymentStatus={nominationPaymentStatus}
-            mandate={nominationMandate}
-            onSearchChange={setNominationSearch}
-            onDisciplineChange={setNominationDisciplineId}
-            onDivisionChange={(value) => {
-              setNominationDivisionId(value);
-              setNominationWeightClassId('all');
-            }}
-            onWeightClassChange={setNominationWeightClassId}
-            onStatusChange={setNominationStatus}
-            onPaymentStatusChange={setNominationPaymentStatus}
-            onMandateChange={setNominationMandate}
-            onBulkUpdate={(kind, nominations) => void bulkUpdate(kind, nominations)}
-          />
-        </div>
-      )}
-
-      {tab === 'mandate' && (
-        <div className="space-y-4">
-          {!setupReady && <SetupRequiredCard pending={applySetup.isPending} onApply={() => void applyDefaultSetup()} />}
-          <NominationSecretaryGrid
-            data={data}
-            nominations={filteredNominationGrid}
-            bulkSaving={bulkSaving}
-            search={nominationSearch}
-            disciplineId={nominationDisciplineId}
-            divisionId={nominationDivisionId}
-            weightClassId={nominationWeightClassId}
-            status={nominationStatus}
-            paymentStatus={nominationPaymentStatus}
-            mandate={nominationMandate}
-            onSearchChange={setNominationSearch}
-            onDisciplineChange={setNominationDisciplineId}
-            onDivisionChange={(value) => {
-              setNominationDivisionId(value);
-              setNominationWeightClassId('all');
-            }}
-            onWeightClassChange={setNominationWeightClassId}
-            onStatusChange={setNominationStatus}
-            onPaymentStatusChange={setNominationPaymentStatus}
-            onMandateChange={setNominationMandate}
-            onBulkUpdate={(kind, nominations) => void bulkUpdate(kind, nominations)}
-          />
-        </div>
-      )}
-
-      {tab === 'flights' && (
-        <div className="space-y-4">
-          {!setupReady && <SetupRequiredCard pending={applySetup.isPending} onApply={() => void applyDefaultSetup()} />}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              data-testid="ops-auto-plan-flights"
-              type="button"
-              onClick={() => void autoPlanFlights.mutateAsync({}).then(() => toast.success(t('competitionOps.planApplied')))}
-              disabled={autoPlanFlights.isPending || data.nominations.length === 0}
-            >
-              {autoPlanFlights.isPending ? t('common.saving') : t('competitionOps.autoPlan')}
-            </Button>
+    <WorkspacePage
+      title={t(`competitionOps.sectionTitles.${tab}`)}
+      subtitle={`${data.competition.nameRu} · ${data.competition.federation.nameRu}`}
+      actions={
+        <>
+          <Link to="/competitions/$id" params={{ id }} className="pt-link-button">
+            {t('competitionOps.backToCompetition')}
+          </Link>
+          <Link to="/competitions/$id/scoreboard" params={{ id }} className="pt-link-button">
+            {t('competitionOps.hallScreen')}
+          </Link>
+          <Link to="/competitions/$id/operator" params={{ id }} className="pt-link-button">
+            {t('competitionOperator.title')}
+          </Link>
+          <Link to="/competitions/$id/judge" params={{ id }} className="pt-link-button">
+            {t('competitionJudge.title')}
+          </Link>
+          <Link to="/competitions/$id/reports" params={{ id }} className="pt-link-button">
+            {t('competitionOps.tabs.exports')}
+          </Link>
+          <Link to="/broadcast/competitions/$id" params={{ id }} className="pt-link-button">
+            Broadcast
+          </Link>
+        </>
+      }
+    >
+      <div data-testid="competition-ops" className="space-y-5">
+        <div
+          className="pt-metric-strip"
+          style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}
+        >
+          <div className="pt-metric-cell">
+            <span>{t('competitionOps.metrics.total')}</span>
+            <strong>{data.accounting.totalNominations}</strong>
           </div>
-          <FlightPlanningPanel data={data} onAssignNomination={assignNominationToGroup} />
-          <FlightFilters
-            data={data}
-            search={flightSearch}
-            disciplineId={flightDisciplineId}
-            divisionId={flightDivisionId}
-            weightClassId={flightWeightClassId}
-            assignment={flightAssignment}
-            status={flightStatus}
-            onSearchChange={setFlightSearch}
-            onDisciplineChange={setFlightDisciplineId}
-            onDivisionChange={(value) => {
-              setFlightDivisionId(value);
-              setFlightWeightClassId('all');
-            }}
-            onWeightClassChange={setFlightWeightClassId}
-            onAssignmentChange={setFlightAssignment}
-            onStatusChange={setFlightStatus}
-          />
-          <FlightBulkAssignmentPanel
-            data={data}
-            nominations={filteredFlightNominations}
-            onDone={refetch}
-          />
-          <div>
-            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">{t('competitionOps.filteredNominations')}</h2>
-                <p className="text-sm text-muted-foreground">{t('competitionOps.filteredNominationsDesc')}</p>
-              </div>
-              <div className="text-sm tabular-nums text-muted-foreground">
-                {filteredFlightNominations.length} / {data.nominations.length}
+          <div className="pt-metric-cell">
+            <span>{t('competitionOps.metrics.paid')}</span>
+            <strong>{data.accounting.paidNominations}</strong>
+          </div>
+          <div className="pt-metric-cell">
+            <span>{t('competitionOps.metrics.weighedIn')}</span>
+            <strong>{data.accounting.weighedInNominations}</strong>
+          </div>
+          <div className="pt-metric-cell">
+            <span>{t('competitionOps.metrics.entryFees')}</span>
+            <strong>{formatRub(data.accounting.paidEntryFeeKopecks)}</strong>
+          </div>
+          <div className="pt-metric-cell">
+            <span>{t('competitionOps.metrics.billing')}</span>
+            <strong>{formatRub(data.accounting.federationBillingKopecks)}</strong>
+          </div>
+        </div>
+
+        <div className="pt-tabs" role="tablist">
+          {TABS.map((item) => (
+            <button
+              key={item}
+              data-testid={`ops-tab-${item}`}
+              type="button"
+              role="tab"
+              aria-selected={tab === item}
+              className={`pt-tab${tab === item ? ' is-active' : ''}`}
+              onClick={() => setTab(item)}
+            >
+              {t(`competitionOps.tabs.${item}`)}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'setup' && (
+          <WorkspacePanel className="p-3 space-y-3">
+            <div className="mb-2">
+              <WorkspaceSectionTitle>{t('competitionOps.tabs.setup')}</WorkspaceSectionTitle>
+              <div className="pt-muted text-xs">
+                {setupReady ? t('competitionOps.setupReady') : t('competitionOps.setupDesc')}
               </div>
             </div>
-            <NominationsTable
-              nominations={filteredFlightNominations}
-              divisions={data.divisions}
-              platforms={data.platforms}
-              emptyText={t('competitionOps.noFilteredNominations')}
-              draggableRows
+            <div className="flex flex-wrap gap-2">
+              <WorkspaceButton
+                data-testid="ops-apply-setup"
+                type="button"
+                onClick={() => void applyDefaultSetup()}
+                disabled={applySetup.isPending}
+              >
+                {applySetup.isPending ? t('common.saving') : t('competitionOps.applySetup')}
+              </WorkspaceButton>
+              <WorkspaceButton
+                data-testid="ops-draw-numbers"
+                type="button"
+                onClick={() =>
+                  void drawNominations
+                    .mutateAsync({ overwrite: true })
+                    .then(() => toast.success(t('competitionOps.drawApplied')))
+                }
+                disabled={drawNominations.isPending || data.nominations.length === 0}
+              >
+                {drawNominations.isPending ? t('common.saving') : t('competitionOps.drawNumbers')}
+              </WorkspaceButton>
+              <WorkspaceButton
+                data-testid="ops-auto-plan"
+                type="button"
+                onClick={() =>
+                  void autoPlanFlights
+                    .mutateAsync({})
+                    .then(() => toast.success(t('competitionOps.planApplied')))
+                }
+                disabled={autoPlanFlights.isPending || data.nominations.length === 0}
+              >
+                {autoPlanFlights.isPending ? t('common.saving') : t('competitionOps.autoPlan')}
+              </WorkspaceButton>
+            </div>
+          </WorkspacePanel>
+        )}
+
+        {tab === 'nominations' && (
+          <div className="space-y-4">
+            {!setupReady && (
+              <SetupRequiredCard
+                pending={applySetup.isPending}
+                onApply={() => void applyDefaultSetup()}
+              />
+            )}
+            {setupReady && <NominationCreateForm competitionId={id} divisions={data.divisions} />}
+            <NominationSecretaryGrid
+              data={data}
+              nominations={filteredNominationGrid}
+              bulkSaving={bulkSaving}
+              search={nominationSearch}
+              disciplineId={nominationDisciplineId}
+              divisionId={nominationDivisionId}
+              weightClassId={nominationWeightClassId}
+              status={nominationStatus}
+              paymentStatus={nominationPaymentStatus}
+              mandate={nominationMandate}
+              onSearchChange={setNominationSearch}
+              onDisciplineChange={setNominationDisciplineId}
+              onDivisionChange={(value) => {
+                setNominationDivisionId(value);
+                setNominationWeightClassId('all');
+              }}
+              onWeightClassChange={setNominationWeightClassId}
+              onStatusChange={setNominationStatus}
+              onPaymentStatusChange={setNominationPaymentStatus}
+              onMandateChange={setNominationMandate}
+              onBulkUpdate={(kind, nominations) => void bulkUpdate(kind, nominations)}
             />
           </div>
-        </div>
-      )}
+        )}
 
-      {tab === 'judges' && <JudgeAssignmentsPanel competitionId={id} data={data} />}
+        {tab === 'mandate' && (
+          <div className="space-y-4">
+            {!setupReady && (
+              <SetupRequiredCard
+                pending={applySetup.isPending}
+                onApply={() => void applyDefaultSetup()}
+              />
+            )}
+            <NominationSecretaryGrid
+              data={data}
+              nominations={filteredNominationGrid}
+              bulkSaving={bulkSaving}
+              search={nominationSearch}
+              disciplineId={nominationDisciplineId}
+              divisionId={nominationDivisionId}
+              weightClassId={nominationWeightClassId}
+              status={nominationStatus}
+              paymentStatus={nominationPaymentStatus}
+              mandate={nominationMandate}
+              onSearchChange={setNominationSearch}
+              onDisciplineChange={setNominationDisciplineId}
+              onDivisionChange={(value) => {
+                setNominationDivisionId(value);
+                setNominationWeightClassId('all');
+              }}
+              onWeightClassChange={setNominationWeightClassId}
+              onStatusChange={setNominationStatus}
+              onPaymentStatusChange={setNominationPaymentStatus}
+              onMandateChange={setNominationMandate}
+              onBulkUpdate={(kind, nominations) => void bulkUpdate(kind, nominations)}
+            />
+          </div>
+        )}
 
-      {tab === 'attempts' && (
-        <div className="overflow-x-auto rounded-md border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('competitionOps.fields.athlete')}</TableHead>
-                <TableHead>{t('competitionOps.fields.discipline')}</TableHead>
-                <TableHead>{t('competitionOps.fields.component')}</TableHead>
-                <TableHead>{t('competitionOps.fields.attempt')}</TableHead>
-                <TableHead>{t('competitionOps.fields.weightKg')}</TableHead>
-                <TableHead>{t('competitionOps.fields.reps')}</TableHead>
-                <TableHead>{t('competitionOps.fields.result')}</TableHead>
-                <TableHead>{t('scoreboard.attempts')}</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.nominations.map((nomination) => (
-                <AttemptEditor key={nomination.id} competitionId={id} nomination={nomination} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+        {tab === 'flights' && (
+          <div className="space-y-4">
+            {!setupReady && (
+              <SetupRequiredCard
+                pending={applySetup.isPending}
+                onApply={() => void applyDefaultSetup()}
+              />
+            )}
+            <div className="pt-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={flightSubTab === 'filters'}
+                className={`pt-tab${flightSubTab === 'filters' ? ' is-active' : ''}`}
+                onClick={() => setFlightSubTab('filters')}
+              >
+                <span className="pt-tab-icon">⚙</span>
+                <span>Фильтры</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={flightSubTab === 'tree'}
+                className={`pt-tab${flightSubTab === 'tree' ? ' is-active' : ''}`}
+                onClick={() => setFlightSubTab('tree')}
+              >
+                <span className="pt-tab-icon">🔗</span>
+                <span>Номинации ({data.nominations.length})</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={flightSubTab === 'duration'}
+                className={`pt-tab${flightSubTab === 'duration' ? ' is-active' : ''}`}
+                onClick={() => setFlightSubTab('duration')}
+              >
+                <span className="pt-tab-icon">⏱</span>
+                <span>Примерный расчёт длительности соревнования</span>
+              </button>
+            </div>
+            {flightSubTab === 'filters' && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <WorkspaceButton
+                    data-testid="ops-auto-plan-flights"
+                    type="button"
+                    tone="green"
+                    onClick={() =>
+                      void autoPlanFlights
+                        .mutateAsync({})
+                        .then(() => toast.success(t('competitionOps.planApplied')))
+                    }
+                    disabled={autoPlanFlights.isPending || data.nominations.length === 0}
+                  >
+                    {autoPlanFlights.isPending ? t('common.saving') : t('competitionOps.autoPlan')}
+                  </WorkspaceButton>
+                </div>
+                <FlightPlanningPanel data={data} onAssignNomination={assignNominationToGroup} />
+                <FlightFilters
+                  data={data}
+                  search={flightSearch}
+                  disciplineId={flightDisciplineId}
+                  divisionId={flightDivisionId}
+                  weightClassId={flightWeightClassId}
+                  assignment={flightAssignment}
+                  status={flightStatus}
+                  onSearchChange={setFlightSearch}
+                  onDisciplineChange={setFlightDisciplineId}
+                  onDivisionChange={(value) => {
+                    setFlightDivisionId(value);
+                    setFlightWeightClassId('all');
+                  }}
+                  onWeightClassChange={setFlightWeightClassId}
+                  onAssignmentChange={setFlightAssignment}
+                  onStatusChange={setFlightStatus}
+                />
+                <FlightBulkAssignmentPanel
+                  data={data}
+                  nominations={filteredFlightNominations}
+                  onDone={refetch}
+                />
+                <div>
+                  <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold">
+                        {t('competitionOps.filteredNominations')}
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        {t('competitionOps.filteredNominationsDesc')}
+                      </p>
+                    </div>
+                    <div className="text-sm tabular-nums text-muted-foreground">
+                      {filteredFlightNominations.length} / {data.nominations.length}
+                    </div>
+                  </div>
+                  <NominationsTable
+                    nominations={filteredFlightNominations}
+                    divisions={data.divisions}
+                    platforms={data.platforms}
+                    emptyText={t('competitionOps.noFilteredNominations')}
+                    draggableRows
+                  />
+                </div>
+              </div>
+            )}
+            {flightSubTab === 'tree' && <FlightNominationsTree data={data} />}
+            {flightSubTab === 'duration' && (
+              <FlightDurationCalculator
+                data={data}
+                seconds={attemptSeconds}
+                onSecondsChange={setAttemptSeconds}
+              />
+            )}
+          </div>
+        )}
 
-      {tab === 'scoreboard' && <ScoreboardTable data={data} />}
+        {tab === 'judges' && <JudgeAssignmentsPanel competitionId={id} data={data} />}
 
-      {tab === 'exports' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('competitionOps.tabs.exports')}</CardTitle>
-            <CardDescription>{t('competitionOps.exportsDesc')}</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button data-testid="ops-export-protocol" type="button" onClick={() => void exportFile('protocol', 'csv')} disabled={downloading !== null}>
-              {downloading === 'protocol' ? t('common.saving') : t('competitionOps.exportProtocol')}
-            </Button>
-            <Button data-testid="ops-export-protocol-xlsx" type="button" variant="outline" onClick={() => void exportFile('protocol', 'xlsx')} disabled={downloading !== null}>
-              {downloading === 'protocol' ? t('common.saving') : t('competitionOps.exportProtocolXlsx')}
-            </Button>
-            <Button data-testid="ops-export-accounting" type="button" variant="outline" onClick={() => void exportFile('accounting', 'csv')} disabled={downloading !== null}>
-              {downloading === 'accounting' ? t('common.saving') : t('competitionOps.exportAccounting')}
-            </Button>
-            <Button data-testid="ops-export-accounting-xlsx" type="button" variant="outline" onClick={() => void exportFile('accounting', 'xlsx')} disabled={downloading !== null}>
-              {downloading === 'accounting' ? t('common.saving') : t('competitionOps.exportAccountingXlsx')}
-            </Button>
-            <Button asChild variant="outline">
-              <Link to="/competitions/$id/protocol-print" params={{ id }}>
+        {tab === 'attempts' && (
+          <div className="overflow-x-auto rounded-md border border-border">
+            <table className="pt-grid">
+              <thead>
+                <tr>
+                  <th>{t('competitionOps.fields.athlete')}</th>
+                  <th>{t('competitionOps.fields.discipline')}</th>
+                  <th>{t('competitionOps.fields.component')}</th>
+                  <th>{t('competitionOps.fields.attempt')}</th>
+                  <th>{t('competitionOps.fields.weightKg')}</th>
+                  <th>{t('competitionOps.fields.reps')}</th>
+                  <th>{t('competitionOps.fields.result')}</th>
+                  <th>{t('scoreboard.attempts')}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {data.nominations.map((nomination) => (
+                  <AttemptEditor key={nomination.id} competitionId={id} nomination={nomination} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === 'scoreboard' && <ScoreboardTable data={data} />}
+
+        {tab === 'exports' && (
+          <WorkspacePanel className="p-3 space-y-3">
+            <div className="mb-2">
+              <WorkspaceSectionTitle>{t('competitionOps.tabs.exports')}</WorkspaceSectionTitle>
+              <div className="pt-muted text-xs">{t('competitionOps.exportsDesc')}</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <WorkspaceButton
+                data-testid="ops-export-protocol"
+                type="button"
+                onClick={() => void exportFile('protocol', 'csv')}
+                disabled={downloading !== null}
+              >
+                {downloading === 'protocol'
+                  ? t('common.saving')
+                  : t('competitionOps.exportProtocol')}
+              </WorkspaceButton>
+              <WorkspaceButton
+                data-testid="ops-export-protocol-xlsx"
+                type="button"
+                onClick={() => void exportFile('protocol', 'xlsx')}
+                disabled={downloading !== null}
+              >
+                {downloading === 'protocol'
+                  ? t('common.saving')
+                  : t('competitionOps.exportProtocolXlsx')}
+              </WorkspaceButton>
+              <WorkspaceButton
+                data-testid="ops-export-accounting"
+                type="button"
+                onClick={() => void exportFile('accounting', 'csv')}
+                disabled={downloading !== null}
+              >
+                {downloading === 'accounting'
+                  ? t('common.saving')
+                  : t('competitionOps.exportAccounting')}
+              </WorkspaceButton>
+              <WorkspaceButton
+                data-testid="ops-export-accounting-xlsx"
+                type="button"
+                onClick={() => void exportFile('accounting', 'xlsx')}
+                disabled={downloading !== null}
+              >
+                {downloading === 'accounting'
+                  ? t('common.saving')
+                  : t('competitionOps.exportAccountingXlsx')}
+              </WorkspaceButton>
+              <Link
+                to="/competitions/$id/protocol-print"
+                params={{ id }}
+                className="pt-link-button"
+              >
                 {t('protocolPrint.title')}
               </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+            </div>
+          </WorkspacePanel>
+        )}
+      </div>
+    </WorkspacePage>
   );
 }

@@ -1,12 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useParams } from '@tanstack/react-router';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@streetlifting/ui';
+import { Card, CardContent } from '@streetlifting/ui';
+import { WorkspacePage, WorkspaceState } from '../../components/workspace.js';
 import { useJudge } from './api.js';
 
 export default function JudgeDetailFeature() {
@@ -15,17 +10,13 @@ export default function JudgeDetailFeature() {
   const { data, isLoading, error } = useJudge(id);
 
   if (isLoading) {
-    return (
-      <div className="max-w-3xl mx-auto px-6 py-10 text-sm text-muted-foreground">
-        {t('common.loading')}
-      </div>
-    );
+    return <WorkspaceState>{t('common.loading')}</WorkspaceState>;
   }
   if (error || !data) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-10 text-sm text-destructive">
+      <WorkspaceState tone="danger">
         {t('common.error')}: {error instanceof Error ? error.message : 'not found'}
-      </div>
+      </WorkspaceState>
     );
   }
   const j = data.judge;
@@ -39,15 +30,16 @@ export default function JudgeDetailFeature() {
   );
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10">
+    <WorkspacePage
+      title={fullName}
+      subtitle={
+        <>
+          {j.categoryRu ?? j.categoryEn ?? t('judges.noCategory')}
+          {j.cityRegion && <span> · {j.cityRegion}</span>}
+        </>
+      }
+    >
       <Card>
-        <CardHeader>
-          <CardTitle>{fullName}</CardTitle>
-          <CardDescription>
-            {j.categoryRu ?? j.categoryEn ?? t('judges.noCategory')}
-            {j.cityRegion && <span> · {j.cityRegion}</span>}
-          </CardDescription>
-        </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-[200px_1fr] gap-y-3 gap-x-6 text-sm">
             <Field label={t('judges.fields.categoryRu')} value={j.categoryRu} />
@@ -58,6 +50,6 @@ export default function JudgeDetailFeature() {
           </dl>
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }

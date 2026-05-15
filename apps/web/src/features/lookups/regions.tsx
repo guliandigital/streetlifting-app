@@ -17,6 +17,7 @@ import {
   TableRow,
   toast,
 } from '@streetlifting/ui';
+import { WorkspacePage } from '../../components/workspace.js';
 import {
   useCountries,
   useCreateRegion,
@@ -39,12 +40,10 @@ export default function LookupsRegionsFeature() {
   const { data: regionsData, isLoading, error } = useRegions(effectiveCountryId || undefined);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{t('lookups.cards.regions.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('lookups.cards.regions.desc')}</p>
-      </div>
-
+    <WorkspacePage
+      title={t('lookups.cards.regions.title')}
+      subtitle={t('lookups.cards.regions.desc')}
+    >
       <Card>
         <CardHeader>
           <CardTitle>{t('lookups.regions.filterTitle')}</CardTitle>
@@ -75,7 +74,9 @@ export default function LookupsRegionsFeature() {
         <CardHeader>
           <CardTitle>{t('lookups.listTitle')}</CardTitle>
           <CardDescription>
-            {regionsData ? t('lookups.cards.regions.count', { count: regionsData.regions.length }) : '…'}
+            {regionsData
+              ? t('lookups.cards.regions.count', { count: regionsData.regions.length })
+              : '…'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -95,7 +96,9 @@ export default function LookupsRegionsFeature() {
                   <TableHead className="w-[120px]">{t('lookups.cols.code')}</TableHead>
                   <TableHead>{t('lookups.cols.nameRu')}</TableHead>
                   <TableHead>{t('lookups.cols.nameEn')}</TableHead>
-                  <TableHead className="text-right w-[100px]">{t('lookups.cols.sortOrder')}</TableHead>
+                  <TableHead className="text-right w-[100px]">
+                    {t('lookups.cols.sortOrder')}
+                  </TableHead>
                   <TableHead className="text-right w-[100px]">{t('lookups.cols.active')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -108,7 +111,7 @@ export default function LookupsRegionsFeature() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </WorkspacePage>
   );
 }
 
@@ -147,12 +150,22 @@ function RegionRow({ region }: { region: RegionDto }) {
           <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} />
         </TableCell>
         <TableCell className="text-right">
-          <Input className="text-right tabular-nums" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
+          <Input
+            className="text-right tabular-nums"
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+          />
         </TableCell>
         <TableCell className="text-right">
           <label className="flex items-center justify-end gap-1 text-xs">
-            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-            <span className="text-muted-foreground">{isActive ? t('common.yes') : t('common.no')}</span>
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+            />
+            <span className="text-muted-foreground">
+              {isActive ? t('common.yes') : t('common.no')}
+            </span>
           </label>
           <div className="flex gap-1 mt-2 justify-end">
             <Button size="sm" variant="outline" onClick={() => setEditing(false)} type="button">
@@ -198,7 +211,10 @@ function CreateRegionCard({ countryId }: { countryId: string }) {
         nameEn: nameEn.trim(),
       });
       toast.success(t('lookups.created'));
-      setCodeIso(''); setNameRu(''); setNameEn(''); setOpen(false);
+      setCodeIso('');
+      setNameRu('');
+      setNameEn('');
+      setOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiClientError ? err.message : 'Error');
     }
@@ -218,21 +234,41 @@ function CreateRegionCard({ countryId }: { countryId: string }) {
         <CardTitle>{t('lookups.cards.regions.create')}</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={(e) => void onSubmit(e)} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <form
+          onSubmit={(e) => void onSubmit(e)}
+          className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end"
+        >
           <div className="space-y-2">
             <Label htmlFor="codeIso">{t('lookups.fields.codeIso')}</Label>
-            <Input id="codeIso" value={codeIso} onChange={(e) => setCodeIso(e.target.value)} required />
+            <Input
+              id="codeIso"
+              value={codeIso}
+              onChange={(e) => setCodeIso(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="nameRu">{t('lookups.fields.nameRu')}</Label>
-            <Input id="nameRu" value={nameRu} onChange={(e) => setNameRu(e.target.value)} required />
+            <Input
+              id="nameRu"
+              value={nameRu}
+              onChange={(e) => setNameRu(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="nameEn">{t('lookups.fields.nameEn')}</Label>
-            <Input id="nameEn" value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+            <Input
+              id="nameEn"
+              value={nameEn}
+              onChange={(e) => setNameEn(e.target.value)}
+              required
+            />
           </div>
           <div className="md:col-span-3 flex gap-2 justify-end">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              {t('common.cancel')}
+            </Button>
             <Button type="submit" disabled={create.isPending}>
               {create.isPending ? t('common.saving') : t('common.save')}
             </Button>

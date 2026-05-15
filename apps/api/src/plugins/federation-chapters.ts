@@ -14,6 +14,7 @@ import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
+import { validateUuidParams } from '../lib/params.js';
 
 const log = moduleLogger('federation_chapters');
 
@@ -31,9 +32,7 @@ function canReadFederation(
   federationId: string,
 ): boolean {
   if (!user) return false;
-  return user.roles.some(
-    (r) => r.role === 'platform_admin' || r.federationId === federationId,
-  );
+  return user.roles.some((r) => r.role === 'platform_admin' || r.federationId === federationId);
 }
 
 /** Caller can write chapters of this federation if platform_admin OR federation_admin of it. */
@@ -52,6 +51,8 @@ function canWriteFederation(
 export const federationChaptersPlugin: FeaturePlugin = {
   name: 'federation_chapters',
   register: async (app) => {
+    app.addHook('preHandler', validateUuidParams(['fedId', 'id']));
+
     app.get('/health/federation_chapters', async () => ({
       status: 'ok',
       module: 'federation_chapters',
@@ -122,7 +123,11 @@ export const federationChaptersPlugin: FeaturePlugin = {
         const parsed = FederationChapterCreate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const data = parsed.data;
@@ -154,12 +159,19 @@ export const federationChaptersPlugin: FeaturePlugin = {
             },
             (tx) => tx.federationChapter.create({ data: createData }),
           );
-          log.info({ chapterId: chapter.id, federationId: fed.id, code: chapter.code }, 'chapter created');
+          log.info(
+            { chapterId: chapter.id, federationId: fed.id, code: chapter.code },
+            'chapter created',
+          );
           return reply.code(201).send({ chapter });
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             return reply.code(409).send({
-              error: { code: 'conflict', message: 'A chapter with this code already exists for this federation', requestId: req.requestId },
+              error: {
+                code: 'conflict',
+                message: 'A chapter with this code already exists for this federation',
+                requestId: req.requestId,
+              },
             });
           }
           throw err;
@@ -188,7 +200,11 @@ export const federationChaptersPlugin: FeaturePlugin = {
         const parsed = FederationChapterUpdate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const updateData = stripUndefined(parsed.data) as Prisma.FederationChapterUpdateInput;

@@ -1,6 +1,6 @@
 # V2 Roadmap
 
-Target: full PowerTable functional parity with a production web launch first.
+Target: full reference workflow parity with a production web launch first.
 
 Scope update 2026-05-09: the first release is **web-first** (`apps/web` + `apps/api` + Postgres). Desktop/Tauri, local SQLite, offline sync, auto-update, and signing remain in the architecture but are no longer launch blockers. They move to a post-web-launch milestone after the browser workflow is stable in pilot use.
 
@@ -32,13 +32,14 @@ Every milestone must include an **Isolation check**: prove that breaking the new
 Features must not import from each other. Shared shapes live in `packages/domain`; shared UI in `packages/ui`. The isolation primitives (`LazyModule`, `loadPlugins`) are already in the skeleton.
 
 ### M0 — Skeleton (Day 0–3) ← DONE 2026-05-07
+
 - [x] Monorepo: pnpm + Turborepo, apps/web · apps/api · apps/desktop, packages/domain · ui · sync
-- [x] React 19 + Vite + Tailwind v4 stub
-- [x] Fastify + Postgres stub with `/health`
+- [x] React 19 + Vite + Tailwind v4 scaffold
+- [x] Fastify + Postgres scaffold with `/health`
 - [x] Tauri 2 wrapper, auto-update endpoint pointed at this repo, signing key reused from v1.4.1 (`AE2C…8968`)
 - [x] Domain Zod schemas for the 14 core entities
 - [x] Module-isolation primitives: `LazyModule` + `ModuleErrorBoundary` (web), `loadPlugins` (api)
-- [x] First isolation-checked feature stub: `_health`
+- [x] First isolation-checked feature slice: `_health`
 - [x] Security baseline (ADR-0004): helmet+strict CSP, CORS allowlist, error handler, audit primitive
 - [x] Logging+audit (ADR-0005): pino with PII redact list, request-context UUIDv7, `audit.record` API
 - [x] Brand: palette + logo pack curated subset wired (favicons, app header symbol, Tauri icons, Tailwind tokens)
@@ -49,6 +50,7 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [x] Tooling: ESLint flat config (cross-feature import ban + no-console for web), Prettier, lefthook (gitleaks + prettier + eslint pre-commit, commitlint, typecheck+test pre-push), commitlint, vitest configs, .browserslistrc, docker-compose for Postgres+Redis, PR template, CONTRIBUTING.md
 
 ### M1 — Foundations (Week 1–2)
+
 - [ ] Prisma schema generated from domain types; migrations against Postgres 16 on reg.ru
 - [ ] Auth: JWT + refresh, argon2 hashing, role assignments
 - [ ] Web shell: TanStack Router with role-aware route guards, login/logout, layout chrome
@@ -57,12 +59,14 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [ ] CI: typecheck + test on push to main + PRs
 
 ### M2 — Core directories (Week 3–4)
+
 - [ ] Federations: CRUD, settings page (contact info, security key, accountant/cashier)
 - [ ] Athletes: list with virtualized table, search, profile page, photo upload
 - [ ] Disciplines catalog: editable in admin, locked per competition
 - [x] Judges: directory + per-competition assignments
 
 ### M3 — Competitions + nominations (Week 5–7)
+
 - [ ] Competition wizard: create draft → set divisions, classes, disciplines, fees
 - [x] Online registration MVP: public form per federation page (athlete self-registers, picks discipline + class; payment stays manual for mandate)
 - [ ] Online payment for registration fees
@@ -71,10 +75,12 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [x] Entry number / lot drawing
 
 ### M4 — Flights, groups, platforms (Week 8)
+
 - [x] "Распределение по потокам и группам" page: drag-drop assignment, automatic ordering
 - [x] Per-platform timetable
 
 ### M5 — Web tournament day operations (Week 9–11)
+
 - [x] Web/PWA tournament mode with clear online-only status
 - [x] Operator scoreboard page: current lifter card, attempt entry, weight changes
 - [x] Judge tablet UI MVP: three-button good/no/withdraw decision screen
@@ -83,6 +89,7 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [ ] OBS overlay (HTML page with transparent background)
 
 ### M6 — Reports, awards, printables (Week 12–13)
+
 - [ ] Awards ceremony page: place computation, tie-break, deck — post-web-pilot
 - [ ] Server-side certificate (грамота) PDF generation with federation templates — post-web-pilot
 - [ ] Standard reports: protocol, technical secretary report, weight class results, federation summary
@@ -90,12 +97,14 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [x] Print-friendly web protocol view for browser PDF printing
 
 ### M7 — Federation portal (Week 14–15)
+
 - [ ] Federation home: receipts/writeoffs ledger, balance, regional comparison chart
 - [ ] Telegram bot: federation registration codes, new-registration notifications
 - [ ] Support tickets: federation ↔ platform admin
 - [ ] Public results page (gated by `isPublicResultsClosed`)
 
 ### M8 — Desktop/offline after web launch
+
 - [ ] Sync engine in `packages/sync`: local SQLite, event log, online/offline indicator
 - [ ] Event push/replay API, conflict resolution, dead-letter queue
 - [ ] Desktop degraded-mode UX for unavailable network/API
@@ -105,6 +114,7 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [ ] Final v1.x release on legacy repo: bumps version banner, points users to V2 install link
 
 ### M9 — Hardening + pilot meet (Week 17–18)
+
 - [ ] Load test broadcast publisher with simulated 200 concurrent viewers
 - [ ] Run a pilot tournament with one friendly federation, gather feedback
 - [ ] Hotfix cycle
@@ -121,10 +131,10 @@ Features must not import from each other. Shared shapes live in `packages/domain
 
 ## Risks and mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Sync engine more complex than estimated | M5 is the single biggest milestone; budget extra week if event log gets messy |
-| Pilot federations resist switching from PowerTable | Run M9 pilot with a friendly federation we already know; PowerTable parity is non-negotiable |
-| Tauri auto-update key rotation breaks v1.x users | Re-using v1.4.1 pubkey in V2 (`AE2C…8968`) — old binaries already trust this signer |
-| reg.ru server can't handle broadcast fanout | Profile early in M5; if needed, move WS to Cloudflare or self-host in front of reg.ru |
-| Russian regulatory changes (data localization) | Already on RU infra; ИП Гулян А. Г. is RU resident; aligned with project legal memo |
+| Risk                                                          | Mitigation                                                                                           |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Sync engine more complex than estimated                       | M5 is the single biggest milestone; budget extra week if event log gets messy                        |
+| Pilot federations resist switching from the previous workflow | Run M9 pilot with a friendly federation we already know; reference workflow parity is non-negotiable |
+| Tauri auto-update key rotation breaks v1.x users              | Re-using v1.4.1 pubkey in V2 (`AE2C…8968`) — old binaries already trust this signer                  |
+| reg.ru server can't handle broadcast fanout                   | Profile early in M5; if needed, move WS to Cloudflare or self-host in front of reg.ru                |
+| Russian regulatory changes (data localization)                | Already on RU infra; ИП Гулян А. Г. is RU resident; aligned with project legal memo                  |

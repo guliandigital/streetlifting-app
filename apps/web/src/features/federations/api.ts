@@ -4,6 +4,8 @@ import type {
   FederationChapterUpdate,
   FederationCreate,
   FederationUpdate,
+  PlateSetCreate,
+  PlateSetUpdate,
 } from '@streetlifting/domain';
 import { api } from '../../lib/api-client.js';
 
@@ -82,10 +84,39 @@ export interface FederationAuditEntryDto {
   notes: string | null;
 }
 
+export type SupportTicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+
+export interface SupportTicketMessageDto {
+  id: string;
+  ticketId: string;
+  authorUserId: string;
+  body: string;
+  isInternal: boolean;
+  createdAt: string;
+  author: { id: string; email: string; displayName: string };
+}
+
+export interface SupportTicketDto {
+  id: string;
+  federationId: string;
+  authorUserId: string;
+  subject: string;
+  status: SupportTicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt: string;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  author: { id: string; email: string; displayName: string };
+  messages: SupportTicketMessageDto[];
+}
+
 export interface FederationTestEmailResponse {
-  status: 'queued' | 'configuration_checked';
+  status: 'sent';
   recipient: string;
   smtpConfigured: boolean;
+  provider: 'endpoint' | 'smtp';
+  messageId: string | null;
 }
 
 export interface FederationPlateSetDto {
@@ -158,6 +189,13 @@ export function useFederationAudit(id: string) {
   });
 }
 
+export function useFederationSupportTickets(id: string) {
+  return useQuery<{ tickets: SupportTicketDto[] }>({
+    queryKey: ['federations', id, 'support-tickets'],
+    queryFn: () => api.federations.supportTickets.list(id),
+  });
+}
+
 export function useCreateFederation() {
   const qc = useQueryClient();
   return useMutation({
@@ -199,6 +237,45 @@ export function useCreateFederationFeedback(id: string) {
   });
 }
 
+export function useCreateFederationSupportTicket(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { subject?: string; message: string }) =>
+      api.federations.supportTickets.create(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'support-tickets'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useCreateFederationSupportTicketMessage(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { ticketId: string; message: string; isInternal?: boolean }) => {
+      const payload: { message: string; isInternal?: boolean } = { message: data.message };
+      if (data.isInternal !== undefined) payload.isInternal = data.isInternal;
+      return api.federations.supportTickets.createMessage(id, data.ticketId, payload);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'support-tickets'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useUpdateFederationSupportTicket(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { ticketId: string; status: SupportTicketStatus }) =>
+      api.federations.supportTickets.update(id, data.ticketId, { status: data.status }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'support-tickets'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
 export function useUploadFederationAttachment(id: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -215,6 +292,39 @@ export function useDeleteFederationAttachment(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (attachmentId: string) => api.federations.deleteAttachment(id, attachmentId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useCreateFederationPlateSet(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: PlateSetCreate) => api.federations.createPlateSet(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useUpdateFederationPlateSet(id: string, plateSetId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: PlateSetUpdate) => api.federations.updatePlateSet(id, plateSetId, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useDeleteFederationPlateSet(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (plateSetId: string) => api.federations.deletePlateSet(id, plateSetId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
       void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });

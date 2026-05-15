@@ -5,6 +5,7 @@ import type { Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
+import { validateUuidParams } from '../lib/params.js';
 
 const log = moduleLogger('judges');
 
@@ -19,6 +20,8 @@ function stripUndefined<T extends object>(obj: T): Partial<T> {
 export const judgesPlugin: FeaturePlugin = {
   name: 'judges',
   register: async (app) => {
+    app.addHook('preHandler', validateUuidParams(['id']));
+
     app.get('/health/judges', async () => ({ status: 'ok', module: 'judges' }));
 
     // ─── List + search ─────────────────────────────────────────────────
@@ -26,7 +29,11 @@ export const judgesPlugin: FeaturePlugin = {
       const parsed = JudgeListQuery.safeParse(req.query);
       if (!parsed.success) {
         return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
         });
       }
       const { search, limit, offset } = parsed.data;
@@ -71,45 +78,45 @@ export const judgesPlugin: FeaturePlugin = {
     );
 
     // ─── Create ───────────────────────────────────────────────────────
-    app.post(
-      '/judges',
-      { preHandler: requireRole('platform_admin') },
-      async (req, reply) => {
-        const parsed = JudgeCreate.safeParse(req.body);
-        if (!parsed.success) {
-          return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
-          });
-        }
-        const data = parsed.data;
-        const createData = stripUndefined({
-          lastName: data.lastName,
-          firstName: data.firstName,
-          middleName: data.middleName,
-          categoryRu: data.categoryRu,
-          categoryEn: data.categoryEn,
-          cardNumber: data.cardNumber,
-          cityRegion: data.cityRegion,
-        }) as Prisma.JudgeCreateInput;
-
-        const judge = await audit.withAudit(
-          {
-            ...audit.fromRequest(req),
-            actorUserId: req.user!.id,
-            action: 'judge.created',
-            scopeFederationId: null,
-            scopeCompetitionId: null,
-            targetType: 'judge',
-            targetId: '00000000-0000-0000-0000-000000000000',
-            before: null,
-            after: { lastName: data.lastName, firstName: data.firstName },
+    app.post('/judges', { preHandler: requireRole('platform_admin') }, async (req, reply) => {
+      const parsed = JudgeCreate.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
           },
-          (tx) => tx.judge.create({ data: createData }),
-        );
-        log.info({ judgeId: judge.id }, 'judge created');
-        return reply.code(201).send({ judge });
-      },
-    );
+        });
+      }
+      const data = parsed.data;
+      const createData = stripUndefined({
+        lastName: data.lastName,
+        firstName: data.firstName,
+        middleName: data.middleName,
+        categoryRu: data.categoryRu,
+        categoryEn: data.categoryEn,
+        cardNumber: data.cardNumber,
+        cityRegion: data.cityRegion,
+      }) as Prisma.JudgeCreateInput;
+
+      const judge = await audit.withAudit(
+        {
+          ...audit.fromRequest(req),
+          actorUserId: req.user!.id,
+          action: 'judge.created',
+          scopeFederationId: null,
+          scopeCompetitionId: null,
+          targetType: 'judge',
+          targetId: '00000000-0000-0000-0000-000000000000',
+          before: null,
+          after: { lastName: data.lastName, firstName: data.firstName },
+        },
+        (tx) => tx.judge.create({ data: createData }),
+      );
+      log.info({ judgeId: judge.id }, 'judge created');
+      return reply.code(201).send({ judge });
+    });
 
     // ─── Update ───────────────────────────────────────────────────────
     app.patch<{ Params: { id: string } }>(
@@ -119,7 +126,11 @@ export const judgesPlugin: FeaturePlugin = {
         const parsed = JudgeUpdate.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
         const before = await prisma.judge.findUnique({ where: { id: req.params.id } });

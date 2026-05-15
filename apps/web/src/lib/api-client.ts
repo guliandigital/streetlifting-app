@@ -21,6 +21,8 @@ import type {
   NominationDraw,
   NominationCreate,
   NominationUpdate,
+  PlateSetCreate,
+  PlateSetUpdate,
   RegionCreate,
   RegionUpdate,
   AttemptUpsert,
@@ -34,7 +36,11 @@ import type {
   FederationAttachmentDto,
   FederationChapterDto,
   FederationDashboardResponse,
+  FederationPlateSetDto,
   FederationReceiptDto,
+  SupportTicketDto,
+  SupportTicketMessageDto,
+  SupportTicketStatus,
   FederationTestEmailResponse,
   FederationWriteoffDto,
 } from '../features/federations/api.js';
@@ -286,6 +292,30 @@ export const api = {
       request(`/federations/${id}/test-email`, { method: 'POST' }),
     createFeedback: (id: string, data: { message: string }): Promise<{ feedback: { author: string; message: string; status: string } }> =>
       request(`/federations/${id}/feedback`, { method: 'POST', body: data }),
+    supportTickets: {
+      list: (id: string): Promise<{ tickets: SupportTicketDto[] }> =>
+        request(`/federations/${id}/support-tickets`),
+      create: (
+        id: string,
+        data: { subject?: string; message: string },
+      ): Promise<{ ticket: SupportTicketDto }> =>
+        request(`/federations/${id}/support-tickets`, { method: 'POST', body: data }),
+      createMessage: (
+        id: string,
+        ticketId: string,
+        data: { message: string; isInternal?: boolean },
+      ): Promise<{ message: SupportTicketMessageDto }> =>
+        request(`/federations/${id}/support-tickets/${ticketId}/messages`, {
+          method: 'POST',
+          body: data,
+        }),
+      update: (
+        id: string,
+        ticketId: string,
+        data: { status: SupportTicketStatus },
+      ): Promise<{ ticket: SupportTicketDto }> =>
+        request(`/federations/${id}/support-tickets/${ticketId}`, { method: 'PATCH', body: data }),
+    },
     uploadAttachment: (
       id: string,
       data: { filename: string; mimeType: string; contentBase64: string },
@@ -295,6 +325,12 @@ export const api = {
       request(`/federations/${id}/attachments/${attachmentId}`, { method: 'DELETE' }),
     downloadAttachment: (id: string, attachmentId: string): Promise<Blob> =>
       requestBlob(`/federations/${id}/attachments/${attachmentId}/download`),
+    createPlateSet: (id: string, data: PlateSetCreate): Promise<{ plateSet: FederationPlateSetDto }> =>
+      request(`/federations/${id}/plate-sets`, { method: 'POST', body: data }),
+    updatePlateSet: (id: string, plateSetId: string, data: PlateSetUpdate): Promise<{ plateSet: FederationPlateSetDto }> =>
+      request(`/federations/${id}/plate-sets/${plateSetId}`, { method: 'PATCH', body: data }),
+    deletePlateSet: (id: string, plateSetId: string): Promise<{ status: 'ok' }> =>
+      request(`/federations/${id}/plate-sets/${plateSetId}`, { method: 'DELETE' }),
     createReceipt: (
       id: string,
       data: {

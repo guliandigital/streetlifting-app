@@ -14,8 +14,8 @@ import { VeteranTier } from './enums.js';
  *   M6 (70+)   = 1.150
  *
  * The M5/M6 split at 70+ → 1.150 is the single most important correctness
- * differentiator vs PowerTable / PowerGage, which encode the pre-v5.1
- * single 60+ band → 1.125. Verified by legacy test suite.
+ * differentiator vs older imported coefficient tables, which encode the
+ * pre-v5.1 single 60+ band → 1.125. Verified by legacy test suite.
  *
  * Federations can override per-tier values for their own ranking systems
  * (audit-logged).

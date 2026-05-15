@@ -130,6 +130,10 @@ export interface NominationDto {
     lastName: string;
     firstName: string;
     middleName: string | null;
+    dateOfBirth: string;
+    clubName: string | null;
+    federationCardNumber: string | null;
+    photoUrl: string | null;
   };
   discipline: {
     id: string;
@@ -146,6 +150,7 @@ export interface NominationDto {
     code: string;
     nameRu: string;
     nameEn: string;
+    gender: 'M' | 'F';
   };
   declaredWeightClass: {
     id: string;
