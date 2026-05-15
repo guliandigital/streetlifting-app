@@ -156,6 +156,29 @@ export function useDeleteAthleteAttachment(id: string) {
   });
 }
 
+export function useUploadAthletePhoto(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { filename: string; mimeType: string; contentBase64: string }) =>
+      api.athletes.uploadPhoto(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['athletes', id] });
+      void qc.invalidateQueries({ queryKey: ['athletes'] });
+    },
+  });
+}
+
+export function useDeleteAthletePhoto(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.athletes.deletePhoto(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['athletes', id] });
+      void qc.invalidateQueries({ queryKey: ['athletes'] });
+    },
+  });
+}
+
 export function useCreateAthlete() {
   const qc = useQueryClient();
   return useMutation({

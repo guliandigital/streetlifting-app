@@ -14,6 +14,8 @@ import { validateUuidParams } from '../lib/params.js';
 const log = moduleLogger('athletes');
 
 const MAX_ATHLETE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const MAX_ATHLETE_PHOTO_BYTES = 2 * 1024 * 1024;
+const ALLOWED_PHOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const AthleteAttachmentCreateInput = z
   .object({
@@ -23,6 +25,18 @@ const AthleteAttachmentCreateInput = z
     kind: z.enum(['certificate_pdf', 'misc']).default('misc'),
   })
   .strict();
+
+const AthletePhotoCreateInput = z
+  .object({
+    filename: z.string().min(1).max(180),
+    mimeType: z.string().min(1).max(120),
+    contentBase64: z.string().min(1),
+  })
+  .strict();
+
+function photoUrlFor(athleteId: string): string {
+  return `/api/athletes/${athleteId}/photo`;
+}
 
 function uploadRoot(): string {
   return process.env.STORAGE_DIR ?? path.join(process.cwd(), 'storage');
@@ -557,5 +571,213 @@ export const athletesPlugin: FeaturePlugin = {
         }
       },
     );
+
+    // ─── Photo upload (one current per athlete) ───────────────────────
+    app.post<{ Params: { id: string } }>(
+      '/athletes/:id/photo',
+      { preHandler: requireRole('platform_admin') },
+      async (req, reply) => {
+        const parsed = AthletePhotoCreateInput.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (!ALLOWED_PHOTO_MIME.has(parsed.data.mimeType)) {
+          return reply.code(400).send({
+            error: {
+              code: 'invalid_mime',
+              message: 'Photo must be JPEG, PNG or WebP',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const athlete = await prisma.athlete.findUnique({
+          where: { id: req.params.id },
+          select: { id: true, photoUrl: true },
+        });
+        if (!athlete) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
+          });
+        }
+
+        const content = decodeBase64File(parsed.data.contentBase64);
+        if (!content || content.length === 0 || content.length > MAX_ATHLETE_PHOTO_BYTES) {
+          return reply.code(400).send({
+            error: {
+              code: 'invalid_file',
+              message: `Photo must be between 1 byte and ${MAX_ATHLETE_PHOTO_BYTES} bytes`,
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const filename = sanitizeFilename(parsed.data.filename);
+        const storagePath = path.join(
+          'athlete-photos',
+          req.params.id,
+          `${randomUUID()}-${filename}`,
+        );
+        const absolutePath = path.join(uploadRoot(), storagePath);
+        await mkdir(path.dirname(absolutePath), { recursive: true });
+        await writeFile(absolutePath, content);
+
+        try {
+          const updated = await prisma.$transaction(async (tx) => {
+            await tx.attachment.updateMany({
+              where: {
+                athleteId: req.params.id,
+                kind: 'athlete_photo',
+                deletedAt: null,
+              },
+              data: { deletedAt: new Date() },
+            });
+            await tx.attachment.create({
+              data: {
+                kind: 'athlete_photo',
+                athleteId: req.params.id,
+                uploadedByUserId: req.user!.id,
+                filename,
+                mimeType: parsed.data.mimeType,
+                sizeBytes: BigInt(content.length),
+                sha256: createHash('sha256').update(content).digest('hex'),
+                storagePath,
+              },
+            });
+            const result = await tx.athlete.update({
+              where: { id: req.params.id },
+              data: { photoUrl: photoUrlFor(req.params.id) },
+            });
+            await audit.record(
+              {
+                ...audit.fromRequest(req),
+                actorUserId: req.user!.id,
+                action: 'athlete.photo.uploaded',
+                result: 'success',
+                scopeFederationId: null,
+                scopeCompetitionId: null,
+                targetType: 'athlete',
+                targetId: req.params.id,
+                before: { photoUrl: athlete.photoUrl },
+                after: { photoUrl: result.photoUrl, filename, mimeType: parsed.data.mimeType },
+              },
+              tx,
+            );
+            return result;
+          });
+          log.info(
+            { athleteId: req.params.id, filename, sizeBytes: content.length },
+            'athlete photo uploaded',
+          );
+          return reply.code(201).send({ athlete: updated });
+        } catch (err) {
+          await unlink(absolutePath).catch(() => undefined);
+          throw err;
+        }
+      },
+    );
+
+    // ─── Photo delete ─────────────────────────────────────────────────
+    app.delete<{ Params: { id: string } }>(
+      '/athletes/:id/photo',
+      { preHandler: requireRole('platform_admin') },
+      async (req, reply) => {
+        const athlete = await prisma.athlete.findUnique({
+          where: { id: req.params.id },
+          select: { id: true, photoUrl: true },
+        });
+        if (!athlete) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
+          });
+        }
+        if (!athlete.photoUrl) {
+          return reply.code(404).send({
+            error: { code: 'no_photo', message: 'Athlete has no photo', requestId: req.requestId },
+          });
+        }
+
+        await prisma.$transaction(async (tx) => {
+          await tx.attachment.updateMany({
+            where: {
+              athleteId: req.params.id,
+              kind: 'athlete_photo',
+              deletedAt: null,
+            },
+            data: { deletedAt: new Date() },
+          });
+          await tx.athlete.update({
+            where: { id: req.params.id },
+            data: { photoUrl: null },
+          });
+          await audit.record(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'athlete.photo.deleted',
+              result: 'success',
+              scopeFederationId: null,
+              scopeCompetitionId: null,
+              targetType: 'athlete',
+              targetId: req.params.id,
+              before: { photoUrl: athlete.photoUrl },
+              after: { photoUrl: null },
+            },
+            tx,
+          );
+        });
+        return { status: 'ok' };
+      },
+    );
+
+    // ─── Photo download (public, no auth — <img> can't send Bearer) ───
+    app.get<{ Params: { id: string } }>('/athletes/:id/photo', async (req, reply) => {
+      const photo = await prisma.attachment.findFirst({
+        where: {
+          athleteId: req.params.id,
+          kind: 'athlete_photo',
+          deletedAt: null,
+        },
+        orderBy: { uploadedAt: 'desc' },
+      });
+      if (!photo) {
+        return reply.code(404).send({
+          error: { code: 'not_found', message: 'Photo not found', requestId: req.requestId },
+        });
+      }
+
+      const root = path.resolve(uploadRoot());
+      const absolutePath = path.resolve(root, photo.storagePath);
+      if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`)) {
+        return reply.code(500).send({
+          error: {
+            code: 'invalid_storage_path',
+            message: 'Photo storage path is invalid',
+            requestId: req.requestId,
+          },
+        });
+      }
+
+      try {
+        const content = await readFile(absolutePath);
+        reply.header('Content-Type', photo.mimeType);
+        reply.header('Cache-Control', 'private, max-age=300');
+        return reply.send(content);
+      } catch (err) {
+        log.error({ err, photoId: photo.id }, 'photo file read failed');
+        return reply.code(404).send({
+          error: {
+            code: 'file_missing',
+            message: 'Photo file is missing from storage',
+            requestId: req.requestId,
+          },
+        });
+      }
+    });
   },
 };
