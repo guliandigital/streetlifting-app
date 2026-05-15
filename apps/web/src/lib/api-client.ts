@@ -506,6 +506,28 @@ export const api = {
     records: (id: string): Promise<AthleteRecordsResponse> => request(`/athletes/${id}/records`),
     documents: (id: string): Promise<AthleteDocumentsResponse> =>
       request(`/athletes/${id}/documents`),
+    uploadAttachment: (
+      id: string,
+      data: {
+        filename: string;
+        mimeType: string;
+        contentBase64: string;
+        kind?: 'certificate_pdf' | 'misc';
+      },
+    ): Promise<{
+      attachment: {
+        id: string;
+        kind: string;
+        filename: string;
+        mimeType: string;
+        sizeBytes: string;
+        uploadedAt: string;
+      };
+    }> => request(`/athletes/${id}/attachments`, { method: 'POST', body: data }),
+    deleteAttachment: (id: string, attachmentId: string): Promise<{ status: string }> =>
+      request(`/athletes/${id}/attachments/${attachmentId}`, { method: 'DELETE' }),
+    downloadAttachment: (id: string, attachmentId: string): Promise<Blob> =>
+      requestBlob(`/athletes/${id}/attachments/${attachmentId}/download`),
   },
 
   disciplines: {

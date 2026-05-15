@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
@@ -12,15 +12,32 @@ import {
   type WorkspaceIconName,
 } from '../../components/workspace.js';
 import { useAuthStore } from '../../lib/auth/store.js';
+import { api, ApiClientError } from '../../lib/api-client.js';
 import {
   useAthlete,
   useAthleteAppearances,
   useAthleteDocuments,
   useAthleteRecords,
+  useDeleteAthleteAttachment,
   useUpdateAthlete,
+  useUploadAthleteAttachment,
 } from './api.js';
 import { calculateAge, formatDateOfBirth } from './format.js';
 import { useCountries, useRegions } from '../../lib/references-api.js';
+
+const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      resolve(result.includes(',') ? result.slice(result.indexOf(',') + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('File read failed'));
+    reader.readAsDataURL(file);
+  });
+}
 
 const RECORD_SCOPE_LABEL: Record<string, string> = {
   federation: 'Федерация',
@@ -81,6 +98,11 @@ export default function AthleteDetailFeature() {
   const appearancesQuery = useAthleteAppearances(id);
   const recordsQuery = useAthleteRecords(id);
   const documentsQuery = useAthleteDocuments(id);
+  const uploadAttachment = useUploadAthleteAttachment(id);
+  const deleteAttachment = useDeleteAthleteAttachment(id);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [documentKind, setDocumentKind] = useState<'certificate_pdf' | 'misc'>('certificate_pdf');
   const user = useAuthStore((s) => s.user);
   const { data: countriesData } = useCountries();
   const countryRow = countriesData?.countries.find((c) => c.codeIso2 === data?.athlete.countryCode);
@@ -141,6 +163,62 @@ export default function AthleteDetailFeature() {
       });
       toast.success('Профиль обновлён');
       setEditing(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
+  async function submitUpload(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedFile) {
+      toast.error('Выберите файл');
+      return;
+    }
+    if (selectedFile.size > MAX_DOCUMENT_BYTES) {
+      toast.error('Файл должен быть не больше 5 МБ');
+      return;
+    }
+    try {
+      const contentBase64 = await fileToBase64(selectedFile);
+      await uploadAttachment.mutateAsync({
+        filename: selectedFile.name,
+        mimeType: selectedFile.type || 'application/octet-stream',
+        contentBase64,
+        kind: documentKind,
+      });
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      toast.success('Документ загружен');
+    } catch (err) {
+      if (err instanceof ApiClientError && err.code === 'invalid_file') {
+        toast.error('Файл пустой или больше 5 МБ');
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Error');
+      }
+    }
+  }
+
+  async function downloadDocument(doc: { id: string; filename: string }) {
+    try {
+      const blob = await api.athletes.downloadAttachment(id, doc.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = doc.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
+  async function removeDocument(attachmentId: string, filename: string) {
+    if (!window.confirm(`Удалить документ "${filename}"?`)) return;
+    try {
+      await deleteAttachment.mutateAsync(attachmentId);
+      toast.success('Документ удалён');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error');
     }
@@ -473,14 +551,40 @@ export default function AthleteDetailFeature() {
           <WorkspacePanel className="p-3 space-y-3">
             <WorkspaceSectionTitle>Документы</WorkspaceSectionTitle>
             <div className="pt-info-yellow">
-              Анти-допинг сертификаты, страховка, медицинские допуски. Загрузка файлов будет
-              включена после подключения документ-стораджа.
+              Анти-допинг сертификаты, страховка, медицинские допуски. Лимит: 5 МБ на файл.
             </div>
-            <WorkspaceToolbar>
-              <WorkspaceButton type="button" icon="add" disabled>
-                Загрузить документ
-              </WorkspaceButton>
-            </WorkspaceToolbar>
+            {canEdit ? (
+              <form
+                onSubmit={(e) => void submitUpload(e)}
+                className="flex flex-wrap items-center gap-2"
+              >
+                <select
+                  className="pt-field"
+                  value={documentKind}
+                  onChange={(e) => setDocumentKind(e.target.value as 'certificate_pdf' | 'misc')}
+                  disabled={uploadAttachment.isPending}
+                  aria-label="Тип документа"
+                >
+                  <option value="certificate_pdf">Сертификат</option>
+                  <option value="misc">Прочее</option>
+                </select>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="pt-field"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                  disabled={uploadAttachment.isPending}
+                />
+                <WorkspaceButton
+                  type="submit"
+                  icon="add"
+                  tone="green"
+                  disabled={!selectedFile || uploadAttachment.isPending}
+                >
+                  {uploadAttachment.isPending ? 'Загрузка…' : 'Загрузить'}
+                </WorkspaceButton>
+              </form>
+            ) : null}
             <table className="pt-grid">
               <thead>
                 <tr>
@@ -489,18 +593,19 @@ export default function AthleteDetailFeature() {
                   <th className="text-left">Имя файла</th>
                   <th className="text-left">MIME</th>
                   <th>Размер</th>
+                  <th className="text-center">Действия</th>
                 </tr>
               </thead>
               <tbody>
                 {documentsQuery.isLoading ? (
                   <tr>
-                    <td colSpan={5} className="pt-muted italic text-center">
+                    <td colSpan={6} className="pt-muted italic text-center">
                       {t('common.loading')}
                     </td>
                   </tr>
                 ) : documentsQuery.error ? (
                   <tr>
-                    <td colSpan={5} className="pt-muted italic text-center text-[var(--pt-danger)]">
+                    <td colSpan={6} className="pt-muted italic text-center text-[var(--pt-danger)]">
                       {documentsQuery.error instanceof Error
                         ? documentsQuery.error.message
                         : t('common.error')}
@@ -508,7 +613,7 @@ export default function AthleteDetailFeature() {
                   </tr>
                 ) : !documentsQuery.data || documentsQuery.data.documents.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="pt-muted italic text-center">
+                    <td colSpan={6} className="pt-muted italic text-center">
                       Документы не загружены.
                     </td>
                   </tr>
@@ -520,6 +625,26 @@ export default function AthleteDetailFeature() {
                       <td>{row.filename}</td>
                       <td className="font-mono text-xs">{row.mimeType}</td>
                       <td className="text-right">{formatFileSize(row.sizeBytes)}</td>
+                      <td className="text-center whitespace-nowrap">
+                        <button
+                          type="button"
+                          className="pt-link mr-2"
+                          onClick={() => void downloadDocument(row)}
+                        >
+                          Скачать
+                        </button>
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            className="pt-link"
+                            style={{ color: 'var(--pt-red)' }}
+                            onClick={() => void removeDocument(row.id, row.filename)}
+                            disabled={deleteAttachment.isPending}
+                          >
+                            Удалить
+                          </button>
+                        ) : null}
+                      </td>
                     </tr>
                   ))
                 )}
