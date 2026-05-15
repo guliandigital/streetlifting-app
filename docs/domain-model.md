@@ -36,7 +36,7 @@ Federation ────┬── Competition ────┬── Division ─�
 
 Federations clone these into their own `VeteranCoefficient` / `PlateSet` / discipline catalogue records and may override per their own rulebook (every override is audit-logged).
 
-`packages/domain/src/calculations/isfAbsoluteCoefficient` ports the published streetlifting.ru/points absolute-coefficient formula with all six (sex × event) curves.
+`packages/domain/src/calculations/isfPoints` implements the official ISFpoints `vNext_K_RC1.1_full_refit` (release `2026-05-15`, `official_public_release`). Formula: `Points_raw = 100 × (Result / (S(BW) × AgeFactor))^1.5`, with `S(BW)` as `piecewise_logallom_cont` per `(sex × Classic discipline)`. Six segments (M/F × Pull/Dip/Total); 20 federation golden cases pinned as Vitest tests. Public release ranking mode is `open_absolute` → `AgeFactor = 1.0`.
 
 ## Money
 
