@@ -487,10 +487,24 @@ export const api = {
 
   athletes: {
     list: (
-      params: { search?: string; limit?: number; offset?: number } = {},
+      params: {
+        search?: string;
+        gender?: 'M' | 'F';
+        countryCode?: string;
+        cardNumberContains?: string;
+        bornFrom?: string;
+        bornTo?: string;
+        limit?: number;
+        offset?: number;
+      } = {},
     ): Promise<AthleteListResponse> => {
       const q = new URLSearchParams();
       if (params.search) q.set('search', params.search);
+      if (params.gender) q.set('gender', params.gender);
+      if (params.countryCode) q.set('countryCode', params.countryCode);
+      if (params.cardNumberContains) q.set('cardNumberContains', params.cardNumberContains);
+      if (params.bornFrom) q.set('bornFrom', params.bornFrom);
+      if (params.bornTo) q.set('bornTo', params.bornTo);
       if (params.limit !== undefined) q.set('limit', String(params.limit));
       if (params.offset !== undefined) q.set('offset', String(params.offset));
       const qs = q.toString();

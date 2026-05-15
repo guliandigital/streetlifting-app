@@ -95,10 +95,19 @@ export interface AthleteDocumentsResponse {
   total: number;
 }
 
-export function useAthletes(search: string, limit = 50, offset = 0) {
+export interface AthleteListFilters {
+  search?: string;
+  gender?: 'M' | 'F';
+  countryCode?: string;
+  cardNumberContains?: string;
+  bornFrom?: string;
+  bornTo?: string;
+}
+
+export function useAthletes(filters: AthleteListFilters = {}, limit = 50, offset = 0) {
   return useQuery<AthleteListResponse>({
-    queryKey: ['athletes', { search, limit, offset }],
-    queryFn: () => api.athletes.list({ search, limit, offset }),
+    queryKey: ['athletes', { ...filters, limit, offset }],
+    queryFn: () => api.athletes.list({ ...filters, limit, offset }),
     placeholderData: keepPreviousData,
   });
 }
