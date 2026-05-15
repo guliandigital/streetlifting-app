@@ -19,8 +19,10 @@ import {
   useAthleteDocuments,
   useAthleteRecords,
   useDeleteAthleteAttachment,
+  useDeleteAthletePhoto,
   useUpdateAthlete,
   useUploadAthleteAttachment,
+  useUploadAthletePhoto,
 } from './api.js';
 import { calculateAge, formatDateOfBirth } from './format.js';
 import { useCountries, useRegions } from '../../lib/references-api.js';
@@ -100,7 +102,10 @@ export default function AthleteDetailFeature() {
   const documentsQuery = useAthleteDocuments(id);
   const uploadAttachment = useUploadAthleteAttachment(id);
   const deleteAttachment = useDeleteAthleteAttachment(id);
+  const uploadPhoto = useUploadAthletePhoto(id);
+  const deletePhoto = useDeleteAthletePhoto(id);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [documentKind, setDocumentKind] = useState<'certificate_pdf' | 'misc'>('certificate_pdf');
   const user = useAuthStore((s) => s.user);
@@ -224,6 +229,49 @@ export default function AthleteDetailFeature() {
     }
   }
 
+  async function handlePhotoChange(file: File | null) {
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+      toast.error('Фото должно быть в формате JPEG, PNG или WebP');
+      if (photoInputRef.current) photoInputRef.current.value = '';
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Фото должно быть не больше 2 МБ');
+      if (photoInputRef.current) photoInputRef.current.value = '';
+      return;
+    }
+    try {
+      const contentBase64 = await fileToBase64(file);
+      await uploadPhoto.mutateAsync({
+        filename: file.name,
+        mimeType: file.type,
+        contentBase64,
+      });
+      toast.success('Фото загружено');
+    } catch (err) {
+      if (err instanceof ApiClientError && err.code === 'invalid_mime') {
+        toast.error('Фото должно быть в формате JPEG, PNG или WebP');
+      } else if (err instanceof ApiClientError && err.code === 'invalid_file') {
+        toast.error('Фото пустое или больше 2 МБ');
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Error');
+      }
+    } finally {
+      if (photoInputRef.current) photoInputRef.current.value = '';
+    }
+  }
+
+  async function removePhoto() {
+    if (!window.confirm('Удалить фото спортсмена?')) return;
+    try {
+      await deletePhoto.mutateAsync();
+      toast.success('Фото удалено');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
   return (
     <WorkspacePage
       title={fullName}
@@ -282,7 +330,7 @@ export default function AthleteDetailFeature() {
               <WorkspaceSectionTitle>Фото</WorkspaceSectionTitle>
               {a.photoUrl ? (
                 <img
-                  src={a.photoUrl}
+                  src={`${a.photoUrl}?v=${encodeURIComponent(a.updatedAt)}`}
                   alt={fullName}
                   className="aspect-square w-full object-cover border border-[var(--pt-border)]"
                 />
@@ -291,11 +339,34 @@ export default function AthleteDetailFeature() {
                   Фото не загружено
                 </div>
               )}
-              <WorkspaceToolbar>
-                <WorkspaceButton type="button" icon="add" disabled={!editing}>
-                  Загрузить
-                </WorkspaceButton>
-              </WorkspaceToolbar>
+              {canEdit ? (
+                <>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="pt-field w-full text-xs"
+                    onChange={(e) => void handlePhotoChange(e.target.files?.[0] ?? null)}
+                    disabled={uploadPhoto.isPending || deletePhoto.isPending}
+                    aria-label="Загрузить фото"
+                  />
+                  {a.photoUrl ? (
+                    <WorkspaceToolbar>
+                      <WorkspaceButton
+                        type="button"
+                        icon="close"
+                        onClick={() => void removePhoto()}
+                        disabled={deletePhoto.isPending || uploadPhoto.isPending}
+                      >
+                        {deletePhoto.isPending ? 'Удаление…' : 'Удалить фото'}
+                      </WorkspaceButton>
+                    </WorkspaceToolbar>
+                  ) : null}
+                  {uploadPhoto.isPending ? (
+                    <div className="pt-muted text-xs italic">Загрузка фото…</div>
+                  ) : null}
+                </>
+              ) : null}
               <div className="pt-info-yellow text-xs">
                 ID: <span className="font-mono">{a.id}</span>
                 <br />

@@ -528,6 +528,13 @@ export const api = {
       request(`/athletes/${id}/attachments/${attachmentId}`, { method: 'DELETE' }),
     downloadAttachment: (id: string, attachmentId: string): Promise<Blob> =>
       requestBlob(`/athletes/${id}/attachments/${attachmentId}/download`),
+    uploadPhoto: (
+      id: string,
+      data: { filename: string; mimeType: string; contentBase64: string },
+    ): Promise<{ athlete: AthleteDto }> =>
+      request(`/athletes/${id}/photo`, { method: 'POST', body: data }),
+    deletePhoto: (id: string): Promise<{ status: string }> =>
+      request(`/athletes/${id}/photo`, { method: 'DELETE' }),
   },
 
   disciplines: {
