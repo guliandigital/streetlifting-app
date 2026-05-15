@@ -5,6 +5,91 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
+
+interface RttSample {
+  at: number;
+  ms: number;
+}
+
+function rttQuality(ms: number): { tone: 'green' | 'yellow' | 'red'; label: string } {
+  if (ms < 250) return { tone: 'green', label: 'отлично' };
+  if (ms < 400) return { tone: 'yellow', label: 'нормальное' };
+  return { tone: 'red', label: 'плохое' };
+}
+
+function ConnectionStatusBar() {
+  const [samples, setSamples] = useState<RttSample[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    async function ping() {
+      const started = performance.now();
+      try {
+        await fetch('/api/healthz', { method: 'HEAD', cache: 'no-store' });
+      } catch {
+        // Network failure — record a high latency placeholder so the bar still moves.
+        if (!cancelled) {
+          setSamples((s) => [{ at: Date.now(), ms: 999 }, ...s].slice(0, 4));
+        }
+        timer = setTimeout(ping, 5000);
+        return;
+      }
+      const elapsed = Math.round(performance.now() - started);
+      if (!cancelled) {
+        setSamples((s) => [{ at: Date.now(), ms: elapsed }, ...s].slice(0, 4));
+      }
+      timer = setTimeout(ping, 4000);
+    }
+
+    void ping();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
+  if (samples.length === 0) return null;
+
+  const avg = Math.round(samples.reduce((s, x) => s + x.ms, 0) / samples.length);
+  const avgQuality = rttQuality(avg);
+
+  return (
+    <aside className="pt-status-bar" aria-label="Качество связи с сервером">
+      <table className="pt-status-table">
+        <tbody>
+          <tr className={`pt-status-row pt-status-row-${avgQuality.tone}`}>
+            <td>Среднее значение качества связи с сервером</td>
+            <td className="tabular-nums">[{avg}мс]</td>
+          </tr>
+          {samples.map((sample, i) => {
+            const q = rttQuality(sample.ms);
+            return (
+              <tr key={`${sample.at}-${i}`} className={`pt-status-row pt-status-row-${q.tone}`}>
+                <td>
+                  {new Date(sample.at).toLocaleString('ru-RU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}
+                  . Задержка
+                </td>
+                <td className="tabular-nums">
+                  [{sample.ms}мс] - {q.label}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </aside>
+  );
+}
+
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@streetlifting/ui';
@@ -387,6 +472,7 @@ export function RootLayout() {
             )}
           </main>
         </div>
+        {user ? <ConnectionStatusBar /> : null}
       </div>
     );
   }

@@ -8,9 +8,21 @@ import {
   WorkspacePanel,
   WorkspaceSectionTitle,
   WorkspaceToolbar,
+  type WorkspaceIconName,
 } from '../../components/workspace.js';
 import { nominationGenderStats } from './gender-stats.js';
 import { useCompetitionOps } from './operations-api.js';
+
+type CertTab = 'filters' | 'nominations' | 'records' | 'teams' | 'coaches' | 'certificate';
+
+const CERT_TABS: { key: CertTab; label: string; icon: WorkspaceIconName }[] = [
+  { key: 'filters', label: 'Фильтры', icon: 'filter' },
+  { key: 'nominations', label: 'Номинации', icon: 'nomination' },
+  { key: 'records', label: 'Рекорды', icon: 'records' },
+  { key: 'teams', label: 'Команды', icon: 'teams' },
+  { key: 'coaches', label: 'Тренеры', icon: 'coach' },
+  { key: 'certificate', label: 'Сертификат участника', icon: 'certificate' },
+];
 
 function isPastCompetition(endDate: string): boolean {
   const end = new Date(endDate);
@@ -52,6 +64,7 @@ export default function CompetitionCertificatesFeature() {
   const [showAllPlaces, setShowAllPlaces] = useState(false);
   const [hidePastCompetitions, setHidePastCompetitions] = useState(false);
   const [competitionSelected, setCompetitionSelected] = useState(true);
+  const [activeTab, setActiveTab] = useState<CertTab>('filters');
   const competitionGenderStats = useMemo(
     () => nominationGenderStats(data?.nominations ?? []),
     [data?.nominations],
@@ -193,28 +206,15 @@ export default function CompetitionCertificatesFeature() {
           <span>{data.competition.federation.nameRu}</span>
         </>
       }
-      tabs={[
-        { label: 'Фильтры', icon: 'filter', active: true },
-        {
-          label: (
-            <Link to="/competitions/$id/nominations" params={{ id }}>
-              Номинации
-            </Link>
-          ),
-          icon: 'nomination',
-        },
-        {
-          label: (
-            <Link to="/competitions/$id/reports" params={{ id }}>
-              Отчеты
-            </Link>
-          ),
-          icon: 'reports',
-        },
-        { label: 'Сертификат участника', icon: 'certificate' },
-      ]}
+      tabs={CERT_TABS.map((tab) => ({
+        label: tab.label,
+        icon: tab.icon,
+        active: activeTab === tab.key,
+        onClick: () => setActiveTab(tab.key),
+        testId: `cert-tab-${tab.key}`,
+      }))}
     >
-      <div className="print:hidden">
+      <div className={activeTab === 'filters' ? 'print:hidden' : 'hidden'}>
         <WorkspaceSectionTitle>Соревнования</WorkspaceSectionTitle>
         <label className="pt-checkline mb-2">
           <input
@@ -480,6 +480,241 @@ export default function CompetitionCertificatesFeature() {
           </WorkspaceButton>
         </WorkspaceToolbar>
       </div>
+
+      {activeTab === 'nominations' && (
+        <WorkspacePanel className="p-3 print:hidden">
+          <WorkspaceSectionTitle>Номинации к награждению</WorkspaceSectionTitle>
+          <div className="pt-muted text-sm mb-2">
+            Список номинаций, попадающих под текущие фильтры. Используется для печати грамот.
+          </div>
+          <table className="pt-grid">
+            <thead>
+              <tr>
+                <th className="w-12">М.</th>
+                <th className="text-left">Спортсмен</th>
+                <th className="text-left">Дисциплина</th>
+                <th>ВК</th>
+                <th className="text-left">Возрастная</th>
+                <th>Лучший</th>
+                <th>Очки</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="pt-muted italic text-center">
+                    Нет номинаций под текущие фильтры.
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row) => (
+                  <tr
+                    key={row.nominationId}
+                    className={
+                      row.placeInClass === 1
+                        ? 'is-yellow'
+                        : row.placeInClass === 2
+                          ? 'is-green'
+                          : row.placeInClass === 3
+                            ? 'is-pink'
+                            : undefined
+                    }
+                  >
+                    <td className="text-right tabular-nums">{row.placeInClass ?? '—'}</td>
+                    <td>{row.athleteName}</td>
+                    <td>{row.discipline}</td>
+                    <td className="text-center">{row.weightClass}</td>
+                    <td>{row.division}</td>
+                    <td className="text-right tabular-nums">
+                      {row.bestSuccessfulAttemptKg ?? '—'}
+                    </td>
+                    <td className="text-right tabular-nums">{row.finalScore ?? '—'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </WorkspacePanel>
+      )}
+
+      {activeTab === 'records' && (
+        <WorkspacePanel className="p-3 print:hidden">
+          <WorkspaceSectionTitle>Рекорды</WorkspaceSectionTitle>
+          <div className="pt-info-yellow mb-3">
+            Здесь отображаются установленные рекорды соревнования: рекорд федерации, России, мира.
+            После обновления списка нужные грамоты будут включены в печать.
+          </div>
+          <table className="pt-grid">
+            <thead>
+              <tr>
+                <th className="text-left">Спортсмен</th>
+                <th className="text-left">Дисциплина</th>
+                <th>ВК</th>
+                <th>Результат</th>
+                <th>Тип рекорда</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colSpan={5} className="pt-muted italic text-center">
+                  Рекорды не зафиксированы (или подсистема рекордов не подключена).
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </WorkspacePanel>
+      )}
+
+      {activeTab === 'teams' && (
+        <WorkspacePanel className="p-3 print:hidden">
+          <WorkspaceSectionTitle>Команды</WorkspaceSectionTitle>
+          <div className="pt-muted text-sm mb-2">
+            Командный зачёт: суммируются командные очки спортсменов.
+          </div>
+          <table className="pt-grid">
+            <thead>
+              <tr>
+                <th className="w-12">М.</th>
+                <th className="text-left">Команда</th>
+                <th>Спортсменов</th>
+                <th>Сумма очков</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(() => {
+                const teamMap = new Map<string, { count: number; points: number }>();
+                for (const nom of data.nominations) {
+                  const team = nom.athlete.clubName?.trim() || 'Без команды';
+                  const r = data.scoreboardRows.find((s) => s.nominationId === nom.id);
+                  const score = Number(r?.finalScore ?? 0);
+                  const cur = teamMap.get(team) ?? { count: 0, points: 0 };
+                  teamMap.set(team, { count: cur.count + 1, points: cur.points + score });
+                }
+                const teamRows = [...teamMap.entries()]
+                  .sort((a, b) => b[1].points - a[1].points)
+                  .slice(0, 10);
+                if (teamRows.length === 0) {
+                  return (
+                    <tr>
+                      <td colSpan={4} className="pt-muted italic text-center">
+                        Команды не определены.
+                      </td>
+                    </tr>
+                  );
+                }
+                return teamRows.map(([team, info], i) => (
+                  <tr
+                    key={team}
+                    className={
+                      i === 0 ? 'is-yellow' : i === 1 ? 'is-green' : i === 2 ? 'is-pink' : undefined
+                    }
+                  >
+                    <td className="text-right tabular-nums">{i + 1}</td>
+                    <td>{team}</td>
+                    <td className="text-right tabular-nums">{info.count}</td>
+                    <td className="text-right tabular-nums">{info.points.toFixed(1)}</td>
+                  </tr>
+                ));
+              })()}
+            </tbody>
+          </table>
+        </WorkspacePanel>
+      )}
+
+      {activeTab === 'coaches' && (
+        <WorkspacePanel className="p-3 print:hidden">
+          <WorkspaceSectionTitle>Тренеры</WorkspaceSectionTitle>
+          <div className="pt-muted text-sm mb-2">
+            Тренеры с количеством их спортсменов и числом призовых мест.
+          </div>
+          <table className="pt-grid">
+            <thead>
+              <tr>
+                <th className="text-left">Тренер</th>
+                <th>Спортсменов</th>
+                <th>Призовых мест</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(() => {
+                const coachMap = new Map<string, { count: number; podiums: number }>();
+                for (const nom of data.nominations) {
+                  const coach = (
+                    nom.athlete as unknown as { coachName?: string }
+                  ).coachName?.trim();
+                  const key = coach || 'Без тренера';
+                  const r = data.scoreboardRows.find((s) => s.nominationId === nom.id);
+                  const podium = r?.placeInClass != null && r.placeInClass <= 3 ? 1 : 0;
+                  const cur = coachMap.get(key) ?? { count: 0, podiums: 0 };
+                  coachMap.set(key, { count: cur.count + 1, podiums: cur.podiums + podium });
+                }
+                const coachRows = [...coachMap.entries()].sort(
+                  (a, b) => b[1].podiums - a[1].podiums || b[1].count - a[1].count,
+                );
+                if (coachRows.length === 0) {
+                  return (
+                    <tr>
+                      <td colSpan={3} className="pt-muted italic text-center">
+                        Тренеры не указаны.
+                      </td>
+                    </tr>
+                  );
+                }
+                return coachRows.map(([coach, info], i) => (
+                  <tr key={coach} className={i === 0 ? 'is-selected' : undefined}>
+                    <td>{coach}</td>
+                    <td className="text-right tabular-nums">{info.count}</td>
+                    <td className="text-right tabular-nums">{info.podiums}</td>
+                  </tr>
+                ));
+              })()}
+            </tbody>
+          </table>
+        </WorkspacePanel>
+      )}
+
+      {activeTab === 'certificate' && (
+        <WorkspacePanel className="p-3 print:hidden">
+          <WorkspaceSectionTitle>Сертификат участника</WorkspaceSectionTitle>
+          <div className="pt-info-green mb-3">
+            Сертификат выдаётся всем участникам соревнования вне зависимости от результата.
+            Используйте кнопку «Печать / PDF» в шапке для вывода полного комплекта.
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-3">
+            <div className="space-y-2">
+              <label className="pt-checkline">
+                <input type="checkbox" defaultChecked />
+                <span>Включить логотип федерации</span>
+              </label>
+              <label className="pt-checkline">
+                <input type="checkbox" defaultChecked />
+                <span>Подпись Главного судьи</span>
+              </label>
+              <label className="pt-checkline">
+                <input type="checkbox" defaultChecked />
+                <span>Подпись Главного секретаря</span>
+              </label>
+              <label className="pt-checkline">
+                <input type="checkbox" />
+                <span>Печать участников без результата</span>
+              </label>
+            </div>
+            <div className="border border-[var(--pt-border)] bg-white p-6 text-center text-black">
+              <div className="text-xs uppercase tracking-[0.35em]">
+                {data.competition.federation.nameRu}
+              </div>
+              <div className="mt-3 text-3xl font-semibold">Сертификат участника</div>
+              <div className="mt-2 text-sm">подтверждает участие в соревновании</div>
+              <div className="mt-2 text-base font-semibold">{data.competition.nameRu}</div>
+              <div className="mt-6 text-sm pt-muted">[ ФИО спортсмена ]</div>
+              <div className="mt-8 grid grid-cols-2 gap-12 text-left text-xs">
+                <div className="border-t border-black pt-1">Главный судья</div>
+                <div className="border-t border-black pt-1">Главный секретарь</div>
+              </div>
+            </div>
+          </div>
+        </WorkspacePanel>
+      )}
 
       <div className="hidden print:block">
         {rows.map((row) => (

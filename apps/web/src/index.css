@@ -680,6 +680,52 @@ body {
   background: #baffba;
 }
 
+.pt-status-bar {
+  position: fixed;
+  left: 6px;
+  bottom: 6px;
+  z-index: 50;
+  width: min(440px, 92vw);
+  border: 1px solid var(--pt-border);
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.pt-status-bar .pt-status-table {
+  font-size: 11px;
+}
+
+.pt-status-bar .pt-status-table tr {
+  background: transparent;
+}
+
+.pt-status-row td {
+  padding: 1px 6px;
+}
+
+.pt-status-row-green {
+  background: #b5f5b5;
+  color: #0a3a0a;
+}
+
+.pt-status-row-yellow {
+  background: #fff1a8;
+  color: #5a4500;
+}
+
+.pt-status-row-red {
+  background: #ffb3b3;
+  color: #5a0000;
+}
+
+@media print {
+  .pt-status-bar {
+    display: none !important;
+  }
+}
+
 .pt-menu-button {
   display: grid;
   grid-template-columns: 54px 1fr;
