@@ -131,6 +131,31 @@ export function useAthleteDocuments(id: string) {
   });
 }
 
+export function useUploadAthleteAttachment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      filename: string;
+      mimeType: string;
+      contentBase64: string;
+      kind?: 'certificate_pdf' | 'misc';
+    }) => api.athletes.uploadAttachment(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['athletes', id, 'documents'] });
+    },
+  });
+}
+
+export function useDeleteAthleteAttachment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (attachmentId: string) => api.athletes.deleteAttachment(id, attachmentId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['athletes', id, 'documents'] });
+    },
+  });
+}
+
 export function useCreateAthlete() {
   const qc = useQueryClient();
   return useMutation({
