@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactElement } from 'react';
 import { Link, useLocation, useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -1976,6 +1976,257 @@ function ScoreboardTable({ data }: { data: CompetitionOpsResponse }) {
   );
 }
 
+function FlightNominationsTree({ data }: { data: CompetitionOpsResponse }) {
+  const totalNominations = data.nominations.length;
+  const assignedCount = data.nominations.filter((n) => n.flightId && n.groupId).length;
+  const unassignedCount = totalNominations - assignedCount;
+
+  return (
+    <WorkspacePanel className="p-3">
+      <div className="pt-info-yellow mb-2">
+        Дерево назначений номинаций по помостам, потокам и группам. Всего {totalNominations}, из них
+        назначено: {assignedCount}, не назначено: {unassignedCount}.
+      </div>
+      <table className="pt-grid">
+        <thead>
+          <tr>
+            <th className="text-left">Помост · Поток · Группа</th>
+            <th>Номинаций</th>
+            <th>Старт</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.platforms.length === 0 ? (
+            <tr>
+              <td colSpan={3} className="pt-muted italic text-center">
+                Помосты не настроены.
+              </td>
+            </tr>
+          ) : (
+            data.platforms.flatMap((platform) => {
+              const rows: ReturnType<typeof renderPlatformRows> = renderPlatformRows(
+                platform,
+                data,
+              );
+              return rows;
+            })
+          )}
+          {unassignedCount > 0 ? (
+            <tr className="is-pink">
+              <td>Не назначено</td>
+              <td className="text-right tabular-nums">{unassignedCount}</td>
+              <td>—</td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </WorkspacePanel>
+  );
+}
+
+function renderPlatformRows(platform: PlatformDto, data: CompetitionOpsResponse) {
+  const result: ReactElement[] = [];
+  const platformCount = data.nominations.filter((n) =>
+    platform.flights.some((f) => f.id === n.flightId),
+  ).length;
+  result.push(
+    <tr key={platform.id} className="is-selected">
+      <td>
+        <strong>{platform.name}</strong>
+      </td>
+      <td className="text-right tabular-nums">{platformCount}</td>
+      <td>—</td>
+    </tr>,
+  );
+  for (const flight of platform.flights) {
+    const flightCount = data.nominations.filter((n) => n.flightId === flight.id).length;
+    result.push(
+      <tr key={flight.id} className="is-green">
+        <td>
+          &nbsp;&nbsp;&nbsp;{flight.code} · {flight.name}
+        </td>
+        <td className="text-right tabular-nums">{flightCount}</td>
+        <td>
+          {flight.startTime
+            ? new Date(flight.startTime).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : '—'}
+        </td>
+      </tr>,
+    );
+    for (const group of flight.groups) {
+      const groupCount = data.nominations.filter((n) => n.groupId === group.id).length;
+      result.push(
+        <tr key={group.id}>
+          <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{group.name}</td>
+          <td className="text-right tabular-nums">{groupCount}</td>
+          <td>—</td>
+        </tr>,
+      );
+    }
+  }
+  return result;
+}
+
+interface DurationRow {
+  divisionName: string;
+  weightClassName: string;
+  weightClassGender: 'F' | 'M';
+  componentLabel: string;
+  nominations: number;
+  attempts: number;
+  totalSeconds: number;
+}
+
+function FlightDurationCalculator({
+  data,
+  seconds,
+  onSecondsChange,
+}: {
+  data: CompetitionOpsResponse;
+  seconds: number;
+  onSecondsChange: (n: number) => void;
+}) {
+  const groupedByDivision = useMemo(() => {
+    const map = new Map<string, { division: string; rows: DurationRow[] }>();
+    for (const nom of data.nominations) {
+      const components =
+        nom.discipline.components.length > 0
+          ? nom.discipline.components
+          : [
+              {
+                code: nom.discipline.code,
+                nameRu: nom.discipline.nameRu,
+                attemptCount: nom.discipline.attemptCount,
+                fixedWeightKg: null,
+              } as DisciplineComponentDto,
+            ];
+      for (const comp of components) {
+        const key = `${nom.divisionId}|${nom.weightClassId}|${nom.disciplineId}|${comp.code}`;
+        const divKey = nom.division.nameRu;
+        if (!map.has(divKey)) map.set(divKey, { division: divKey, rows: [] });
+        const bucket = map.get(divKey)!;
+        const existing = bucket.rows.find(
+          (r) =>
+            r.weightClassName === nom.weightClass.nameRu &&
+            r.componentLabel === comp.nameRu &&
+            r.weightClassGender === nom.division.gender,
+        );
+        if (existing) {
+          existing.nominations += 1;
+          existing.attempts += comp.attemptCount;
+          existing.totalSeconds += comp.attemptCount * seconds;
+        } else {
+          bucket.rows.push({
+            divisionName: nom.division.nameRu,
+            weightClassName: nom.weightClass.nameRu,
+            weightClassGender: nom.division.gender,
+            componentLabel: comp.nameRu,
+            nominations: 1,
+            attempts: comp.attemptCount,
+            totalSeconds: comp.attemptCount * seconds,
+          });
+        }
+        // suppress unused vars
+        void key;
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.division.localeCompare(b.division));
+  }, [data.nominations, seconds]);
+
+  return (
+    <WorkspacePanel className="p-3">
+      <div className="flex flex-wrap items-center gap-3 mb-2">
+        <label htmlFor="attempt-seconds" className="pt-label">
+          Длительность одного подхода при отсутствии статистики, секунд:
+        </label>
+        <input
+          id="attempt-seconds"
+          type="number"
+          min="10"
+          max="600"
+          value={seconds}
+          onChange={(e) => onSecondsChange(Number(e.target.value) || 60)}
+          className="pt-field w-24"
+        />
+        <WorkspaceButton type="button" icon="refresh" tone="green">
+          Пересчитать длительность
+        </WorkspaceButton>
+      </div>
+      <table className="pt-grid">
+        <thead>
+          <tr>
+            <th className="text-left">Дисциплина</th>
+            <th>ВК</th>
+            <th className="text-left">Упражнение</th>
+            <th>Номинаций</th>
+            <th>Кол-во подходов</th>
+            <th>Длительность подхода, сек</th>
+            <th>Длительность всех подходов, минут</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groupedByDivision.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="pt-muted italic text-center">
+                Номинации не загружены.
+              </td>
+            </tr>
+          ) : (
+            groupedByDivision.flatMap((bucket) => {
+              const rows: ReactElement[] = [];
+              rows.push(
+                <tr key={`hdr-${bucket.division}`} className="is-selected">
+                  <td colSpan={7}>
+                    <strong>{bucket.division}</strong>
+                  </td>
+                </tr>,
+              );
+              for (let i = 0; i < bucket.rows.length; i += 1) {
+                const r = bucket.rows[i]!;
+                rows.push(
+                  <tr key={`r-${bucket.division}-${i}`}>
+                    <td>{r.divisionName}</td>
+                    <td className="text-center">
+                      {r.weightClassGender === 'F' ? 'Ж' : 'М'} {r.weightClassName}
+                    </td>
+                    <td>{r.componentLabel}</td>
+                    <td className="text-right tabular-nums">{r.nominations}</td>
+                    <td className="text-right tabular-nums">{r.attempts}</td>
+                    <td className="text-right tabular-nums">{seconds}</td>
+                    <td className="text-right tabular-nums">
+                      {Math.round((r.totalSeconds / 60) * 10) / 10}
+                    </td>
+                  </tr>,
+                );
+              }
+              const subtotal = bucket.rows.reduce((s, r) => s + r.totalSeconds, 0);
+              const subtotalNominations = bucket.rows.reduce((s, r) => s + r.nominations, 0);
+              const subtotalAttempts = bucket.rows.reduce((s, r) => s + r.attempts, 0);
+              rows.push(
+                <tr key={`sub-${bucket.division}`} className="is-yellow">
+                  <td colSpan={3}>
+                    <em>ИТОГО {bucket.division}</em>
+                  </td>
+                  <td className="text-right tabular-nums">{subtotalNominations}</td>
+                  <td className="text-right tabular-nums">{subtotalAttempts}</td>
+                  <td>—</td>
+                  <td className="text-right tabular-nums">
+                    {Math.round((subtotal / 60) * 10) / 10}
+                  </td>
+                </tr>,
+              );
+              return rows;
+            })
+          )}
+        </tbody>
+      </table>
+    </WorkspacePanel>
+  );
+}
+
 export default function CompetitionOperationsFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ strict: false }) as { id: string };
@@ -2003,6 +2254,8 @@ export default function CompetitionOperationsFeature() {
     NominationDto['paymentStatus'] | 'all'
   >('all');
   const [nominationMandate, setNominationMandate] = useState<MandateFilter>('all');
+  const [flightSubTab, setFlightSubTab] = useState<'filters' | 'tree' | 'duration'>('filters');
+  const [attemptSeconds, setAttemptSeconds] = useState(65);
 
   useEffect(() => {
     setTab(initialTab);
@@ -2314,66 +2567,111 @@ export default function CompetitionOperationsFeature() {
                 onApply={() => void applyDefaultSetup()}
               />
             )}
-            <div className="flex flex-wrap gap-2">
-              <WorkspaceButton
-                data-testid="ops-auto-plan-flights"
+            <div className="pt-tabs" role="tablist">
+              <button
                 type="button"
-                onClick={() =>
-                  void autoPlanFlights
-                    .mutateAsync({})
-                    .then(() => toast.success(t('competitionOps.planApplied')))
-                }
-                disabled={autoPlanFlights.isPending || data.nominations.length === 0}
+                role="tab"
+                aria-selected={flightSubTab === 'filters'}
+                className={`pt-tab${flightSubTab === 'filters' ? ' is-active' : ''}`}
+                onClick={() => setFlightSubTab('filters')}
               >
-                {autoPlanFlights.isPending ? t('common.saving') : t('competitionOps.autoPlan')}
-              </WorkspaceButton>
+                <span className="pt-tab-icon">⚙</span>
+                <span>Фильтры</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={flightSubTab === 'tree'}
+                className={`pt-tab${flightSubTab === 'tree' ? ' is-active' : ''}`}
+                onClick={() => setFlightSubTab('tree')}
+              >
+                <span className="pt-tab-icon">🔗</span>
+                <span>Номинации ({data.nominations.length})</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={flightSubTab === 'duration'}
+                className={`pt-tab${flightSubTab === 'duration' ? ' is-active' : ''}`}
+                onClick={() => setFlightSubTab('duration')}
+              >
+                <span className="pt-tab-icon">⏱</span>
+                <span>Примерный расчёт длительности соревнования</span>
+              </button>
             </div>
-            <FlightPlanningPanel data={data} onAssignNomination={assignNominationToGroup} />
-            <FlightFilters
-              data={data}
-              search={flightSearch}
-              disciplineId={flightDisciplineId}
-              divisionId={flightDivisionId}
-              weightClassId={flightWeightClassId}
-              assignment={flightAssignment}
-              status={flightStatus}
-              onSearchChange={setFlightSearch}
-              onDisciplineChange={setFlightDisciplineId}
-              onDivisionChange={(value) => {
-                setFlightDivisionId(value);
-                setFlightWeightClassId('all');
-              }}
-              onWeightClassChange={setFlightWeightClassId}
-              onAssignmentChange={setFlightAssignment}
-              onStatusChange={setFlightStatus}
-            />
-            <FlightBulkAssignmentPanel
-              data={data}
-              nominations={filteredFlightNominations}
-              onDone={refetch}
-            />
-            <div>
-              <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">
-                    {t('competitionOps.filteredNominations')}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {t('competitionOps.filteredNominationsDesc')}
-                  </p>
+            {flightSubTab === 'filters' && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <WorkspaceButton
+                    data-testid="ops-auto-plan-flights"
+                    type="button"
+                    tone="green"
+                    onClick={() =>
+                      void autoPlanFlights
+                        .mutateAsync({})
+                        .then(() => toast.success(t('competitionOps.planApplied')))
+                    }
+                    disabled={autoPlanFlights.isPending || data.nominations.length === 0}
+                  >
+                    {autoPlanFlights.isPending ? t('common.saving') : t('competitionOps.autoPlan')}
+                  </WorkspaceButton>
                 </div>
-                <div className="text-sm tabular-nums text-muted-foreground">
-                  {filteredFlightNominations.length} / {data.nominations.length}
+                <FlightPlanningPanel data={data} onAssignNomination={assignNominationToGroup} />
+                <FlightFilters
+                  data={data}
+                  search={flightSearch}
+                  disciplineId={flightDisciplineId}
+                  divisionId={flightDivisionId}
+                  weightClassId={flightWeightClassId}
+                  assignment={flightAssignment}
+                  status={flightStatus}
+                  onSearchChange={setFlightSearch}
+                  onDisciplineChange={setFlightDisciplineId}
+                  onDivisionChange={(value) => {
+                    setFlightDivisionId(value);
+                    setFlightWeightClassId('all');
+                  }}
+                  onWeightClassChange={setFlightWeightClassId}
+                  onAssignmentChange={setFlightAssignment}
+                  onStatusChange={setFlightStatus}
+                />
+                <FlightBulkAssignmentPanel
+                  data={data}
+                  nominations={filteredFlightNominations}
+                  onDone={refetch}
+                />
+                <div>
+                  <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold">
+                        {t('competitionOps.filteredNominations')}
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        {t('competitionOps.filteredNominationsDesc')}
+                      </p>
+                    </div>
+                    <div className="text-sm tabular-nums text-muted-foreground">
+                      {filteredFlightNominations.length} / {data.nominations.length}
+                    </div>
+                  </div>
+                  <NominationsTable
+                    nominations={filteredFlightNominations}
+                    divisions={data.divisions}
+                    platforms={data.platforms}
+                    emptyText={t('competitionOps.noFilteredNominations')}
+                    draggableRows
+                  />
                 </div>
               </div>
-              <NominationsTable
-                nominations={filteredFlightNominations}
-                divisions={data.divisions}
-                platforms={data.platforms}
-                emptyText={t('competitionOps.noFilteredNominations')}
-                draggableRows
+            )}
+            {flightSubTab === 'tree' && <FlightNominationsTree data={data} />}
+            {flightSubTab === 'duration' && (
+              <FlightDurationCalculator
+                data={data}
+                seconds={attemptSeconds}
+                onSecondsChange={setAttemptSeconds}
               />
-            </div>
+            )}
           </div>
         )}
 

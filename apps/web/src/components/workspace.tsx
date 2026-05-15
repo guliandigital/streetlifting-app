@@ -484,6 +484,8 @@ export interface WorkspaceTab {
   icon?: WorkspaceIconName | ReactNode;
   disabled?: boolean;
   title?: string;
+  onClick?: () => void;
+  testId?: string;
 }
 
 export function WorkspacePage({
@@ -586,19 +588,38 @@ export function WorkspacePage({
 export function WorkspaceTabs({ tabs }: { tabs: WorkspaceTab[] }) {
   return (
     <div className="pt-tabs" role="tablist">
-      {tabs.map((tab, index) => (
-        <div
-          key={index}
-          className={cn('pt-tab', tab.active && 'is-active', tab.disabled && 'is-disabled')}
-          role="tab"
-          aria-selected={tab.active ? 'true' : 'false'}
-          aria-disabled={tab.disabled ? 'true' : undefined}
-          title={tab.title}
-        >
-          {tab.icon ? <span className="pt-tab-icon">{renderIcon(tab.icon)}</span> : null}
-          <span>{tab.label}</span>
-        </div>
-      ))}
+      {tabs.map((tab, index) =>
+        tab.onClick ? (
+          <button
+            key={index}
+            type="button"
+            className={cn('pt-tab', tab.active && 'is-active', tab.disabled && 'is-disabled')}
+            role="tab"
+            aria-selected={tab.active ? 'true' : 'false'}
+            aria-disabled={tab.disabled ? 'true' : undefined}
+            disabled={tab.disabled}
+            title={tab.title}
+            onClick={tab.onClick}
+            data-testid={tab.testId}
+          >
+            {tab.icon ? <span className="pt-tab-icon">{renderIcon(tab.icon)}</span> : null}
+            <span>{tab.label}</span>
+          </button>
+        ) : (
+          <div
+            key={index}
+            className={cn('pt-tab', tab.active && 'is-active', tab.disabled && 'is-disabled')}
+            role="tab"
+            aria-selected={tab.active ? 'true' : 'false'}
+            aria-disabled={tab.disabled ? 'true' : undefined}
+            title={tab.title}
+            data-testid={tab.testId}
+          >
+            {tab.icon ? <span className="pt-tab-icon">{renderIcon(tab.icon)}</span> : null}
+            <span>{tab.label}</span>
+          </div>
+        ),
+      )}
     </div>
   );
 }

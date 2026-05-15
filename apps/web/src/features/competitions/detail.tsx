@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
@@ -8,12 +8,15 @@ import {
   WorkspacePage,
   WorkspacePanel,
   WorkspaceSectionTitle,
+  WorkspaceToolbar,
+  type WorkspaceIconName,
 } from '../../components/workspace.js';
 import { useAuthStore } from '../../lib/auth/store.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import { formatRub, rubToKopecks } from '../../lib/money.js';
 import { type CompetitionDto, useCompetition, useUpdateCompetition } from './api.js';
 import { type CompetitionOpsResponse, useCompetitionOps } from './operations-api.js';
+import { useDisciplines } from '../disciplines/api.js';
 import {
   dateTimeInputToIso,
   formatDate,
@@ -290,210 +293,321 @@ function CompetitionSettingsForm({
   );
 }
 
-function countBy<T>(
-  items: readonly T[],
-  keyOf: (item: T) => string,
-): Array<{ key: string; count: number }> {
-  const map = new Map<string, number>();
-  for (const item of items) {
-    const key = keyOf(item);
-    map.set(key, (map.get(key) ?? 0) + 1);
-  }
-  return [...map.entries()]
-    .map(([key, count]) => ({ key, count }))
-    .sort((a, b) => a.key.localeCompare(b.key));
+type DetailTab = 'settings' | 'disciplines' | 'weight' | 'age' | 'plates' | 'bars' | 'stages';
+
+const DETAIL_TABS: { key: DetailTab; label: string; icon: WorkspaceIconName }[] = [
+  { key: 'settings', label: 'Основные настройки', icon: 'settings' },
+  { key: 'disciplines', label: 'Дисциплины', icon: 'awards' },
+  { key: 'weight', label: 'Весовые категории', icon: 'athletes' },
+  { key: 'age', label: 'Возрастные категории', icon: 'history' },
+  { key: 'plates', label: 'Диски', icon: 'plates' },
+  { key: 'bars', label: 'Грифы', icon: 'bar' },
+  { key: 'stages', label: 'Этапы соревнований', icon: 'stages' },
+];
+
+const STANDARD_PLATES: {
+  weight: number;
+  color: 'green' | 'red' | 'blue' | 'yellow' | 'dark';
+}[] = [
+  { weight: 50, color: 'green' },
+  { weight: 25, color: 'red' },
+  { weight: 20, color: 'blue' },
+  { weight: 15, color: 'yellow' },
+  { weight: 10, color: 'dark' },
+  { weight: 5, color: 'dark' },
+  { weight: 2.5, color: 'dark' },
+  { weight: 2, color: 'dark' },
+  { weight: 1.25, color: 'dark' },
+  { weight: 1, color: 'dark' },
+  { weight: 0.75, color: 'dark' },
+  { weight: 0.5, color: 'dark' },
+  { weight: 0.25, color: 'dark' },
+];
+
+function disciplineFormulaLabel(format: string): string {
+  return format === 'reps_to_failure' || format === 'reps_in_time'
+    ? 'ISF points'
+    : 'Результат умножить на значение';
 }
 
-function CompetitionSetupSummary({
-  ops,
-  federationId,
-}: {
-  ops: CompetitionOpsResponse | undefined;
-  federationId: string;
-}) {
-  if (!ops) {
+function DisciplinesTabContent({ ops }: { ops: CompetitionOpsResponse | undefined }) {
+  const { data: disciplinesData, isLoading } = useDisciplines();
+  const allDisciplines = disciplinesData?.disciplines ?? [];
+  const usedDisciplineIds = new Set(ops?.nominations.map((n) => n.disciplineId) ?? []);
+
+  return (
+    <WorkspacePanel className="p-3">
+      <WorkspaceToolbar>
+        <WorkspaceButton type="button" icon="check" tone="green">
+          Выделить все
+        </WorkspaceButton>
+        <WorkspaceButton type="button" icon="close">
+          Снять выделение
+        </WorkspaceButton>
+      </WorkspaceToolbar>
+      <table className="pt-grid mt-2">
+        <thead>
+          <tr>
+            <th className="w-12">Вкл</th>
+            <th className="text-left">Дисциплина</th>
+            <th className="text-left">Формула</th>
+          </tr>
+        </thead>
+        <tbody>
+          {isLoading ? (
+            <tr>
+              <td colSpan={3} className="pt-muted italic text-center">
+                Загружаем дисциплины…
+              </td>
+            </tr>
+          ) : allDisciplines.length === 0 ? (
+            <tr>
+              <td colSpan={3} className="pt-muted italic text-center">
+                Дисциплины ещё не настроены.
+              </td>
+            </tr>
+          ) : (
+            allDisciplines.map((d) => {
+              const enabled = usedDisciplineIds.has(d.id);
+              return (
+                <tr key={d.id} className={enabled ? 'is-green' : undefined}>
+                  <td className="text-center">
+                    <input type="checkbox" checked={enabled} readOnly />
+                  </td>
+                  <td>{d.nameRu}</td>
+                  <td className="pt-muted">{disciplineFormulaLabel(d.format)}</td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </WorkspacePanel>
+  );
+}
+
+function WeightClassesTabContent({ ops }: { ops: CompetitionOpsResponse | undefined }) {
+  function uniqueWcByGender(gender: 'F' | 'M') {
+    const seen = new Set<string>();
+    const out: { id: string; name: string; info: string }[] = [];
+    if (!ops) return out;
+    for (const d of ops.divisions) {
+      if (d.gender !== gender) continue;
+      for (const wc of d.weightClasses) {
+        if (seen.has(wc.nameRu)) continue;
+        seen.add(wc.nameRu);
+        out.push({ id: wc.id, name: wc.nameRu, info: '' });
+      }
+    }
+    return out;
+  }
+
+  function renderTable(rows: { id: string; name: string; info: string }[], emptyText: string) {
     return (
-      <WorkspacePanel className="p-3">
-        <WorkspaceSectionTitle>Структура соревнования</WorkspaceSectionTitle>
-        <div className="pt-muted">Загружаем дисциплины, категории и этапы соревнования.</div>
-      </WorkspacePanel>
+      <table className="pt-grid">
+        <thead>
+          <tr>
+            <th className="w-12">Вкл</th>
+            <th className="text-left">Категория</th>
+            <th className="text-left">Информация</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={3} className="pt-muted italic text-center">
+                {emptyText}
+              </td>
+            </tr>
+          ) : (
+            rows.map((wc) => (
+              <tr key={wc.id} className="is-green">
+                <td className="text-center">
+                  <input type="checkbox" checked readOnly />
+                </td>
+                <td>{wc.name}</td>
+                <td className="pt-muted">{wc.info}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
     );
   }
 
-  const disciplineRows = countBy(ops.nominations, (nomination) => nomination.discipline.nameRu);
-  const weightRows = ops.divisions.flatMap((division) =>
-    division.weightClasses.map((weightClass) => ({
-      id: weightClass.id,
-      division: division.nameRu,
-      gender: division.gender,
-      name: weightClass.nameRu,
-      nominations: ops.nominations.filter(
-        (nomination) => nomination.weightClassId === weightClass.id,
-      ).length,
-    })),
+  return (
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <WorkspacePanel className="p-3">
+        <WorkspaceSectionTitle>Женщины</WorkspaceSectionTitle>
+        {renderTable(uniqueWcByGender('F'), 'Категории для женщин не настроены.')}
+      </WorkspacePanel>
+      <WorkspacePanel className="p-3">
+        <WorkspaceSectionTitle>Мужчины</WorkspaceSectionTitle>
+        {renderTable(uniqueWcByGender('M'), 'Категории для мужчин не настроены.')}
+      </WorkspacePanel>
+    </div>
   );
-  const stageRows = ops.platforms.flatMap((platform) =>
-    platform.flights.map((flight) => ({
-      id: flight.id,
-      platform: platform.name,
-      flight: flight.name,
-      groups: flight.groups.length,
-      nominations: ops.nominations.filter((nomination) => nomination.flightId === flight.id).length,
-      startTime: flight.startTime,
-    })),
-  );
+}
+
+function AgeClassesTabContent({ ops }: { ops: CompetitionOpsResponse | undefined }) {
+  const [restrictAge, setRestrictAge] = useState(false);
+  const seen = new Set<string>();
+  const ageDivisions = (ops?.divisions ?? []).filter((d) => {
+    if (seen.has(d.nameRu)) return false;
+    seen.add(d.nameRu);
+    return true;
+  });
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <WorkspacePanel className="p-3" id="competition-disciplines">
-          <WorkspaceSectionTitle>Дисциплины</WorkspaceSectionTitle>
-          <table className="pt-grid">
-            <thead>
-              <tr>
-                <th>Дисциплина</th>
-                <th>Номинаций</th>
-              </tr>
-            </thead>
-            <tbody>
-              {disciplineRows.map((row, index) => (
-                <tr key={row.key} className={index === 0 ? 'is-selected' : undefined}>
-                  <td>{row.key}</td>
-                  <td className="text-right tabular-nums">{row.count}</td>
-                </tr>
-              ))}
-              {disciplineRows.length === 0 ? (
-                <tr>
-                  <td colSpan={2} className="italic">
-                    Номинации еще не добавлены.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </WorkspacePanel>
-
-        <WorkspacePanel className="p-3" id="competition-age-categories">
-          <WorkspaceSectionTitle>Возрастные категории</WorkspaceSectionTitle>
-          <table className="pt-grid">
-            <thead>
-              <tr>
-                <th>Категория</th>
-                <th>Пол</th>
-                <th>Возраст</th>
-                <th>Весовых</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ops.divisions.map((division, index) => (
-                <tr key={division.id} className={index === 0 ? 'is-green' : undefined}>
-                  <td>{division.nameRu}</td>
-                  <td>{division.gender === 'F' ? 'Ж' : 'М'}</td>
-                  <td>
-                    {division.ageMin ?? '-'}-{division.ageMax ?? '∞'}
-                  </td>
-                  <td className="text-right tabular-nums">{division.weightClasses.length}</td>
-                </tr>
-              ))}
-              {ops.divisions.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="italic">
-                    Категории еще не настроены.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </WorkspacePanel>
-      </div>
-
-      <WorkspacePanel className="p-3" id="competition-weight-categories">
-        <WorkspaceSectionTitle>Весовые категории</WorkspaceSectionTitle>
-        <table className="pt-grid">
-          <thead>
+    <WorkspacePanel className="p-3">
+      <WorkspaceCheckbox
+        checked={restrictAge}
+        onChange={setRestrictAge}
+        label="Разрешить регистрацию только в своей возрастной"
+      />
+      <table className="pt-grid mt-2">
+        <thead>
+          <tr>
+            <th className="w-12">Вкл</th>
+            <th className="text-left">Возрастные</th>
+            <th className="w-20">от</th>
+            <th className="w-20">до</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ageDivisions.length === 0 ? (
             <tr>
-              <th>Категория</th>
-              <th>Возрастная</th>
-              <th>Пол</th>
-              <th>Номинаций</th>
+              <td colSpan={4} className="pt-muted italic text-center">
+                Возрастные категории не настроены.
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {weightRows.map((row, index) => (
-              <tr key={row.id} className={index === 0 ? 'is-selected' : undefined}>
-                <td>{row.name}</td>
-                <td>{row.division}</td>
-                <td>{row.gender === 'F' ? 'Ж' : 'М'}</td>
-                <td className="text-right tabular-nums">{row.nominations}</td>
-              </tr>
-            ))}
-            {weightRows.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="italic">
-                  Весовые категории еще не настроены.
+          ) : (
+            ageDivisions.map((d) => (
+              <tr key={d.id} className="is-green">
+                <td className="text-center">
+                  <input type="checkbox" checked readOnly />
                 </td>
+                <td>{d.nameRu}</td>
+                <td className="text-right tabular-nums">{d.ageMin ?? '—'}</td>
+                <td className="text-right tabular-nums">{d.ageMax ?? '—'}</td>
               </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </WorkspacePanel>
+            ))
+          )}
+        </tbody>
+      </table>
+    </WorkspacePanel>
+  );
+}
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <WorkspacePanel className="p-3" id="competition-inventory">
-          <WorkspaceSectionTitle>Диски и грифы</WorkspaceSectionTitle>
-          <div className="pt-muted mb-2">
-            Комплекты дисков, вес грифа, замки и шаг веса настраиваются в складе федерации.
-          </div>
-          <Link
-            to="/federations/$id/inventory"
-            params={{ id: federationId }}
-            className="pt-link-button"
-          >
-            Открыть склад
-          </Link>
-        </WorkspacePanel>
-
-        <WorkspacePanel className="p-3" id="competition-stages">
-          <WorkspaceSectionTitle>Этапы соревнования</WorkspaceSectionTitle>
-          <table className="pt-grid">
-            <thead>
-              <tr>
-                <th>Помост</th>
-                <th>Поток</th>
-                <th>Групп</th>
-                <th>Номинаций</th>
-                <th>Старт</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stageRows.map((row, index) => (
-                <tr key={row.id} className={index === 0 ? 'is-green' : undefined}>
-                  <td>{row.platform}</td>
-                  <td>{row.flight}</td>
-                  <td className="text-right tabular-nums">{row.groups}</td>
-                  <td className="text-right tabular-nums">{row.nominations}</td>
-                  <td>{row.startTime ? formatDateTime(row.startTime) : '-'}</td>
-                </tr>
-              ))}
-              {stageRows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="italic">
-                    Потоки и группы еще не настроены.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-          <Link
-            to="/competitions/$id/operations"
-            params={{ id: ops.competition.id }}
-            className="pt-link-button mt-2"
-          >
-            Настроить потоки
-          </Link>
-        </WorkspacePanel>
+function PlatesTabContent() {
+  return (
+    <WorkspacePanel className="p-3">
+      <div className="pt-info-yellow mb-3">
+        Здесь можно указать индивидуальный набор дисков, отличный от общетурнирного, когда вес
+        снаряда заполняется 25 кг блинами, затем 20, 15, 10, 5, 2.5 и рекордные.
       </div>
-    </div>
+      <div className="pt-plate-canvas">
+        <div className="pt-plate-stack">
+          {STANDARD_PLATES.map((p, i) => (
+            <div
+              key={p.weight}
+              className={`pt-plate ${p.color}`}
+              style={
+                {
+                  '--plate-w': `${52 - i * 2}px`,
+                  '--plate-h': `${230 - i * 12}px`,
+                } as CSSProperties
+              }
+            >
+              {p.weight}
+            </div>
+          ))}
+        </div>
+      </div>
+    </WorkspacePanel>
+  );
+}
+
+function BarsTabContent() {
+  const [allowArbitrary, setAllowArbitrary] = useState(false);
+  return (
+    <WorkspacePanel className="p-3">
+      <WorkspaceCheckbox
+        checked={allowArbitrary}
+        onChange={setAllowArbitrary}
+        label="Включить возможность указывать произвольный вес грифа каждой номинации"
+      />
+      <WorkspaceToolbar className="mt-2">
+        <WorkspaceButton type="button" icon="refresh" tone="green">
+          Заполнить стандартными весами грифов
+        </WorkspaceButton>
+        <span className="pt-muted text-sm">
+          Здесь можно указать индивидуальный вес грифа и замков, который отличается от официального.
+        </span>
+      </WorkspaceToolbar>
+      <table className="pt-grid mt-2">
+        <thead>
+          <tr>
+            <th>Вес грифа</th>
+            <th>Вес замков</th>
+            <th className="text-left">Упражнение</th>
+            <th className="text-left">Дисциплина</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colSpan={4} className="pt-muted italic text-center">
+              Произвольные веса грифов не заданы.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </WorkspacePanel>
+  );
+}
+
+function StagesTabContent() {
+  const [isFinal, setIsFinal] = useState(false);
+  return (
+    <WorkspacePanel className="p-3">
+      <div className="pt-info-yellow mb-3">
+        Генеральный секретарь имеет возможность объединить несколько соревнований в рамках этапов.
+        Для финала рассчитываются призовые места на основании выступлений среди всех этапов.
+      </div>
+      <WorkspaceCheckbox
+        checked={isFinal}
+        onChange={setIsFinal}
+        label="Это финал этапов соревнований:"
+      />
+      <WorkspaceToolbar className="mt-2">
+        <WorkspaceButton type="button" icon="add" disabled={!isFinal}>
+          Добавить
+        </WorkspaceButton>
+      </WorkspaceToolbar>
+      <table className="pt-grid mt-2">
+        <thead>
+          <tr>
+            <th className="w-10">N</th>
+            <th className="text-left">Соревнование</th>
+            <th className="text-left">Город</th>
+            <th>Начало</th>
+            <th>Окончание</th>
+            <th className="text-left">Федерация</th>
+            <th className="text-left">Категория</th>
+            <th className="text-left">Код в другой федерации</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colSpan={8} className="pt-muted italic text-center">
+              {isFinal
+                ? 'Добавьте этапы, входящие в финал.'
+                : 'Не указано как финал — этапы пока недоступны.'}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </WorkspacePanel>
   );
 }
 
@@ -504,6 +618,7 @@ export default function CompetitionDetailFeature() {
   const user = useAuthStore((s) => s.user);
   const { data, isLoading, error } = useCompetition(id);
   const { data: opsData } = useCompetitionOps(id);
+  const [activeTab, setActiveTab] = useState<DetailTab>('settings');
 
   if (isLoading) {
     return <div className="pt-page p-6 text-sm text-gray-600">{t('common.loading')}</div>;
@@ -578,69 +693,79 @@ export default function CompetitionDetailFeature() {
           <span>{c.federation.nameRu}</span>
         </>
       }
-      tabs={[
-        { label: 'Основные настройки', icon: 'settings', active: true },
-        { label: <a href="#competition-disciplines">Дисциплины</a>, icon: 'awards' },
-        { label: <a href="#competition-weight-categories">Весовые категории</a>, icon: 'bar' },
-        { label: <a href="#competition-age-categories">Возрастные категории</a> },
-        { label: <a href="#competition-inventory">Диски</a>, icon: 'plates' },
-        { label: <a href="#competition-inventory">Грифы</a>, icon: 'bar' },
-        { label: <a href="#competition-stages">Этапы соревнований</a>, icon: 'stages' },
-      ]}
+      tabs={DETAIL_TABS.map((tab) => ({
+        label: tab.label,
+        icon: tab.icon,
+        active: activeTab === tab.key,
+        onClick: () => setActiveTab(tab.key),
+        testId: `competition-tab-${tab.key}`,
+      }))}
     >
       <div className="space-y-3">
-        <WorkspacePanel className="p-3">
-          <dl className="grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[260px_1fr] sm:gap-x-6">
-            <Field
-              label={t('competitions.fields.federation')}
-              value={`${c.federation.nameRu} (${c.federation.code})`}
-            />
-            <Field
-              label={t('competitions.fields.status')}
-              value={t(`competitions.status.${c.status}`)}
-            />
-            <Field
-              label={t('competitions.fields.dates')}
-              value={`${formatDate(c.startDate)} - ${formatDate(c.endDate)}`}
-            />
-            <Field
-              label={t('competitions.fields.registrationDeadline')}
-              value={formatDateTime(c.registrationDeadline)}
-            />
-            <Field label={t('competitions.fields.city')} value={c.city} />
-            <Field label={t('competitions.fields.venue')} value={c.venue} />
-            <Field label={t('competitions.fields.timezone')} value={c.timezone} />
-            <Field label={t('competitions.fields.rulebook')} value={c.rulebook} />
-            <Field
-              label={t('competitions.fields.entryFeeRub')}
-              value={formatRub(c.entryFeeKopecks)}
-            />
-            <Field
-              label={t('competitions.fields.onlineRegistrationOpen')}
-              value={c.isOnlineRegistrationOpen ? t('common.yes') : t('common.no')}
-            />
-            <Field label={t('competitions.cols.nominations')} value={c._count?.nominations ?? 0} />
-            <Field label={t('competitions.fields.flights')} value={c._count?.flights ?? 0} />
-            <Field
-              label={t('competitions.fields.judgeAssignments')}
-              value={c._count?.judgeAssignments ?? 0}
-            />
-            <Field label="ID" value={<span className="font-mono text-xs">{c.id}</span>} />
-          </dl>
-        </WorkspacePanel>
+        {activeTab === 'settings' && (
+          <>
+            <WorkspacePanel className="p-3">
+              <dl className="grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[260px_1fr] sm:gap-x-6">
+                <Field
+                  label={t('competitions.fields.federation')}
+                  value={`${c.federation.nameRu} (${c.federation.code})`}
+                />
+                <Field
+                  label={t('competitions.fields.status')}
+                  value={t(`competitions.status.${c.status}`)}
+                />
+                <Field
+                  label={t('competitions.fields.dates')}
+                  value={`${formatDate(c.startDate)} - ${formatDate(c.endDate)}`}
+                />
+                <Field
+                  label={t('competitions.fields.registrationDeadline')}
+                  value={formatDateTime(c.registrationDeadline)}
+                />
+                <Field label={t('competitions.fields.city')} value={c.city} />
+                <Field label={t('competitions.fields.venue')} value={c.venue} />
+                <Field label={t('competitions.fields.timezone')} value={c.timezone} />
+                <Field label={t('competitions.fields.rulebook')} value={c.rulebook} />
+                <Field
+                  label={t('competitions.fields.entryFeeRub')}
+                  value={formatRub(c.entryFeeKopecks)}
+                />
+                <Field
+                  label={t('competitions.fields.onlineRegistrationOpen')}
+                  value={c.isOnlineRegistrationOpen ? t('common.yes') : t('common.no')}
+                />
+                <Field
+                  label={t('competitions.cols.nominations')}
+                  value={c._count?.nominations ?? 0}
+                />
+                <Field label={t('competitions.fields.flights')} value={c._count?.flights ?? 0} />
+                <Field
+                  label={t('competitions.fields.judgeAssignments')}
+                  value={c._count?.judgeAssignments ?? 0}
+                />
+                <Field label="ID" value={<span className="font-mono text-xs">{c.id}</span>} />
+              </dl>
+            </WorkspacePanel>
 
-        {canWrite ? (
-          <CompetitionSettingsForm
-            competition={c}
-            onSaved={() => void navigate({ to: '/competitions' })}
-          />
-        ) : null}
+            {canWrite ? (
+              <CompetitionSettingsForm
+                competition={c}
+                onSaved={() => void navigate({ to: '/competitions' })}
+              />
+            ) : null}
 
-        <div className="pt-info-pink">
-          <WorkspaceSectionTitle>Доступ к данным онлайн</WorkspaceSectionTitle>
-          Ссылки на протоколы, грамоты и публичное табло доступны из верхней панели действий.
-        </div>
-        <CompetitionSetupSummary ops={opsData} federationId={c.federationId} />
+            <div className="pt-info-pink">
+              <WorkspaceSectionTitle>Доступ к данным онлайн</WorkspaceSectionTitle>
+              Ссылки на протоколы, грамоты и публичное табло доступны из верхней панели действий.
+            </div>
+          </>
+        )}
+        {activeTab === 'disciplines' && <DisciplinesTabContent ops={opsData} />}
+        {activeTab === 'weight' && <WeightClassesTabContent ops={opsData} />}
+        {activeTab === 'age' && <AgeClassesTabContent ops={opsData} />}
+        {activeTab === 'plates' && <PlatesTabContent />}
+        {activeTab === 'bars' && <BarsTabContent />}
+        {activeTab === 'stages' && <StagesTabContent />}
       </div>
     </WorkspacePage>
   );
