@@ -38,6 +38,11 @@ export type AthleteUpdate = z.infer<typeof AthleteUpdate>;
 export const AthleteListQuery = z
   .object({
     search: z.string().max(120).optional(),
+    gender: Gender.optional(),
+    countryCode: z.string().length(2).optional(),
+    cardNumberContains: z.string().min(1).max(64).optional(),
+    bornFrom: z.string().date().optional(),
+    bornTo: z.string().date().optional(),
     limit: z.coerce.number().int().positive().max(200).default(50),
     offset: z.coerce.number().int().nonnegative().default(0),
   })

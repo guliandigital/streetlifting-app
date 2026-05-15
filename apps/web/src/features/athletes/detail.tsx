@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useParams } from '@tanstack/react-router';
+import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
 import {
@@ -531,7 +531,15 @@ export default function AthleteDetailFeature() {
                   appearancesQuery.data.appearances.map((row) => (
                     <tr key={row.id}>
                       <td className="text-center">{formatDate(row.competitionStartDate)}</td>
-                      <td>{row.competitionName}</td>
+                      <td>
+                        <Link
+                          to="/competitions/$id"
+                          params={{ id: row.competitionId }}
+                          className="pt-link"
+                        >
+                          {row.competitionName}
+                        </Link>
+                      </td>
                       <td>{row.competitionCity ?? '—'}</td>
                       <td>{row.disciplineName}</td>
                       <td>{row.divisionName}</td>
@@ -608,7 +616,15 @@ export default function AthleteDetailFeature() {
                       <td className="text-center">
                         {row.pointsScore !== null ? row.pointsScore.toFixed(2) : '—'}
                       </td>
-                      <td>{row.competitionName}</td>
+                      <td>
+                        <Link
+                          to="/competitions/$id"
+                          params={{ id: row.competitionId }}
+                          className="pt-link"
+                        >
+                          {row.competitionName}
+                        </Link>
+                      </td>
                       <td className="text-center">{row.ratifiedAt ? '✓' : '—'}</td>
                     </tr>
                   ))

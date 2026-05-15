@@ -98,17 +98,33 @@ export const athletesPlugin: FeaturePlugin = {
           },
         });
       }
-      const { search, limit, offset } = parsed.data;
+      const { search, gender, countryCode, cardNumberContains, bornFrom, bornTo, limit, offset } =
+        parsed.data;
 
-      const where: Prisma.AthleteWhereInput = search
-        ? {
-            OR: [
-              { lastName: { contains: search, mode: 'insensitive' } },
-              { firstName: { contains: search, mode: 'insensitive' } },
-              { middleName: { contains: search, mode: 'insensitive' } },
-            ],
-          }
-        : {};
+      const conditions: Prisma.AthleteWhereInput[] = [];
+      if (search) {
+        conditions.push({
+          OR: [
+            { lastName: { contains: search, mode: 'insensitive' } },
+            { firstName: { contains: search, mode: 'insensitive' } },
+            { middleName: { contains: search, mode: 'insensitive' } },
+          ],
+        });
+      }
+      if (gender) conditions.push({ gender });
+      if (countryCode) conditions.push({ countryCode: countryCode.toUpperCase() });
+      if (cardNumberContains) {
+        conditions.push({
+          federationCardNumber: { contains: cardNumberContains, mode: 'insensitive' },
+        });
+      }
+      if (bornFrom || bornTo) {
+        const dobRange: { gte?: Date; lte?: Date } = {};
+        if (bornFrom) dobRange.gte = new Date(bornFrom);
+        if (bornTo) dobRange.lte = new Date(bornTo);
+        conditions.push({ dateOfBirth: dobRange });
+      }
+      const where: Prisma.AthleteWhereInput = conditions.length ? { AND: conditions } : {};
 
       const [athletes, total] = await Promise.all([
         prisma.athlete.findMany({
