@@ -1,21 +1,6 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Input,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@streetlifting/ui';
 import { useAuthStore } from '../../lib/auth/store.js';
 import { WorkspacePage } from '../../components/workspace.js';
 import { useAthletes } from './api.js';
@@ -28,85 +13,71 @@ export default function AthletesListFeature() {
 
   const [search, setSearch] = useState('');
   const { data, isLoading, error } = useAthletes(search);
+  const subtitle = data
+    ? `${t('athletes.subtitle')} · ${t('athletes.count', { count: data.total })}`
+    : t('athletes.subtitle');
 
   return (
     <WorkspacePage
       title={t('athletes.title')}
-      subtitle={t('athletes.subtitle')}
+      subtitle={subtitle}
       actions={
         isPlatformAdmin ? (
-          <Button asChild>
-            <Link to="/athletes/new">{t('athletes.create')}</Link>
-          </Button>
+          <Link to="/athletes/new" className="pt-link-button">
+            {t('athletes.create')}
+          </Link>
         ) : null
       }
     >
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('athletes.listTitle')}</CardTitle>
-          <CardDescription>
-            {data ? t('athletes.count', { count: data.total }) : '…'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Input
-            type="search"
-            placeholder={t('athletes.searchPlaceholder')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label={t('athletes.searchPlaceholder')}
-          />
+      <div className="mb-2">
+        <input
+          type="search"
+          className="pt-field w-full max-w-xl"
+          placeholder={t('athletes.searchPlaceholder')}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          aria-label={t('athletes.searchPlaceholder')}
+        />
+      </div>
 
-          {isLoading && <p className="text-sm text-muted-foreground">{t('common.loading')}</p>}
-          {error && (
-            <p className="text-sm text-destructive">
-              {t('common.error')}: {error instanceof Error ? error.message : 'unknown'}
-            </p>
-          )}
-          {data && data.athletes.length === 0 && !isLoading && (
-            <p className="text-sm text-muted-foreground italic">{t('athletes.empty')}</p>
-          )}
-          {data && data.athletes.length > 0 && (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('athletes.cols.name')}</TableHead>
-                  <TableHead>{t('athletes.cols.dob')}</TableHead>
-                  <TableHead>{t('athletes.cols.gender')}</TableHead>
-                  <TableHead>{t('athletes.cols.country')}</TableHead>
-                  <TableHead>{t('athletes.cols.club')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.athletes.map((a) => (
-                  <TableRow key={a.id}>
-                    <TableCell>
-                      <Link
-                        to="/athletes/$id"
-                        params={{ id: a.id }}
-                        className="text-primary hover:underline"
-                      >
-                        {a.lastName} {a.firstName}
-                      </Link>
-                      {a.middleName && (
-                        <span className="text-muted-foreground"> {a.middleName}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="tabular-nums">
-                      {formatDateOfBirth(a.dateOfBirth)}
-                    </TableCell>
-                    <TableCell>{a.gender}</TableCell>
-                    <TableCell className="font-mono text-xs">{a.countryCode}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {a.clubName ?? <span className="italic">—</span>}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {isLoading && <p className="pt-muted text-sm">{t('common.loading')}</p>}
+      {error && (
+        <p className="text-sm" style={{ color: 'var(--pt-red)' }}>
+          {t('common.error')}: {error instanceof Error ? error.message : 'unknown'}
+        </p>
+      )}
+      {data && data.athletes.length === 0 && !isLoading && (
+        <p className="pt-muted italic text-sm">{t('athletes.empty')}</p>
+      )}
+      {data && data.athletes.length > 0 && (
+        <table className="pt-grid">
+          <thead>
+            <tr>
+              <th className="text-left">{t('athletes.cols.name')}</th>
+              <th>{t('athletes.cols.dob')}</th>
+              <th>{t('athletes.cols.gender')}</th>
+              <th>{t('athletes.cols.country')}</th>
+              <th className="text-left">{t('athletes.cols.club')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.athletes.map((a) => (
+              <tr key={a.id}>
+                <td>
+                  <Link to="/athletes/$id" params={{ id: a.id }} className="pt-link">
+                    {a.lastName} {a.firstName}
+                  </Link>
+                  {a.middleName ? <span className="pt-muted"> {a.middleName}</span> : null}
+                </td>
+                <td className="text-center tabular-nums">{formatDateOfBirth(a.dateOfBirth)}</td>
+                <td className="text-center">{a.gender}</td>
+                <td className="font-mono text-xs text-center">{a.countryCode}</td>
+                <td className="pt-muted">{a.clubName ?? <span className="italic">—</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </WorkspacePage>
   );
 }

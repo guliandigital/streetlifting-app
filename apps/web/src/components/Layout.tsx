@@ -9,17 +9,30 @@ import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@streetlifting/ui';
 import { useHydrateAuth, useAuth } from '../lib/auth/hooks.js';
+import { defaultAuthenticatedRoute } from '../lib/auth/default-route.js';
 import { setLocale, SUPPORTED_LOCALES, type SupportedLocale } from '../lib/i18n/index.js';
-import { WorkspaceIcon } from './workspace.js';
+import { WorkspaceIcon, type WorkspaceIconName } from './workspace.js';
 
 type StreetliftingTheme = 'dark' | 'light';
 
 const THEME_STORAGE_KEY = 'streetlifting.theme.v1';
 const FAVORITES_STORAGE_KEY = 'streetlifting.favoritePaths.v1';
+const OPEN_TABS_STORAGE_KEY = 'streetlifting.openTabs.v1';
+
+interface WorkspaceOpenTab {
+  path: string;
+  label: string;
+}
+
+interface WorkspaceRootTab {
+  to: string;
+  label: string;
+  icon: WorkspaceIconName;
+}
 
 function readInitialTheme(): StreetliftingTheme {
-  if (typeof window === 'undefined') return 'dark';
-  return window.localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+  if (typeof window === 'undefined') return 'light';
+  return window.localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
 }
 
 function readFavoritePaths(): string[] {
@@ -38,6 +51,58 @@ function normalizeSearch(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function readOpenTabs(): WorkspaceOpenTab[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(OPEN_TABS_STORAGE_KEY) ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is WorkspaceOpenTab =>
+          typeof item?.path === 'string' &&
+          item.path.startsWith('/') &&
+          typeof item?.label === 'string',
+      )
+      .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+function writeOpenTabs(tabs: WorkspaceOpenTab[]): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(OPEN_TABS_STORAGE_KEY, JSON.stringify(tabs.slice(-12)));
+}
+
+function workspaceTabLabel(
+  path: string,
+  rootTabs: readonly WorkspaceRootTab[],
+  userName?: string,
+): string {
+  const root = rootTabs.find((tab) => tab.to === path);
+  if (root) return root.label;
+  if (path === '/me') return userName ?? 'Профиль';
+  if (path.includes('/settings')) return 'Обращения, настройки';
+  if (path.includes('/inventory')) return 'Склад';
+  if (path.includes('/notifications')) return 'Уведомления';
+  if (path.includes('/files')) return 'Файлы';
+  if (path.includes('/nominations')) return 'Номинации спортсменов';
+  if (path.includes('/judges'))
+    return path.startsWith('/competitions/') ? 'Номинации судей' : 'Судьи';
+  if (path.includes('/schedule')) return 'Потоки и группы';
+  if (path.includes('/scoreboard')) return 'Табло';
+  if (path.includes('/operator')) return 'Оператор табло';
+  if (path.includes('/reports')) return 'Отчеты';
+  if (path.includes('/certificates')) return 'Печать грамот';
+  if (path.includes('/awards')) return 'Награждение';
+  if (path.startsWith('/federations/')) return 'Федерация';
+  if (path.startsWith('/competitions/')) return 'Соревнование';
+  if (path.startsWith('/athletes/')) return 'Спортсмен';
+  if (path.startsWith('/disciplines/')) return 'Дисциплина';
+  if (path.startsWith('/lookups/')) return 'Справочник';
+  return path;
+}
+
 export function RootLayout() {
   const { t, i18n } = useTranslation();
   const { hydrating } = useHydrateAuth();
@@ -48,6 +113,7 @@ export function RootLayout() {
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [favoritePaths, setFavoritePaths] = useState<string[]>(readFavoritePaths);
+  const [openTabs, setOpenTabs] = useState<WorkspaceOpenTab[]>(readOpenTabs);
 
   async function handleLogout() {
     await logout();
@@ -75,17 +141,18 @@ export function RootLayout() {
   const nextTheme = theme === 'dark' ? 'light' : 'dark';
   const themeToggleLabel = theme === 'dark' ? 'Светлая тема' : 'Темная тема';
 
-  const rootTabs = useMemo(() => {
+  const rootTabs = useMemo<WorkspaceRootTab[]>(() => {
     const isPlatformAdmin = user?.roles.some((role) => role.role === 'platform_admin') ?? false;
-    return [
-      { to: '/', label: 'Начальная страница' },
-      { to: '/federations', label: t('header.federations') },
-      { to: '/athletes', label: t('header.athletes') },
-      { to: '/competitions', label: t('header.competitions') },
-      { to: '/disciplines', label: t('header.disciplines') },
-      { to: '/judges', label: t('header.judges') },
-      ...(isPlatformAdmin ? [{ to: '/lookups', label: t('header.lookups') }] : []),
-    ] as const;
+    const tabs: WorkspaceRootTab[] = [
+      { to: '/', label: 'Начальная страница', icon: 'home' },
+      { to: '/federations', label: t('header.federations'), icon: 'teams' },
+      { to: '/competitions', label: t('header.competitions'), icon: 'competition' },
+      { to: '/athletes', label: t('header.athletes'), icon: 'athletes' },
+      { to: '/disciplines', label: t('header.disciplines'), icon: 'bar' },
+      { to: '/judges', label: t('header.judges'), icon: 'judges' },
+    ];
+    if (isPlatformAdmin) tabs.push({ to: '/lookups', label: t('header.lookups'), icon: 'list' });
+    return tabs;
   }, [t, user?.roles]);
   const searchCommands = useMemo(
     () => [
@@ -102,6 +169,20 @@ export function RootLayout() {
 
   const shouldUseWorkspaceShell =
     (isAuthenticated && user) || location.pathname.startsWith('/broadcast');
+
+  useEffect(() => {
+    if (!shouldUseWorkspaceShell || !user || currentPath.startsWith('/broadcast')) return;
+    const label = workspaceTabLabel(currentPath, rootTabs, user.displayName);
+    setOpenTabs((tabs) => {
+      const existing = tabs.find((tab) => tab.path === currentPath);
+      const next = existing
+        ? tabs.map((tab) => (tab.path === currentPath ? { ...tab, label } : tab))
+        : [...tabs, { path: currentPath, label }];
+      const limited = next.slice(-12);
+      writeOpenTabs(limited);
+      return limited;
+    });
+  }, [currentPath, rootTabs, shouldUseWorkspaceShell, user]);
 
   function submitSearch() {
     const query = normalizeSearch(searchQuery);
@@ -145,6 +226,23 @@ export function RootLayout() {
       return;
     }
     void navigate({ to: '/me' });
+  }
+
+  function navigateToTab(path: string) {
+    void navigate({ to: path as never });
+  }
+
+  function closeOpenTab(path: string) {
+    setOpenTabs((tabs) => {
+      const index = tabs.findIndex((tab) => tab.path === path);
+      const next = tabs.filter((tab) => tab.path !== path);
+      writeOpenTabs(next);
+      if (path === currentPath) {
+        const fallback = next[index - 1] ?? next[index] ?? next[next.length - 1];
+        void navigate({ to: (fallback?.path ?? defaultAuthenticatedRoute(user!)) as never });
+      }
+      return next;
+    });
   }
 
   if (shouldUseWorkspaceShell) {
@@ -224,25 +322,38 @@ export function RootLayout() {
           </span>
           {user ? (
             <>
-              {rootTabs.map((tab) => (
-                <Link
-                  key={tab.to}
-                  to={tab.to}
-                  className="pt-root-tab"
-                  activeProps={{ className: 'pt-root-tab is-active' }}
+              {(openTabs.length > 0
+                ? openTabs
+                : rootTabs.map((tab) => ({ path: tab.to, label: tab.label }))
+              ).map((tab) => (
+                <button
+                  key={tab.path}
+                  type="button"
+                  className={`pt-root-tab${tab.path === currentPath ? ' is-active' : ''}`}
+                  onClick={() => navigateToTab(tab.path)}
                 >
                   <span>{tab.label}</span>
-                  {tab.to !== '/' ? <span className="pt-root-tab-close">×</span> : null}
-                </Link>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="pt-root-tab-close"
+                    aria-label={`Закрыть вкладку ${tab.label}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeOpenTab(tab.path);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        closeOpenTab(tab.path);
+                      }
+                    }}
+                  >
+                    ×
+                  </span>
+                </button>
               ))}
-              <Link
-                to="/me"
-                className="pt-root-tab"
-                activeProps={{ className: 'pt-root-tab is-active' }}
-              >
-                <span>{user.displayName}</span>
-                <span className="pt-root-tab-close">×</span>
-              </Link>
             </>
           ) : (
             <span className="pt-root-tab is-active">
@@ -251,13 +362,31 @@ export function RootLayout() {
           )}
         </nav>
 
-        <main>
-          {hydrating ? (
-            <div className="pt-page p-6 text-sm text-gray-600">{t('app.restoringSession')}</div>
-          ) : (
-            <Outlet />
-          )}
-        </main>
+        <div className="pt-shell">
+          {user ? (
+            <aside className="pt-global-nav" aria-label="Разделы программы">
+              {rootTabs.map((tab) => (
+                <Link
+                  key={tab.to}
+                  to={tab.to}
+                  className="pt-global-nav-item"
+                  activeProps={{ className: 'pt-global-nav-item is-active' }}
+                  title={tab.label}
+                >
+                  <WorkspaceIcon name={tab.icon} />
+                  <span>{tab.label}</span>
+                </Link>
+              ))}
+            </aside>
+          ) : null}
+          <main className="pt-shell-main">
+            {hydrating ? (
+              <div className="pt-page p-6 text-sm text-gray-600">{t('app.restoringSession')}</div>
+            ) : (
+              <Outlet />
+            )}
+          </main>
+        </div>
       </div>
     );
   }

@@ -51,7 +51,7 @@ V2 parity: yes. The feedback thread is just SupportTicket with replies; the chan
 
 ## Tab strip
 
-The reference workflow keeps many tabs open simultaneously: Начальная, Соревнования, Спортсмены, Склад, Номинации спортсменов, athlete card. Modern web doesn't need this — TanStack Router handles deep linking and back/forward. We **do not** replicate the tabbed window.
+The reference workflow keeps many tabs open simultaneously: Начальная, Соревнования, Спортсмены, Склад, Номинации спортсменов, athlete card. V2 now mirrors that operator habit in the browser shell: opened workspace routes are tracked as closable tabs, persisted in `localStorage`, and restored after reload. TanStack Router remains the source of truth for navigation, while the tab strip provides the familiar PowerTable/1C working surface.
 
 ## Connection-quality widget
 
