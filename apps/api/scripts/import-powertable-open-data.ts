@@ -221,15 +221,16 @@ async function importChapters(
   dryRun: boolean,
 ): Promise<Counters> {
   const counters: Counters = { created: 0, updated: 0, skipped: 0 };
-  if (!federationId) {
-    counters.skipped = data.competitions.length;
-    return counters;
-  }
-
   const regions = new Map<string, CompetitionRow>();
   for (const competition of data.competitions) {
     if (!competition.regionId || !competition.regionName) continue;
     regions.set(competition.regionId, competition);
+  }
+
+  if (!federationId) {
+    if (dryRun) counters.created = regions.size;
+    else counters.skipped = regions.size;
+    return counters;
   }
 
   for (const region of regions.values()) {
