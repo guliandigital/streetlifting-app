@@ -36,7 +36,7 @@ docs/
 pnpm install
 pnpm dev            # starts Docker Desktop/compose, prepares DB, runs API + web
 pnpm dev --filter=@streetlifting/web
-pnpm build
+pnpm build          # web-first build: API + web
 ```
 
 On Windows, use the same command from PowerShell:
@@ -54,6 +54,13 @@ from `apps/api/.env`; if the file is missing, the launcher creates it from
 Local Docker ports default to `55432` for Postgres and `56379` for Redis to avoid
 conflicts with other projects. Override them with `STREETLIFTING_POSTGRES_PORT`
 and `STREETLIFTING_REDIS_PORT` if needed.
+
+Desktop/Tauri builds are explicit post-web-launch work and require the Rust/Cargo
+toolchain:
+
+```bash
+pnpm --filter=@streetlifting/desktop build
+```
 
 ## Production launch
 

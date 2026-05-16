@@ -5,6 +5,10 @@ import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { validateUuidParams } from '../lib/params.js';
+import {
+  deliverPendingTelegramNotifications,
+  enqueueTelegramRegistrationNotifications,
+} from '../lib/telegram.js';
 
 const log = moduleLogger('public-registration');
 
@@ -467,8 +471,22 @@ export const publicRegistrationPlugin: FeaturePlugin = {
               tx,
             );
 
+            await enqueueTelegramRegistrationNotifications(tx, {
+              federationId: competition.federationId,
+              competitionId: competition.id,
+              competitionName: competition.nameRu,
+              nominationId: nomination.id,
+              athleteName: [athleteData.lastName, athleteData.firstName, athleteData.middleName]
+                .filter(Boolean)
+                .join(' '),
+            });
+
             return { athlete, nomination };
           });
+
+          void deliverPendingTelegramNotifications(competition.federationId).catch((notifyErr) =>
+            log.warn({ err: notifyErr, competitionId: competition.id }, 'telegram delivery failed'),
+          );
 
           log.info(
             {

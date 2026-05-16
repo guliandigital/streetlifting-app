@@ -198,6 +198,7 @@ model User {
   refreshTokens   RefreshToken[]
   supportTickets  SupportTicket[] @relation("SupportTicketAuthor")
   supportMessages SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
+  telegramBindTokens TelegramBindToken[] @relation("TelegramBindTokenCreator")
 
   @@map("user")
 }
@@ -281,6 +282,9 @@ model Federation {
   roleAssignments   RoleAssignment[]
   records           Record[]
   supportTickets    SupportTicket[]
+  telegramBindTokens TelegramBindToken[]
+  telegramSubscriptions TelegramSubscription[]
+  telegramNotifications TelegramNotification[]
 
   @@map("federation")
 }
@@ -388,6 +392,69 @@ model SupportTicketMessage {
   @@map("support_ticket_message")
 }
 
+model TelegramBindToken {
+  id             String     @id @default(uuid()) @db.Uuid
+  federationId   String     @db.Uuid
+  code           String     @unique
+  expiresAt      DateTime   @db.Timestamptz(6)
+  usedAt         DateTime?  @db.Timestamptz(6)
+  usedByChatId   String?
+  usedByUsername String?
+  createdByUserId String?   @db.Uuid
+  createdAt      DateTime   @default(now()) @db.Timestamptz(6)
+
+  federation      Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  createdBy       User?      @relation("TelegramBindTokenCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([federationId, expiresAt])
+  @@index([usedAt])
+  @@map("telegram_bind_token")
+}
+
+model TelegramSubscription {
+  id                 String     @id @default(uuid()) @db.Uuid
+  federationId       String     @db.Uuid
+  chatId             String
+  telegramUserId     String?
+  username           String?
+  firstName          String?
+  lastName           String?
+  isActive           Boolean    @default(true)
+  createdAt          DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime   @updatedAt @db.Timestamptz(6)
+  lastNotificationAt DateTime?  @db.Timestamptz(6)
+
+  federation         Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  notifications      TelegramNotification[]
+
+  @@unique([federationId, chatId])
+  @@index([chatId])
+  @@index([federationId, isActive])
+  @@map("telegram_subscription")
+}
+
+model TelegramNotification {
+  id             String     @id @default(uuid()) @db.Uuid
+  federationId   String     @db.Uuid
+  competitionId  String?    @db.Uuid
+  nominationId   String?    @db.Uuid
+  subscriptionId String?    @db.Uuid
+  message        String
+  status         String     @default("pending")
+  error          String?
+  sentAt         DateTime?  @db.Timestamptz(6)
+  createdAt      DateTime   @default(now()) @db.Timestamptz(6)
+
+  federation     Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  competition    Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+  nomination     Nomination?  @relation(fields: [nominationId], references: [id], onDelete: SetNull)
+  subscription   TelegramSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([federationId, status, createdAt])
+  @@index([subscriptionId, createdAt])
+  @@map("telegram_notification")
+}
+
 // ─── Competition graph ────────────────────────────────────────────────────
 
 model Discipline {
@@ -462,6 +529,7 @@ model Competition {
   records                   Record[]
   plateSets                 PlateSet[]
   roleAssignments           RoleAssignment[]
+  telegramNotifications     TelegramNotification[]
 
   @@unique([federationId, code])
   @@index([federationId, status])
@@ -655,6 +723,7 @@ model Nomination {
   flight                  Flight?          @relation(fields: [flightId], references: [id], onDelete: SetNull)
   group                   Group?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
   attempts                Attempt[]
+  telegramNotifications   TelegramNotification[]
 
   @@unique([competitionId, athleteId, disciplineId, divisionId])
   @@index([competitionId, status])

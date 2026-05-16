@@ -14,12 +14,13 @@ export default tseslint.config(
       '**/build/**',
       '**/.turbo/**',
       '**/coverage/**',
+      '**/.claude/**',
       'output/**',
+      'reference screenshots/**',
       'apps/desktop/src-tauri/target/**',
       'apps/desktop/src-tauri/gen/**',
       '_logo_pack_unpack/**',
       'commitlint.config.js',
-      'eslint.config.js',
     ],
   },
 
@@ -38,7 +39,10 @@ export default tseslint.config(
     plugins: { import: importPlugin },
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: false }],
       '@typescript-eslint/require-await': 'off',
@@ -70,7 +74,7 @@ export default tseslint.config(
     languageOptions: {
       globals: { ...globals.browser },
     },
-    plugins: { react: reactPlugin, 'react-hooks': reactHooks },
+    plugins: { 'react': reactPlugin, 'react-hooks': reactHooks },
     settings: { react: { version: 'detect' } },
     rules: {
       ...reactPlugin.configs.recommended.rules,

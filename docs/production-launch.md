@@ -33,6 +33,8 @@ API process:
 - `JWT_SECRET=<random 48+ bytes base64>`
 - `LOG_LEVEL=info`
 - `SENTRY_DSN=<optional>`
+- `TELEGRAM_BOT_TOKEN=<optional bot token for federation registration notifications>`
+- `TELEGRAM_WEBHOOK_SECRET=<optional Telegram secret header for /telegram/webhook>`
 
 One-time root seed:
 
@@ -104,6 +106,16 @@ pnpm --filter=@streetlifting/api seed:federation-user
    ```
 
    The smoke creates an isolated federation/competition/athlete/nomination, checks duplicate nomination rejection, draw, weigh-in/payment, component attempts, scoreboard, protocol CSV, and accounting CSV.
+
+5a. Optional Telegram notification setup:
+
+```bash
+curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  -H "content-type: application/json" \
+  -d "{\"url\":\"https://<web-domain>/api/telegram/webhook\",\"secret_token\":\"${TELEGRAM_WEBHOOK_SECRET}\"}"
+```
+
+In the federation notifications screen, issue a one-hour Telegram code and send it to the bot. The API records the bind in audit and queues new public-registration notifications for active chats.
 
 6. Start the API:
 

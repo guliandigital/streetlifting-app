@@ -2390,6 +2390,9 @@ export default function CompetitionOperationsFeature() {
           <Link to="/competitions/$id/operator" params={{ id }} className="pt-link-button">
             {t('competitionOperator.title')}
           </Link>
+          <Link to="/competitions/$id/speaker" params={{ id }} className="pt-link-button">
+            Диктор
+          </Link>
           <Link to="/competitions/$id/judge" params={{ id }} className="pt-link-button">
             {t('competitionJudge.title')}
           </Link>
@@ -2398,6 +2401,12 @@ export default function CompetitionOperationsFeature() {
           </Link>
           <Link to="/broadcast/competitions/$id" params={{ id }} className="pt-link-button">
             Broadcast
+          </Link>
+          <Link to="/results/competitions/$id" params={{ id }} className="pt-link-button">
+            Результаты
+          </Link>
+          <Link to="/overlay/competitions/$id" params={{ id }} className="pt-link-button">
+            OBS
           </Link>
         </>
       }

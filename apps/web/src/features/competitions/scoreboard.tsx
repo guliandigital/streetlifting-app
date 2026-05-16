@@ -62,6 +62,15 @@ export default function CompetitionScoreboardFeature() {
           <Link to="/competitions/$id/operator" params={{ id }} className="pt-link-button">
             {t('competitionOperator.title')}
           </Link>
+          <Link to="/competitions/$id/speaker" params={{ id }} className="pt-link-button">
+            Диктор
+          </Link>
+          <Link to="/results/competitions/$id" params={{ id }} className="pt-link-button">
+            Результаты
+          </Link>
+          <Link to="/overlay/competitions/$id" params={{ id }} className="pt-link-button">
+            OBS
+          </Link>
           <Link to="/competitions/$id/protocol-print" params={{ id }} className="pt-link-button">
             {t('protocolPrint.title')}
           </Link>
@@ -90,6 +99,14 @@ export default function CompetitionScoreboardFeature() {
             </Link>
           ),
           icon: 'operator',
+        },
+        {
+          label: (
+            <Link to="/competitions/$id/speaker" params={{ id }}>
+              Диктор
+            </Link>
+          ),
+          icon: 'music',
         },
       ]}
     >

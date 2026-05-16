@@ -15,6 +15,7 @@ import { useAuthStore } from '../../lib/auth/store.js';
 import { setLocale } from '../../lib/i18n/index.js';
 import {
   type FederationAuditEntryDto,
+  useCreateTelegramBindToken,
   useFederationAudit,
   useFederationDashboard,
   useTestFederationEmail,
@@ -34,7 +35,9 @@ function auditComment(entry: FederationAuditEntryDto): string {
   const subject = typeof payload.subject === 'string' ? payload.subject : null;
   const recipient = typeof payload.recipient === 'string' ? payload.recipient : null;
   const status = typeof payload.status === 'string' ? payload.status : null;
-  return message ?? subject ?? recipient ?? status ?? entry.notes ?? '-';
+  const code = typeof payload.code === 'string' ? payload.code : null;
+  const username = typeof payload.username === 'string' ? payload.username : null;
+  return message ?? subject ?? recipient ?? status ?? code ?? username ?? entry.notes ?? '-';
 }
 
 export default function FederationNotificationsFeature() {
@@ -46,6 +49,7 @@ export default function FederationNotificationsFeature() {
   const { data: auditData, isLoading: auditLoading } = useFederationAudit(id);
   const update = useUpdateFederation(id);
   const testEmail = useTestFederationEmail(id);
+  const createTelegramBindToken = useCreateTelegramBindToken(id);
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [telegramHandle, setTelegramHandle] = useState('');
@@ -84,6 +88,8 @@ export default function FederationNotificationsFeature() {
         'federation.updated',
         'federation.test_email.sent',
         'federation.test_email.failed',
+        'federation.telegram_bind_token.created',
+        'federation.telegram.bound',
         'federation.support_ticket.created',
         'federation.support_ticket.message_created',
         'federation.support_ticket.status_updated',
@@ -124,6 +130,17 @@ export default function FederationNotificationsFeature() {
       } else {
         toast.error(err instanceof Error ? err.message : 'Error');
       }
+    }
+  }
+
+  async function createTelegramCode() {
+    try {
+      const result = await createTelegramBindToken.mutateAsync();
+      toast.success(
+        `Код Telegram выпущен до ${new Date(result.token.expiresAt).toLocaleTimeString('ru-RU')}`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
     }
   }
 
@@ -231,11 +248,21 @@ export default function FederationNotificationsFeature() {
                 disabled={!canManage}
               />
               <label>Код подключения:</label>
-              <input
-                className="pt-field font-mono"
-                value={data.telegramSubscriptionCode}
-                readOnly
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  className="pt-field font-mono"
+                  value={data.telegramSubscriptionCode ?? 'Код не выпущен'}
+                  readOnly
+                />
+                <WorkspaceButton
+                  type="button"
+                  icon="telegram"
+                  onClick={() => void createTelegramCode()}
+                  disabled={!canManage || createTelegramBindToken.isPending}
+                >
+                  Выпустить на 1 час
+                </WorkspaceButton>
+              </div>
             </div>
 
             <div className="pt-info-green space-y-2">
@@ -311,9 +338,17 @@ export default function FederationNotificationsFeature() {
         <WorkspacePanel className="p-3">
           <WorkspaceSectionTitle>Справка по каналам</WorkspaceSectionTitle>
           <div className="pt-info-yellow mb-3">
-            Для Telegram: отправьте код подключения {data.telegramSubscriptionCode} в боте
-            Streetlifting.
+            Для Telegram: выпустите одноразовый код и отправьте его в боте Streetlifting в течение
+            часа.
           </div>
+          {data.telegramSubscriptionCode ? (
+            <div className="pt-info-green mb-3">
+              Активный код: <b>{data.telegramSubscriptionCode}</b>. Действует до{' '}
+              {data.telegramSubscriptionCodeExpiresAt
+                ? new Date(data.telegramSubscriptionCodeExpiresAt).toLocaleString('ru-RU')
+                : '—'}
+            </div>
+          ) : null}
           <table className="pt-grid">
             <thead>
               <tr>
@@ -328,7 +363,13 @@ export default function FederationNotificationsFeature() {
               </tr>
               <tr className="is-green">
                 <td>Telegram</td>
-                <td>{telegramHandle ? 'Заполнен' : 'Ожидает подключения'}</td>
+                <td>
+                  {data.telegramSubscriptions.length > 0
+                    ? `Подключено чатов: ${data.telegramSubscriptions.length}`
+                    : telegramHandle
+                      ? 'Указан username, чат не подключен'
+                      : 'Ожидает подключения'}
+                </td>
               </tr>
               <tr className="is-yellow">
                 <td>Публичные результаты</td>

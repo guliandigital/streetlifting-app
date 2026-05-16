@@ -20,6 +20,7 @@ import {
   mailerConfigured,
   sendMail,
 } from '../lib/mailer.js';
+import { bindTelegramCode, generateTelegramBindCode } from '../lib/telegram.js';
 
 const log = moduleLogger('federations');
 const MAX_FEDERATION_ATTACHMENT_BYTES = 5 * 1024 * 1024;
@@ -58,6 +59,38 @@ const SupportTicketUpdateInput = z
   })
   .strict();
 
+const TelegramBindInput = z
+  .object({
+    code: z.string().trim().min(6).max(32),
+    chatId: z.string().trim().min(1).max(64),
+    telegramUserId: z.string().trim().max(64).nullable().optional(),
+    username: z.string().trim().max(64).nullable().optional(),
+    firstName: z.string().trim().max(120).nullable().optional(),
+    lastName: z.string().trim().max(120).nullable().optional(),
+  })
+  .strict();
+
+const TelegramWebhookInput = z
+  .object({
+    message: z
+      .object({
+        text: z.string().optional(),
+        chat: z.object({ id: z.union([z.string(), z.number()]) }).passthrough(),
+        from: z
+          .object({
+            id: z.union([z.string(), z.number()]).optional(),
+            username: z.string().optional(),
+            first_name: z.string().optional(),
+            last_name: z.string().optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
 /**
  * Returns the set of federation IDs the caller is allowed to read/edit.
  *  - platform_admin → all
@@ -73,6 +106,24 @@ function visibleFederationIds(
     if (r.federationId) ids.add(r.federationId);
   }
   return { ids: [...ids] };
+}
+
+function canManageTelegramBinding(
+  user: { roles: Array<{ role: string; federationId: string | null }> } | null,
+  federationId: string,
+): boolean {
+  return (
+    user?.roles.some(
+      (role) =>
+        role.role === 'platform_admin' ||
+        (role.role === 'federation_admin' && role.federationId === federationId),
+    ) ?? false
+  );
+}
+
+function extractTelegramCode(text: string | undefined): string | null {
+  const match = text?.match(/[A-Za-z0-9]{6,32}/);
+  return match ? match[0].toUpperCase() : null;
 }
 
 const PaymentMethodInput = z.enum(['bank_transfer', 'card', 'sbp', 'cash', 'other']);
@@ -217,7 +268,14 @@ export const federationsPlugin: FeaturePlugin = {
           });
         }
 
-        const [receipts, writeoffs, competitions, peerFederations] = await Promise.all([
+        const [
+          receipts,
+          writeoffs,
+          competitions,
+          peerFederations,
+          activeTelegramToken,
+          telegramSubscriptions,
+        ] = await Promise.all([
           prisma.receipt.findMany({
             where: { federationId: req.params.id },
             orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
@@ -248,6 +306,25 @@ export const federationsPlugin: FeaturePlugin = {
               },
             },
           }),
+          prisma.telegramBindToken.findFirst({
+            where: { federationId: req.params.id, usedAt: null, expiresAt: { gt: new Date() } },
+            orderBy: { createdAt: 'desc' },
+            select: { code: true, expiresAt: true },
+          }),
+          prisma.telegramSubscription.findMany({
+            where: { federationId: req.params.id, isActive: true },
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+            select: {
+              id: true,
+              chatId: true,
+              username: true,
+              firstName: true,
+              lastName: true,
+              createdAt: true,
+              lastNotificationAt: true,
+            },
+          }),
         ]);
 
         const receivedNominations = receipts.reduce((sum, item) => sum + item.nominationsCount, 0);
@@ -274,11 +351,173 @@ export const federationsPlugin: FeaturePlugin = {
             remainingNominations: receivedNominations - consumedNominations,
             receivedAmountKopecks,
           },
-          telegramSubscriptionCode: federation.securityKey.replace(/-/g, '').slice(0, 10),
+          telegramSubscriptionCode: activeTelegramToken?.code ?? null,
+          telegramSubscriptionCodeExpiresAt: activeTelegramToken?.expiresAt ?? null,
+          telegramSubscriptions,
           regionalComparison,
         };
       },
     );
+
+    app.post<{ Params: { id: string } }>(
+      '/federations/:id/telegram-bind-token',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        if (!canManageTelegramBinding(req.user, req.params.id)) {
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const federation = await prisma.federation.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const code = generateTelegramBindCode();
+          try {
+            const token = await prisma.$transaction(async (tx) => {
+              const created = await tx.telegramBindToken.create({
+                data: {
+                  federationId: req.params.id,
+                  code,
+                  expiresAt,
+                  createdByUserId: req.user!.id,
+                },
+              });
+              await audit.record(
+                {
+                  ...audit.fromRequest(req),
+                  actorUserId: req.user!.id,
+                  action: 'federation.telegram_bind_token.created',
+                  scopeFederationId: req.params.id,
+                  scopeCompetitionId: null,
+                  targetType: 'telegram_bind_token',
+                  targetId: created.id,
+                  before: null,
+                  after: { code: created.code, expiresAt: created.expiresAt },
+                  result: 'success',
+                },
+                tx,
+              );
+              return created;
+            });
+            return reply.code(201).send({
+              token: {
+                code: token.code,
+                expiresAt: token.expiresAt,
+                createdAt: token.createdAt,
+              },
+            });
+          } catch (err) {
+            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+              continue;
+            }
+            throw err;
+          }
+        }
+
+        return reply.code(500).send({
+          error: {
+            code: 'telegram_code_generation_failed',
+            message: 'Could not generate unique Telegram bind code',
+            requestId: req.requestId,
+          },
+        });
+      },
+    );
+
+    app.post('/telegram/bind', async (req, reply) => {
+      const parsed = TelegramBindInput.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
+        });
+      }
+
+      const result = await bindTelegramCode({
+        code: parsed.data.code,
+        chatId: parsed.data.chatId,
+        telegramUserId: parsed.data.telegramUserId ?? null,
+        username: parsed.data.username ?? null,
+        firstName: parsed.data.firstName ?? null,
+        lastName: parsed.data.lastName ?? null,
+        auditBase: audit.fromRequest(req),
+      });
+      if ('error' in result) {
+        const status =
+          result.error === 'code_expired' ? 410 : result.error === 'code_used' ? 409 : 404;
+        return reply.code(status).send({
+          error: {
+            code: result.error,
+            message: 'Telegram bind code is invalid',
+            requestId: req.requestId,
+          },
+        });
+      }
+      return {
+        status: 'bound',
+        federationId: result.subscription.federationId,
+        subscriptionId: result.subscription.id,
+      };
+    });
+
+    app.post('/telegram/webhook', async (req, reply) => {
+      const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+      if (secret) {
+        const actual = req.headers['x-telegram-bot-api-secret-token'];
+        if (actual !== secret) {
+          return reply.code(401).send({
+            error: {
+              code: 'unauthorized',
+              message: 'Invalid Telegram webhook secret',
+              requestId: req.requestId,
+            },
+          });
+        }
+      }
+
+      const parsed = TelegramWebhookInput.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
+        });
+      }
+      const message = parsed.data.message;
+      const code = extractTelegramCode(message?.text);
+      if (!message || !code) return { status: 'ignored' };
+
+      const result = await bindTelegramCode({
+        code,
+        chatId: String(message.chat.id),
+        telegramUserId: message.from?.id === undefined ? null : String(message.from.id),
+        username: message.from?.username ?? null,
+        firstName: message.from?.first_name ?? null,
+        lastName: message.from?.last_name ?? null,
+        auditBase: audit.fromRequest(req),
+      });
+      if ('error' in result) return { status: result.error };
+      return { status: 'bound', federationId: result.subscription.federationId };
+    });
 
     app.get<{ Params: { id: string } }>(
       '/federations/:id/audit',

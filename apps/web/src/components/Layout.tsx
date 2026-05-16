@@ -27,7 +27,7 @@ function ConnectionStatusBar() {
     async function ping() {
       const started = performance.now();
       try {
-        await fetch('/api/healthz', { method: 'HEAD', cache: 'no-store' });
+        await fetch('/api/health', { method: 'HEAD', cache: 'no-store' });
       } catch {
         // Network failure — record a high latency placeholder so the bar still moves.
         if (!cancelled) {
@@ -180,6 +180,7 @@ function workspaceTabLabel(
   if (path.includes('/reports')) return 'Отчеты';
   if (path.includes('/certificates')) return 'Печать грамот';
   if (path.includes('/awards')) return 'Награждение';
+  if (path.startsWith('/results/')) return 'Публичные результаты';
   if (path.startsWith('/federations/')) return 'Федерация';
   if (path.startsWith('/competitions/')) return 'Соревнование';
   if (path.startsWith('/athletes/')) return 'Спортсмен';
@@ -328,6 +329,10 @@ export function RootLayout() {
       }
       return next;
     });
+  }
+
+  if (currentPath.startsWith('/overlay')) {
+    return <Outlet />;
   }
 
   if (shouldUseWorkspaceShell) {

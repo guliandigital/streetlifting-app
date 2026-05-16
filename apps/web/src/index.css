@@ -554,6 +554,38 @@ body {
   padding: 5px 0;
 }
 
+.pt-segmented {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--pt-border);
+  border-radius: 3px;
+  background: #eeeeee;
+}
+
+.pt-segmented button {
+  min-height: 26px;
+  border: 0;
+  border-right: 1px solid var(--pt-border);
+  background: transparent;
+  color: #333333;
+  cursor: pointer;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  line-height: 1;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+.pt-segmented button:last-child {
+  border-right: 0;
+}
+
+.pt-segmented button:hover,
+.pt-segmented button.is-active {
+  background: #ffffff;
+  color: var(--pt-link);
+}
+
 .pt-info-green,
 .pt-info-yellow,
 .pt-info-pink,
@@ -856,6 +888,166 @@ body {
   padding: 12px;
 }
 
+html:has(.pt-obs-overlay-root),
+body:has(.pt-obs-overlay-root),
+#root:has(.pt-obs-overlay-root) {
+  background: transparent;
+}
+
+.pt-obs-overlay-root {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  gap: 18px;
+  align-items: end;
+  padding: clamp(16px, 3vw, 42px);
+  background: transparent;
+  color: #ffffff;
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  text-shadow: 0 2px 12px rgb(0 0 0 / 72%);
+}
+
+.pt-obs-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: clamp(22px, 3vw, 42px);
+  font-weight: 800;
+}
+
+.pt-obs-current,
+.pt-obs-next {
+  min-width: 0;
+}
+
+.pt-obs-competition {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 10px;
+  color: #d7f985;
+  font-size: clamp(15px, 1.6vw, 24px);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pt-obs-card,
+.pt-obs-next {
+  border: 1px solid rgb(255 255 255 / 18%);
+  background: linear-gradient(135deg, rgb(5 9 14 / 88%), rgb(16 21 29 / 78%));
+  box-shadow: 0 20px 60px rgb(0 0 0 / 38%);
+  backdrop-filter: blur(8px);
+}
+
+.pt-obs-card {
+  display: grid;
+  grid-template-columns: clamp(82px, 9vw, 132px) minmax(0, 1fr) minmax(92px, 12vw, 150px);
+  gap: clamp(14px, 2vw, 28px);
+  align-items: center;
+  padding: clamp(14px, 2vw, 26px);
+  border-radius: 8px;
+}
+
+.pt-obs-empty {
+  display: block;
+  font-size: clamp(24px, 3vw, 46px);
+  font-weight: 900;
+}
+
+.pt-obs-photo {
+  width: clamp(82px, 9vw, 132px);
+  height: clamp(82px, 9vw, 132px);
+  border-radius: 8px;
+  object-fit: cover;
+  border: 2px solid #99cd14;
+}
+
+.pt-obs-photo-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #10151d;
+  color: #99cd14;
+  font-size: clamp(28px, 4vw, 58px);
+  font-weight: 900;
+}
+
+.pt-obs-label {
+  color: #99cd14;
+  font-size: clamp(13px, 1.3vw, 18px);
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.pt-obs-name {
+  overflow-wrap: anywhere;
+  font-size: clamp(30px, 5vw, 78px);
+  font-weight: 950;
+  line-height: 0.98;
+}
+
+.pt-obs-meta,
+.pt-obs-attempt {
+  overflow-wrap: anywhere;
+  font-size: clamp(15px, 1.7vw, 26px);
+  font-weight: 700;
+}
+
+.pt-obs-attempt {
+  margin-top: 8px;
+  color: #d7f985;
+}
+
+.pt-obs-score {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.pt-obs-score span {
+  color: #d7dbe2;
+  font-size: clamp(13px, 1.2vw, 18px);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pt-obs-score strong {
+  color: #99cd14;
+  font-size: clamp(34px, 5vw, 78px);
+  line-height: 1;
+}
+
+.pt-obs-next {
+  padding: 14px;
+  border-radius: 8px;
+}
+
+.pt-obs-next-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid rgb(255 255 255 / 14%);
+  font-size: clamp(14px, 1.4vw, 20px);
+  font-weight: 800;
+}
+
+.pt-obs-next-row span,
+.pt-obs-next-row small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pt-obs-next-row small {
+  color: #d7f985;
+  font-size: 0.82em;
+}
+
 .pt-big-green {
   display: inline-flex;
   min-height: 58px;
@@ -883,6 +1075,20 @@ body {
 }
 
 @media (max-width: 900px) {
+  .pt-obs-overlay-root {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .pt-obs-card {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .pt-obs-score {
+    grid-column: 1 / -1;
+    justify-items: start;
+  }
+
   .pt-title-actions {
     display: flex;
     margin-left: auto;

@@ -44,6 +44,7 @@ export default function LookupsCitiesFeature() {
   const { data, isLoading, error } = useCities({
     ...(regionId ? { regionId } : effectiveCountryId ? { countryId: effectiveCountryId } : {}),
     ...(search ? { q: search } : {}),
+    limit: 200,
   });
 
   const regionsById = useMemo(() => {

@@ -34,8 +34,13 @@ export default function AthleteNewFeature() {
     () => regionsData?.regions.find((r) => r.codeIso === regionCode),
     [regionsData, regionCode],
   );
+  const citySearch = city.trim();
   const { data: citiesData } = useCities(
-    region?.id ? { regionId: region.id } : country?.id ? { countryId: country.id } : {},
+    region?.id
+      ? { regionId: region.id, ...(citySearch ? { q: citySearch } : {}), limit: 200 }
+      : country?.id
+        ? { countryId: country.id, ...(citySearch ? { q: citySearch } : {}), limit: 200 }
+        : {},
   );
 
   async function onSubmit(e: FormEvent) {

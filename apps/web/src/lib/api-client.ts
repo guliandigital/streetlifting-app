@@ -43,6 +43,7 @@ import type {
   SupportTicketStatus,
   FederationTestEmailResponse,
   FederationWriteoffDto,
+  TelegramBindTokenDto,
 } from '../features/federations/api.js';
 import type { AthleteDto, AthleteListResponse } from '../features/athletes/api.js';
 import type { DisciplineDto } from '../features/disciplines/api.js';
@@ -250,7 +251,11 @@ export const api = {
       unauthenticated: true,
     }),
 
-  register: (email: string, displayName: string, password: string): Promise<{ user: { id: string; email: string; displayName: string; createdAt: string } }> =>
+  register: (
+    email: string,
+    displayName: string,
+    password: string,
+  ): Promise<{ user: { id: string; email: string; displayName: string; createdAt: string } }> =>
     request('/auth/register', {
       method: 'POST',
       body: { email, displayName, password },
@@ -276,10 +281,8 @@ export const api = {
     }),
 
   federations: {
-    list: (): Promise<{ federations: Federation[] }> =>
-      request('/federations'),
-    get: (id: string): Promise<{ federation: Federation }> =>
-      request(`/federations/${id}`),
+    list: (): Promise<{ federations: Federation[] }> => request('/federations'),
+    get: (id: string): Promise<{ federation: Federation }> => request(`/federations/${id}`),
     dashboard: (id: string): Promise<FederationDashboardResponse> =>
       request(`/federations/${id}/dashboard`),
     audit: (id: string): Promise<{ audit: FederationAuditEntryDto[] }> =>
@@ -288,9 +291,14 @@ export const api = {
       request('/federations', { method: 'POST', body: data }),
     update: (id: string, data: FederationUpdate): Promise<{ federation: Federation }> =>
       request(`/federations/${id}`, { method: 'PATCH', body: data }),
+    createTelegramBindToken: (id: string): Promise<{ token: TelegramBindTokenDto }> =>
+      request(`/federations/${id}/telegram-bind-token`, { method: 'POST' }),
     testEmail: (id: string): Promise<FederationTestEmailResponse> =>
       request(`/federations/${id}/test-email`, { method: 'POST' }),
-    createFeedback: (id: string, data: { message: string }): Promise<{ feedback: { author: string; message: string; status: string } }> =>
+    createFeedback: (
+      id: string,
+      data: { message: string },
+    ): Promise<{ feedback: { author: string; message: string; status: string } }> =>
       request(`/federations/${id}/feedback`, { method: 'POST', body: data }),
     supportTickets: {
       list: (id: string): Promise<{ tickets: SupportTicketDto[] }> =>
@@ -325,9 +333,16 @@ export const api = {
       request(`/federations/${id}/attachments/${attachmentId}`, { method: 'DELETE' }),
     downloadAttachment: (id: string, attachmentId: string): Promise<Blob> =>
       requestBlob(`/federations/${id}/attachments/${attachmentId}/download`),
-    createPlateSet: (id: string, data: PlateSetCreate): Promise<{ plateSet: FederationPlateSetDto }> =>
+    createPlateSet: (
+      id: string,
+      data: PlateSetCreate,
+    ): Promise<{ plateSet: FederationPlateSetDto }> =>
       request(`/federations/${id}/plate-sets`, { method: 'POST', body: data }),
-    updatePlateSet: (id: string, plateSetId: string, data: PlateSetUpdate): Promise<{ plateSet: FederationPlateSetDto }> =>
+    updatePlateSet: (
+      id: string,
+      plateSetId: string,
+      data: PlateSetUpdate,
+    ): Promise<{ plateSet: FederationPlateSetDto }> =>
       request(`/federations/${id}/plate-sets/${plateSetId}`, { method: 'PATCH', body: data }),
     deletePlateSet: (id: string, plateSetId: string): Promise<{ status: 'ok' }> =>
       request(`/federations/${id}/plate-sets/${plateSetId}`, { method: 'DELETE' }),
@@ -360,15 +375,24 @@ export const api = {
         request(`/federations/${fedId}/chapters`),
       get: (fedId: string, id: string): Promise<{ chapter: FederationChapterDto }> =>
         request(`/federations/${fedId}/chapters/${id}`),
-      create: (fedId: string, data: FederationChapterCreate): Promise<{ chapter: FederationChapterDto }> =>
+      create: (
+        fedId: string,
+        data: FederationChapterCreate,
+      ): Promise<{ chapter: FederationChapterDto }> =>
         request(`/federations/${fedId}/chapters`, { method: 'POST', body: data }),
-      update: (fedId: string, id: string, data: FederationChapterUpdate): Promise<{ chapter: FederationChapterDto }> =>
+      update: (
+        fedId: string,
+        id: string,
+        data: FederationChapterUpdate,
+      ): Promise<{ chapter: FederationChapterDto }> =>
         request(`/federations/${fedId}/chapters/${id}`, { method: 'PATCH', body: data }),
     },
   },
 
   competitions: {
-    list: (params: { federationId?: string; status?: string; limit?: number; offset?: number } = {}): Promise<CompetitionListResponse> => {
+    list: (
+      params: { federationId?: string; status?: string; limit?: number; offset?: number } = {},
+    ): Promise<CompetitionListResponse> => {
       const q = new URLSearchParams();
       if (params.federationId) q.set('federationId', params.federationId);
       if (params.status) q.set('status', params.status);
@@ -383,35 +407,85 @@ export const api = {
     update: (id: string, data: CompetitionUpdate): Promise<{ competition: CompetitionDto }> =>
       request(`/competitions/${id}`, { method: 'PATCH', body: data }),
     ops: (id: string): Promise<CompetitionOpsResponse> => request(`/competitions/${id}/ops`),
-    applyDefaultSetup: (id: string, data: Partial<CompetitionDefaultSetup> = {}): Promise<{ setup: { platformId: string; flightId: string; divisions: number; weightClasses: number } }> =>
-      request(`/competitions/${id}/setup/default`, { method: 'POST', body: data }),
-    drawNominations: (id: string, data: Partial<NominationDraw> = {}): Promise<{ draw: { assigned: number; firstNumber: number | null } }> =>
+    applyDefaultSetup: (
+      id: string,
+      data: Partial<CompetitionDefaultSetup> = {},
+    ): Promise<{
+      setup: { platformId: string; flightId: string; divisions: number; weightClasses: number };
+    }> => request(`/competitions/${id}/setup/default`, { method: 'POST', body: data }),
+    drawNominations: (
+      id: string,
+      data: Partial<NominationDraw> = {},
+    ): Promise<{ draw: { assigned: number; firstNumber: number | null } }> =>
       request(`/competitions/${id}/nominations/draw`, { method: 'POST', body: data }),
-    autoPlanFlights: (id: string, data: Partial<FlightAutoPlan> = {}): Promise<{ plan: { platformId: string; flights: Array<{ flightId: string; code: string; nominations: number; groups: number; startTime: string; estimatedMinutes: number }> } }> =>
-      request(`/competitions/${id}/flights/auto-plan`, { method: 'POST', body: data }),
-    createNomination: (id: string, data: NominationCreate): Promise<{ nomination: NominationDto }> =>
+    autoPlanFlights: (
+      id: string,
+      data: Partial<FlightAutoPlan> = {},
+    ): Promise<{
+      plan: {
+        platformId: string;
+        flights: Array<{
+          flightId: string;
+          code: string;
+          nominations: number;
+          groups: number;
+          startTime: string;
+          estimatedMinutes: number;
+        }>;
+      };
+    }> => request(`/competitions/${id}/flights/auto-plan`, { method: 'POST', body: data }),
+    createNomination: (
+      id: string,
+      data: NominationCreate,
+    ): Promise<{ nomination: NominationDto }> =>
       request(`/competitions/${id}/nominations`, { method: 'POST', body: data }),
-    updateNomination: (id: string, data: NominationUpdate): Promise<{ nomination: NominationDto }> =>
+    updateNomination: (
+      id: string,
+      data: NominationUpdate,
+    ): Promise<{ nomination: NominationDto }> =>
       request(`/nominations/${id}`, { method: 'PATCH', body: data }),
-    upsertAttempt: (nominationId: string, attemptNumber: number, data: Omit<AttemptUpsert, 'attemptNumber'>): Promise<{ attempt: AttemptDto; nomination: NominationDto | null }> =>
-      request(`/nominations/${nominationId}/attempts/${attemptNumber}`, { method: 'PUT', body: data }),
-    upsertComponentAttempt: (nominationId: string, componentId: string, attemptNumber: number, data: Omit<AttemptUpsert, 'attemptNumber'>): Promise<{ attempt: AttemptDto; nomination: NominationDto | null }> =>
-      request(`/nominations/${nominationId}/attempts/${componentId}/${attemptNumber}`, { method: 'PUT', body: data }),
-    createJudgeAssignment: (id: string, data: JudgeAssignmentCreate): Promise<{ judgeAssignment: CompetitionOpsResponse['judgeAssignments'][number] }> =>
+    upsertAttempt: (
+      nominationId: string,
+      attemptNumber: number,
+      data: Omit<AttemptUpsert, 'attemptNumber'>,
+    ): Promise<{ attempt: AttemptDto; nomination: NominationDto | null }> =>
+      request(`/nominations/${nominationId}/attempts/${attemptNumber}`, {
+        method: 'PUT',
+        body: data,
+      }),
+    upsertComponentAttempt: (
+      nominationId: string,
+      componentId: string,
+      attemptNumber: number,
+      data: Omit<AttemptUpsert, 'attemptNumber'>,
+    ): Promise<{ attempt: AttemptDto; nomination: NominationDto | null }> =>
+      request(`/nominations/${nominationId}/attempts/${componentId}/${attemptNumber}`, {
+        method: 'PUT',
+        body: data,
+      }),
+    createJudgeAssignment: (
+      id: string,
+      data: JudgeAssignmentCreate,
+    ): Promise<{ judgeAssignment: CompetitionOpsResponse['judgeAssignments'][number] }> =>
       request(`/competitions/${id}/judge-assignments`, { method: 'POST', body: data }),
     deleteJudgeAssignment: (assignmentId: string): Promise<{ deleted: true }> =>
       request(`/judge-assignments/${assignmentId}`, { method: 'DELETE' }),
-    scoreboard: (id: string): Promise<ScoreboardResponse> => request(`/competitions/${id}/scoreboard`),
+    scoreboard: (id: string): Promise<ScoreboardResponse> =>
+      request(`/competitions/${id}/scoreboard`),
     publicScoreboard: (id: string): Promise<ScoreboardResponse> =>
       request(`/public/competitions/${id}/scoreboard`, { unauthenticated: true }),
     protocolCsv: (id: string): Promise<string> => requestText(`/competitions/${id}/protocol.csv`),
     protocolXlsx: (id: string): Promise<Blob> => requestBlob(`/competitions/${id}/protocol.xlsx`),
-    accountingCsv: (id: string): Promise<string> => requestText(`/competitions/${id}/accounting.csv`),
-    accountingXlsx: (id: string): Promise<Blob> => requestBlob(`/competitions/${id}/accounting.xlsx`),
+    accountingCsv: (id: string): Promise<string> =>
+      requestText(`/competitions/${id}/accounting.csv`),
+    accountingXlsx: (id: string): Promise<Blob> =>
+      requestBlob(`/competitions/${id}/accounting.xlsx`),
   },
 
   athletes: {
-    list: (params: { search?: string; limit?: number; offset?: number } = {}): Promise<AthleteListResponse> => {
+    list: (
+      params: { search?: string; limit?: number; offset?: number } = {},
+    ): Promise<AthleteListResponse> => {
       const q = new URLSearchParams();
       if (params.search) q.set('search', params.search);
       if (params.limit !== undefined) q.set('limit', String(params.limit));
@@ -432,7 +506,9 @@ export const api = {
   },
 
   judges: {
-    list: (params: { search?: string; limit?: number; offset?: number } = {}): Promise<JudgeListResponse> => {
+    list: (
+      params: { search?: string; limit?: number; offset?: number } = {},
+    ): Promise<JudgeListResponse> => {
       const q = new URLSearchParams();
       if (params.search) q.set('search', params.search);
       if (params.limit !== undefined) q.set('limit', String(params.limit));
@@ -470,7 +546,15 @@ export const api = {
         request(`/references/regions/${id}`, { method: 'PATCH', body: data }),
     },
     cities: {
-      list: (params: { regionId?: string; countryId?: string; q?: string; limit?: number; offset?: number } = {}): Promise<CityListResponse> => {
+      list: (
+        params: {
+          regionId?: string;
+          countryId?: string;
+          q?: string;
+          limit?: number;
+          offset?: number;
+        } = {},
+      ): Promise<CityListResponse> => {
         const qp = new URLSearchParams();
         if (params.regionId) qp.set('regionId', params.regionId);
         if (params.countryId) qp.set('countryId', params.countryId);
@@ -493,7 +577,8 @@ export const api = {
         const qs = qp.toString();
         return request(`/references/lookups${qs ? `?${qs}` : ''}`);
       },
-      get: (id: string): Promise<{ lookup: LookupValueDto }> => request(`/references/lookups/${id}`),
+      get: (id: string): Promise<{ lookup: LookupValueDto }> =>
+        request(`/references/lookups/${id}`),
       create: (data: LookupValueCreate): Promise<{ lookup: LookupValueDto }> =>
         request('/references/lookups', { method: 'POST', body: data }),
       update: (id: string, data: LookupValueUpdate): Promise<{ lookup: LookupValueDto }> =>

@@ -679,6 +679,18 @@ export default function CompetitionDetailFeature() {
           <Link to="/competitions/$id/operator" params={{ id }} className="pt-link-button">
             {t('competitionOperator.title')}
           </Link>
+          <Link to="/competitions/$id/speaker" params={{ id }} className="pt-link-button">
+            Диктор
+          </Link>
+          <Link to="/broadcast/competitions/$id" params={{ id }} className="pt-link-button">
+            Трансляция
+          </Link>
+          <Link to="/results/competitions/$id" params={{ id }} className="pt-link-button">
+            Результаты
+          </Link>
+          <Link to="/overlay/competitions/$id" params={{ id }} className="pt-link-button">
+            OBS
+          </Link>
           <Link to="/competitions/$id/reports" params={{ id }} className="pt-link-button">
             Отчеты
           </Link>

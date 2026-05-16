@@ -799,6 +799,21 @@ export default function FederationDetailFeature() {
               Информационные таблицы для трансляций
             </span>
           )}
+          {activeCompetitionId ? (
+            <Link
+              to="/results/competitions/$id"
+              params={{ id: activeCompetitionId }}
+              className="pt-link pt-inline-icon"
+            >
+              <WorkspaceIcon name="records" />
+              Публичные результаты
+            </Link>
+          ) : (
+            <span className="pt-muted pt-inline-icon">
+              <WorkspaceIcon name="records" />
+              Публичные результаты
+            </span>
+          )}
         </aside>
 
         <main className="space-y-3">
@@ -999,8 +1014,10 @@ export default function FederationDetailFeature() {
           </div>
 
           <div className="pt-info-pink">
-            Telegram-уведомления: отправьте код <b>{data.telegramSubscriptionCode}</b> в боте
-            Streetlifting, чтобы получать уведомления по федерации.
+            Telegram-уведомления:{' '}
+            {data.telegramSubscriptions.length > 0
+              ? `подключено чатов: ${data.telegramSubscriptions.length}.`
+              : 'выпустите одноразовый код на странице уведомлений и отправьте его в боте Streetlifting.'}
           </div>
 
           <ChaptersCard federationId={f.id} />

@@ -13,7 +13,11 @@ import {
 import { api } from '../../lib/api-client.js';
 import { formatRub } from '../../lib/money.js';
 import { nominationGenderStats } from './gender-stats.js';
-import { useCompetitionOps } from './operations-api.js';
+import {
+  useCompetitionOps,
+  type CompetitionOpsResponse,
+  type NominationDto,
+} from './operations-api.js';
 
 type ReportsTab =
   | 'protocols'
@@ -89,6 +93,181 @@ function downloadBlob(filename: string, blob: Blob): void {
   URL.revokeObjectURL(url);
 }
 
+type StandardReportMode = 'secretary' | 'weightClasses' | 'federation';
+
+const STANDARD_REPORT_MODES: Array<{ key: StandardReportMode; label: string }> = [
+  { key: 'secretary', label: 'Техсекретарь' },
+  { key: 'weightClasses', label: 'Весовые категории' },
+  { key: 'federation', label: 'Сводка федерации' },
+];
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatNumber(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : String(value);
+}
+
+function formatKg(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : `${value}`;
+}
+
+function statusLabel(status: NominationDto['status'], t: ReturnType<typeof useTranslation>['t']) {
+  return t(`competitionOps.status.${status}`);
+}
+
+function athleteFullName(nomination: NominationDto): string {
+  return [nomination.athlete.lastName, nomination.athlete.firstName, nomination.athlete.middleName]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function toCsv(rows: unknown[][]): string {
+  return rows
+    .map((row) =>
+      row
+        .map((value) => {
+          const text = value === null || value === undefined ? '' : String(value);
+          return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        })
+        .join(','),
+    )
+    .join('\n');
+}
+
+function buildSecretaryRows(
+  data: CompetitionOpsResponse,
+  t: ReturnType<typeof useTranslation>['t'],
+) {
+  return [...data.nominations]
+    .sort(
+      (a, b) =>
+        (a.entryNumber ?? Number.POSITIVE_INFINITY) - (b.entryNumber ?? Number.POSITIVE_INFINITY) ||
+        athleteFullName(a).localeCompare(athleteFullName(b)),
+    )
+    .map((nomination) => ({
+      id: nomination.id,
+      entryNumber: nomination.entryNumber,
+      athlete: athleteFullName(nomination),
+      discipline: nomination.discipline.nameRu,
+      division: nomination.division.nameRu,
+      declaredWeightClass: nomination.declaredWeightClass?.nameRu ?? '—',
+      actualWeightClass: nomination.weightClass.nameRu,
+      bodyWeight: nomination.bodyWeightAtWeighIn,
+      flight: nomination.flight?.code ?? '—',
+      group: nomination.group?.name ?? '—',
+      mandate: nomination.isMandatePassed ? 'Да' : 'Нет',
+      payment: nomination.isEntryFeePaid ? 'Оплачено' : 'Не оплачено',
+      status: statusLabel(nomination.status, t),
+      notes: nomination.notes ?? '',
+    }));
+}
+
+function buildWeightClassSummary(data: CompetitionOpsResponse) {
+  const groups = new Map<
+    string,
+    {
+      key: string;
+      discipline: string;
+      division: string;
+      weightClass: string;
+      nominations: NominationDto[];
+    }
+  >();
+
+  for (const nomination of data.nominations) {
+    const key = [nomination.discipline.id, nomination.division.id, nomination.weightClass.id].join(
+      ':',
+    );
+    const existing = groups.get(key);
+    if (existing) {
+      existing.nominations.push(nomination);
+    } else {
+      groups.set(key, {
+        key,
+        discipline: nomination.discipline.nameRu,
+        division: nomination.division.nameRu,
+        weightClass: nomination.weightClass.nameRu,
+        nominations: [nomination],
+      });
+    }
+  }
+
+  return [...groups.values()]
+    .map((group) => {
+      const finished = group.nominations.filter((n) => n.status === 'finished').length;
+      const weighedIn = group.nominations.filter((n) => n.bodyWeightAtWeighIn !== null).length;
+      const leader = [...group.nominations].sort(
+        (a, b) =>
+          (a.placeInClass ?? Number.POSITIVE_INFINITY) -
+            (b.placeInClass ?? Number.POSITIVE_INFINITY) ||
+          Number(b.finalScore ?? 0) - Number(a.finalScore ?? 0) ||
+          athleteFullName(a).localeCompare(athleteFullName(b)),
+      )[0];
+      return {
+        ...group,
+        total: group.nominations.length,
+        weighedIn,
+        finished,
+        leader: leader ? athleteFullName(leader) : '—',
+        bestKg: leader?.bestSuccessfulAttemptKg ?? null,
+        score: leader?.finalScore ?? null,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.discipline.localeCompare(b.discipline) ||
+        a.division.localeCompare(b.division) ||
+        a.weightClass.localeCompare(b.weightClass),
+    );
+}
+
+function buildClubSummary(data: CompetitionOpsResponse) {
+  const groups = new Map<
+    string,
+    {
+      club: string;
+      total: number;
+      paid: number;
+      weighedIn: number;
+      finished: number;
+      paidKopecks: number;
+      billingKopecks: number;
+    }
+  >();
+  const tariff = Number(data.competition.federation.billingTariffKopecksPerNomination);
+
+  for (const nomination of data.nominations) {
+    const club = nomination.athlete.clubName?.trim() || 'Без клуба';
+    const existing = groups.get(club) ?? {
+      club,
+      total: 0,
+      paid: 0,
+      weighedIn: 0,
+      finished: 0,
+      paidKopecks: 0,
+      billingKopecks: 0,
+    };
+    existing.total += 1;
+    if (nomination.paymentStatus === 'paid' || nomination.paymentStatus === 'waived') {
+      existing.paid += 1;
+    }
+    if (nomination.bodyWeightAtWeighIn !== null) {
+      existing.weighedIn += 1;
+      existing.billingKopecks += tariff;
+    }
+    if (nomination.status === 'finished') existing.finished += 1;
+    existing.paidKopecks += Number(nomination.paidAmountKopecks);
+    groups.set(club, existing);
+  }
+
+  return [...groups.values()].sort((a, b) => b.total - a.total || a.club.localeCompare(b.club));
+}
+
 export default function CompetitionReportsFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/competitions/$id/reports' });
@@ -98,29 +277,17 @@ export default function CompetitionReportsFeature() {
   const [hidePastCompetitions, setHidePastCompetitions] = useState(false);
   const [competitionSelected, setCompetitionSelected] = useState(true);
   const [activeTab, setActiveTab] = useState<ReportsTab>('protocols');
+  const [standardReportMode, setStandardReportMode] = useState<StandardReportMode>('secretary');
   const competitionGenderStats = useMemo(
     () => nominationGenderStats(data?.nominations ?? []),
     [data?.nominations],
   );
+  const secretaryRows = useMemo(() => (data ? buildSecretaryRows(data, t) : []), [data, t]);
+  const weightClassSummary = useMemo(() => (data ? buildWeightClassSummary(data) : []), [data]);
+  const clubSummary = useMemo(() => (data ? buildClubSummary(data) : []), [data]);
   const showCompetitionRow = data
     ? !hidePastCompetitions || !isPastCompetition(data.competition.endDate)
     : false;
-  const visibleRows = useMemo(() => {
-    if (!competitionSelected || !showCompetitionRow) return [];
-    const normalized = query.trim().toLowerCase();
-    if (!data || !normalized) return data?.scoreboardRows ?? [];
-    return data.scoreboardRows.filter((row) =>
-      [
-        row.entryNumber?.toString() ?? '',
-        row.athleteName,
-        row.discipline,
-        row.division,
-        row.weightClass,
-        t(`competitionOps.status.${row.status}`),
-      ].some((value) => value.toLowerCase().includes(normalized)),
-    );
-  }, [competitionSelected, data, query, showCompetitionRow, t]);
-
   async function refreshReport() {
     const result = await refetch();
     if (result.error) {
@@ -150,6 +317,94 @@ export default function CompetitionReportsFeature() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error');
     }
+  }
+
+  function exportStandardReportCsv() {
+    if (!data) return;
+    const filename = `${data.competition.code}-standard-${standardReportMode}.csv`;
+    if (standardReportMode === 'secretary') {
+      downloadText(
+        filename,
+        `\uFEFF${toCsv([
+          [
+            'entryNumber',
+            'athlete',
+            'discipline',
+            'division',
+            'declaredWeightClass',
+            'actualWeightClass',
+            'bodyWeight',
+            'flight',
+            'group',
+            'mandate',
+            'payment',
+            'status',
+            'notes',
+          ],
+          ...secretaryRows.map((row) => [
+            row.entryNumber,
+            row.athlete,
+            row.discipline,
+            row.division,
+            row.declaredWeightClass,
+            row.actualWeightClass,
+            row.bodyWeight,
+            row.flight,
+            row.group,
+            row.mandate,
+            row.payment,
+            row.status,
+            row.notes,
+          ]),
+        ])}\n`,
+      );
+      return;
+    }
+    if (standardReportMode === 'weightClasses') {
+      downloadText(
+        filename,
+        `\uFEFF${toCsv([
+          [
+            'discipline',
+            'division',
+            'weightClass',
+            'total',
+            'weighedIn',
+            'finished',
+            'leader',
+            'bestKg',
+            'score',
+          ],
+          ...weightClassSummary.map((row) => [
+            row.discipline,
+            row.division,
+            row.weightClass,
+            row.total,
+            row.weighedIn,
+            row.finished,
+            row.leader,
+            row.bestKg,
+            row.score,
+          ]),
+        ])}\n`,
+      );
+      return;
+    }
+    downloadText(
+      filename,
+      `\uFEFF${toCsv([
+        ['club', 'total', 'paid', 'weighedIn', 'finished', 'paidKopecks', 'billingKopecks'],
+        ...clubSummary.map((row) => [
+          row.club,
+          row.total,
+          row.paid,
+          row.weighedIn,
+          row.finished,
+          row.paidKopecks,
+          row.billingKopecks,
+        ]),
+      ])}\n`,
+    );
   }
 
   if (isLoading) {
@@ -420,7 +675,7 @@ export default function CompetitionReportsFeature() {
         )}
 
         {activeTab === 'reports' && (
-          <WorkspacePanel className="p-3">
+          <WorkspacePanel className="p-3 space-y-3">
             <WorkspaceToolbar>
               <WorkspaceButton
                 type="button"
@@ -431,6 +686,21 @@ export default function CompetitionReportsFeature() {
               >
                 {isFetching ? t('common.loading') : 'Обновить'}
               </WorkspaceButton>
+              <WorkspaceButton type="button" icon="document" onClick={exportStandardReportCsv}>
+                CSV
+              </WorkspaceButton>
+              <div className="pt-segmented">
+                {STANDARD_REPORT_MODES.map((mode) => (
+                  <button
+                    key={mode.key}
+                    type="button"
+                    className={standardReportMode === mode.key ? 'is-active' : ''}
+                    onClick={() => setStandardReportMode(mode.key)}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
               <input
                 className="pt-field ml-auto max-w-xs"
                 placeholder="Поиск (Ctrl+F)"
@@ -443,54 +713,180 @@ export default function CompetitionReportsFeature() {
             </WorkspaceToolbar>
             {showMore ? (
               <div className="pt-info-yellow my-2">
-                Отображено строк: {visibleRows.length} из {data.scoreboardRows.length}.
-                Дополнительные колонки включены в таблицу ниже.
+                Отчет сформирован из текущего состояния секретариата: {data.nominations.length}{' '}
+                номинаций, обновлено {formatDateTime(new Date().toISOString())}. CSV-экспорт
+                сохраняет активный вид.
               </div>
             ) : null}
-            <table className="pt-grid mt-2">
-              <thead>
-                <tr>
-                  <th className="w-12">№</th>
-                  <th className="text-left">Спортсмен</th>
-                  <th className="text-left">Дисциплина</th>
-                  {showMore ? <th className="text-left">Возраст</th> : null}
-                  <th>Весовая</th>
-                  <th>Лучший</th>
-                  <th>Очки</th>
-                  {showMore ? <th>Место</th> : null}
-                  <th>Статус</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((row, index) => (
-                  <tr
-                    key={row.nominationId}
-                    className={index === 0 ? 'is-selected' : index % 2 ? 'is-yellow' : 'is-green'}
-                  >
-                    <td className="text-right tabular-nums">{row.entryNumber ?? '—'}</td>
-                    <td>{row.athleteName}</td>
-                    <td>{row.discipline}</td>
-                    {showMore ? <td>{row.division}</td> : null}
-                    <td className="text-center">{row.weightClass}</td>
-                    <td className="text-right tabular-nums">
-                      {row.bestSuccessfulAttemptKg ?? '—'}
-                    </td>
-                    <td className="text-right tabular-nums">{row.finalScore ?? '—'}</td>
-                    {showMore ? (
-                      <td className="text-right tabular-nums">{row.placeInClass ?? '—'}</td>
-                    ) : null}
-                    <td className="text-center">{t(`competitionOps.status.${row.status}`)}</td>
-                  </tr>
-                ))}
-                {visibleRows.length === 0 ? (
+
+            {standardReportMode === 'secretary' && (
+              <table className="pt-grid mt-2">
+                <thead>
                   <tr>
-                    <td colSpan={showMore ? 9 : 7} className="pt-muted italic text-center">
-                      Строки не найдены.
-                    </td>
+                    <th className="w-12">№</th>
+                    <th className="text-left">Спортсмен</th>
+                    <th className="text-left">Дисциплина</th>
+                    <th className="text-left">Дивизион</th>
+                    <th>Заявл.</th>
+                    <th>Факт</th>
+                    <th>Вес</th>
+                    {showMore ? <th>Поток</th> : null}
+                    {showMore ? <th>Группа</th> : null}
+                    <th>Мандат</th>
+                    <th>Взнос</th>
+                    <th>Статус</th>
                   </tr>
-                ) : null}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {secretaryRows
+                    .filter((row) => {
+                      const normalized = query.trim().toLowerCase();
+                      if (!normalized) return true;
+                      return Object.values(row).some((value) =>
+                        String(value ?? '')
+                          .toLowerCase()
+                          .includes(normalized),
+                      );
+                    })
+                    .map((row, index) => (
+                      <tr
+                        key={row.id}
+                        className={
+                          index === 0 ? 'is-selected' : index % 2 ? 'is-yellow' : 'is-green'
+                        }
+                      >
+                        <td className="text-right tabular-nums">{row.entryNumber ?? '—'}</td>
+                        <td>{row.athlete}</td>
+                        <td>{row.discipline}</td>
+                        <td>{row.division}</td>
+                        <td className="text-center">{row.declaredWeightClass}</td>
+                        <td className="text-center">{row.actualWeightClass}</td>
+                        <td className="text-right tabular-nums">{formatKg(row.bodyWeight)}</td>
+                        {showMore ? <td className="text-center">{row.flight}</td> : null}
+                        {showMore ? <td className="text-center">{row.group}</td> : null}
+                        <td className="text-center">{row.mandate}</td>
+                        <td className="text-center">{row.payment}</td>
+                        <td className="text-center">{row.status}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+
+            {standardReportMode === 'weightClasses' && (
+              <table className="pt-grid mt-2">
+                <thead>
+                  <tr>
+                    <th className="text-left">Дисциплина</th>
+                    <th className="text-left">Дивизион</th>
+                    <th>Весовая</th>
+                    <th>Заявок</th>
+                    <th>Взвеш.</th>
+                    <th>Заверш.</th>
+                    <th className="text-left">Лидер</th>
+                    <th>Лучший</th>
+                    <th>Очки</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weightClassSummary
+                    .filter((row) => {
+                      const normalized = query.trim().toLowerCase();
+                      if (!normalized) return true;
+                      return [row.discipline, row.division, row.weightClass, row.leader].some(
+                        (value) => value.toLowerCase().includes(normalized),
+                      );
+                    })
+                    .map((row, index) => (
+                      <tr
+                        key={row.key}
+                        className={
+                          index === 0 ? 'is-selected' : index % 2 ? 'is-yellow' : 'is-green'
+                        }
+                      >
+                        <td>{row.discipline}</td>
+                        <td>{row.division}</td>
+                        <td className="text-center">{row.weightClass}</td>
+                        <td className="text-right tabular-nums">{row.total}</td>
+                        <td className="text-right tabular-nums">{row.weighedIn}</td>
+                        <td className="text-right tabular-nums">{row.finished}</td>
+                        <td>{row.leader}</td>
+                        <td className="text-right tabular-nums">{formatNumber(row.bestKg)}</td>
+                        <td className="text-right tabular-nums">{formatNumber(row.score)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+
+            {standardReportMode === 'federation' && (
+              <div className="space-y-3">
+                <div className="grid gap-3 md:grid-cols-4">
+                  <WorkspacePanel className="p-3 pt-info-green">
+                    <div className="pt-muted text-sm">Номинации</div>
+                    <div className="text-2xl font-semibold tabular-nums">
+                      {data.accounting.totalNominations}
+                    </div>
+                  </WorkspacePanel>
+                  <WorkspacePanel className="p-3 pt-info-yellow">
+                    <div className="pt-muted text-sm">Мандат</div>
+                    <div className="text-2xl font-semibold tabular-nums">
+                      {data.accounting.mandatePassedNominations}
+                    </div>
+                  </WorkspacePanel>
+                  <WorkspacePanel className="p-3 pt-info-gray">
+                    <div className="pt-muted text-sm">Взносы</div>
+                    <div className="text-2xl font-semibold tabular-nums">
+                      {formatRub(data.accounting.paidEntryFeeKopecks)}
+                    </div>
+                  </WorkspacePanel>
+                  <WorkspacePanel className="p-3 pt-info-pink">
+                    <div className="pt-muted text-sm">Списание</div>
+                    <div className="text-2xl font-semibold tabular-nums">
+                      {formatRub(data.accounting.federationBillingKopecks)}
+                    </div>
+                  </WorkspacePanel>
+                </div>
+                <table className="pt-grid">
+                  <thead>
+                    <tr>
+                      <th className="text-left">Клуб / команда</th>
+                      <th>Заявок</th>
+                      <th>Оплачено</th>
+                      <th>Взвешено</th>
+                      <th>Завершено</th>
+                      <th>Взносы</th>
+                      <th>Списание</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clubSummary
+                      .filter((row) => {
+                        const normalized = query.trim().toLowerCase();
+                        return !normalized || row.club.toLowerCase().includes(normalized);
+                      })
+                      .map((row, index) => (
+                        <tr
+                          key={row.club}
+                          className={
+                            index === 0 ? 'is-selected' : index % 2 ? 'is-yellow' : 'is-green'
+                          }
+                        >
+                          <td>{row.club}</td>
+                          <td className="text-right tabular-nums">{row.total}</td>
+                          <td className="text-right tabular-nums">{row.paid}</td>
+                          <td className="text-right tabular-nums">{row.weighedIn}</td>
+                          <td className="text-right tabular-nums">{row.finished}</td>
+                          <td className="text-right tabular-nums">{formatRub(row.paidKopecks)}</td>
+                          <td className="text-right tabular-nums">
+                            {formatRub(row.billingKopecks)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </WorkspacePanel>
         )}
 

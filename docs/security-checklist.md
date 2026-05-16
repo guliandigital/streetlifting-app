@@ -57,7 +57,7 @@ Per-milestone checks against [ADR-0004](decisions/ADR-0004-security-baseline.md)
 
 ## M7 — Federation portal
 
-- [ ] Telegram bot link: federation code is single-use, expires in 1 hour, audit-logged on bind
+- [x] Telegram bot link: federation code is single-use, expires in 1 hour, audit-logged on bind
 - [ ] Federation `securityKey` rotation: step-up auth + email confirmation, audit-logged
 - [ ] Receipt + writeoff creation: audit-logged with full diff
 - [ ] Support tickets: rate-limited, no inline HTML rendering, attachments scanned

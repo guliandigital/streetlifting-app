@@ -130,6 +130,22 @@ export interface FederationPlateSetDto {
   plates: unknown;
 }
 
+export interface TelegramBindTokenDto {
+  code: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface TelegramSubscriptionDto {
+  id: string;
+  chatId: string;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  createdAt: string;
+  lastNotificationAt: string | null;
+}
+
 export interface FederationDashboardResponse {
   federation: Federation & {
     attachments: FederationAttachmentDto[];
@@ -152,7 +168,9 @@ export interface FederationDashboardResponse {
     remainingNominations: number;
     receivedAmountKopecks: string | number;
   };
-  telegramSubscriptionCode: string;
+  telegramSubscriptionCode: string | null;
+  telegramSubscriptionCodeExpiresAt: string | null;
+  telegramSubscriptions: TelegramSubscriptionDto[];
   regionalComparison: Array<{
     federationId: string;
     code: string;
@@ -222,6 +240,17 @@ export function useTestFederationEmail(id: string) {
   return useMutation({
     mutationFn: () => api.federations.testEmail(id),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useCreateTelegramBindToken(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.federations.createTelegramBindToken(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
       void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
     },
   });
@@ -397,9 +426,9 @@ export function useFederationChapters(federationId: string) {
 export function useCreateFederationChapter(federationId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: FederationChapterCreate) => api.federations.chapters.create(federationId, data),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['federations', federationId, 'chapters'] }),
+    mutationFn: (data: FederationChapterCreate) =>
+      api.federations.chapters.create(federationId, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['federations', federationId, 'chapters'] }),
   });
 }
 
@@ -408,7 +437,6 @@ export function useUpdateFederationChapter(federationId: string, chapterId: stri
   return useMutation({
     mutationFn: (data: FederationChapterUpdate) =>
       api.federations.chapters.update(federationId, chapterId, data),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['federations', federationId, 'chapters'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['federations', federationId, 'chapters'] }),
   });
 }

@@ -16,7 +16,7 @@ Pilot launch boundary 2026-05-10:
 
 - [x] Production API runtime works with compiled workspace packages (`node dist/index.js`)
 - [x] Web production build served by nginx with `/api` reverse proxy
-- [ ] CI gates: install, Prisma generate/validate, lint, typecheck, test, build
+- [x] CI gates: install, Prisma generate/validate, lint, typecheck, test, build
 - [ ] Clean migration path on a fresh Postgres database
 - [x] Root/admin seed and reference-data seed documented and repeatable
 - [ ] Auth, roles, audit, request IDs, rate limits, CORS, Sentry hooks verified in staging
@@ -56,7 +56,7 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [ ] Web shell: TanStack Router with role-aware route guards, login/logout, layout chrome
 - [ ] shadcn/ui base components installed: Button, Input, Select, Dialog, Sheet, Table, Toast, DataTable
 - [ ] Russian + English i18n scaffolding (i18next), brand-neutral color tokens
-- [ ] CI: typecheck + test on push to main + PRs
+- [x] CI: typecheck + test on push to main + PRs
 
 ### M2 — Core directories (Week 3–4)
 
@@ -84,24 +84,24 @@ Features must not import from each other. Shared shapes live in `packages/domain
 - [x] Web/PWA tournament mode with clear online-only status
 - [x] Operator scoreboard page: current lifter card, attempt entry, weight changes
 - [x] Judge tablet UI MVP: three-button good/no/withdraw decision screen
-- [ ] Speaker view: announcements queue, athlete bios
-- [ ] Public broadcast page: live results, current attempt, leaderboard
-- [ ] OBS overlay (HTML page with transparent background)
+- [x] Speaker view: announcements queue, athlete bios
+- [x] Public broadcast page: live results, current attempt, leaderboard
+- [x] OBS overlay (HTML page with transparent background)
 
 ### M6 — Reports, awards, printables (Week 12–13)
 
 - [ ] Awards ceremony page: place computation, tie-break, deck — post-web-pilot
 - [ ] Server-side certificate (грамота) PDF generation with federation templates — post-web-pilot
-- [ ] Standard reports: protocol, technical secretary report, weight class results, federation summary
+- [x] Standard reports: protocol, technical secretary report, weight class results, federation summary
 - [x] CSV / XLSX protocol and accounting exports
 - [x] Print-friendly web protocol view for browser PDF printing
 
 ### M7 — Federation portal (Week 14–15)
 
-- [ ] Federation home: receipts/writeoffs ledger, balance, regional comparison chart
-- [ ] Telegram bot: federation registration codes, new-registration notifications
-- [ ] Support tickets: federation ↔ platform admin
-- [ ] Public results page (gated by `isPublicResultsClosed`)
+- [x] Federation home: receipts/writeoffs ledger, balance, regional comparison chart
+- [x] Telegram bot: federation registration codes, new-registration notifications
+- [x] Support tickets: federation ↔ platform admin
+- [x] Public results page (gated by `isPublicResultsClosed`)
 
 ### M8 — Desktop/offline after web launch
 

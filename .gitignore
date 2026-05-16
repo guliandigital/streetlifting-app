@@ -38,8 +38,13 @@ lerna-debug.log*
 # Test coverage
 coverage/
 .nyc_output/
-output/playwright/
+output/
 apps/web/e2e/.auth/
+
+# Local agent / QA artifacts
+.claude/
+reference screenshots/
+city-master.zip
 
 # Local SQLite (offline desktop)
 *.sqlite

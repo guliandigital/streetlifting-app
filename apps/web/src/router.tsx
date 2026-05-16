@@ -76,6 +76,12 @@ const CompetitionOperatorFeature = () => (
     loader={() => import('./features/competitions/operator.js')}
   />
 );
+const CompetitionSpeakerFeature = () => (
+  <LazyModule
+    module="competition-speaker"
+    loader={() => import('./features/competitions/speaker.js')}
+  />
+);
 const CompetitionJudgeFeature = () => (
   <LazyModule
     module="competition-judge"
@@ -110,6 +116,18 @@ const CompetitionBroadcastFeature = () => (
   <LazyModule
     module="competition-broadcast"
     loader={() => import('./features/competitions/broadcast.js')}
+  />
+);
+const CompetitionOverlayFeature = () => (
+  <LazyModule
+    module="competition-overlay"
+    loader={() => import('./features/competitions/overlay.js')}
+  />
+);
+const PublicCompetitionResultsFeature = () => (
+  <LazyModule
+    module="public-results"
+    loader={() => import('./features/competitions/public-results.js')}
   />
 );
 const PublicCompetitionRegistrationFeature = () => (
@@ -351,6 +369,13 @@ const competitionOperatorRoute = createRoute({
   component: CompetitionOperatorFeature,
 });
 
+const competitionSpeakerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/competitions/$id/speaker',
+  beforeLoad: ({ location }) => requireAuthGuard(location.href),
+  component: CompetitionSpeakerFeature,
+});
+
 const competitionJudgeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/competitions/$id/judge',
@@ -390,6 +415,18 @@ const competitionBroadcastRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/broadcast/competitions/$id',
   component: CompetitionBroadcastFeature,
+});
+
+const competitionOverlayRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/overlay/competitions/$id',
+  component: CompetitionOverlayFeature,
+});
+
+const publicCompetitionResultsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/results/competitions/$id',
+  component: PublicCompetitionResultsFeature,
 });
 
 const publicCompetitionRegistrationRoute = createRoute({
@@ -522,12 +559,15 @@ const routeTree = rootRoute.addChildren([
   competitionScheduleRoute,
   competitionScoreboardRoute,
   competitionOperatorRoute,
+  competitionSpeakerRoute,
   competitionJudgeRoute,
   competitionProtocolPrintRoute,
   competitionReportsRoute,
   competitionCertificatesRoute,
   competitionAwardsRoute,
   competitionBroadcastRoute,
+  competitionOverlayRoute,
+  publicCompetitionResultsRoute,
   publicCompetitionRegistrationRoute,
   publicFederationRegistrationRoute,
   athletesListRoute,
