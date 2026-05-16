@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
@@ -13,6 +13,7 @@ import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
+import { verifyPassword } from '../lib/auth/password.js';
 import { validateUuidParams } from '../lib/params.js';
 import {
   MailerDeliveryError,
@@ -91,6 +92,21 @@ const TelegramWebhookInput = z
   })
   .passthrough();
 
+const SecurityKeyRotationRequestInput = z
+  .object({
+    currentPassword: z.string().min(1).max(256),
+  })
+  .strict();
+
+const SecurityKeyRotationConfirmInput = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/),
+  })
+  .strict();
+
 /**
  * Returns the set of federation IDs the caller is allowed to read/edit.
  *  - platform_admin → all
@@ -124,6 +140,14 @@ function canManageTelegramBinding(
 function extractTelegramCode(text: string | undefined): string | null {
   const match = text?.match(/[A-Za-z0-9]{6,32}/);
   return match ? match[0].toUpperCase() : null;
+}
+
+function generateEmailConfirmationCode(): string {
+  return String(randomInt(0, 1_000_000)).padStart(6, '0');
+}
+
+function hashSecurityKeyRotationCode(code: string): string {
+  return createHash('sha256').update(code.trim()).digest('hex');
 }
 
 const PaymentMethodInput = z.enum(['bank_transfer', 'card', 'sbp', 'cash', 'other']);
@@ -887,6 +911,270 @@ export const federationsPlugin: FeaturePlugin = {
             },
           });
         }
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/federations/:id/security-key-rotation',
+      { preHandler: requireAuth(), config: { rateLimit: { max: 3, timeWindow: '15 minutes' } } },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const parsed = SecurityKeyRotationRequestInput.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const [federation, user] = await Promise.all([
+          prisma.federation.findUnique({
+            where: { id: req.params.id },
+            select: { id: true, nameRu: true, contactEmail: true },
+          }),
+          prisma.user.findUnique({
+            where: { id: req.user!.id },
+            select: { id: true, passwordHash: true },
+          }),
+        ]);
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+        if (!federation.contactEmail) {
+          return reply.code(400).send({
+            error: {
+              code: 'contact_email_missing',
+              message: 'Federation contact email is empty',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const passwordOk = user
+          ? await verifyPassword(user.passwordHash ?? '', parsed.data.currentPassword)
+          : false;
+        if (!passwordOk) {
+          await audit.record({
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.security_key_rotation.request_denied',
+            result: 'denied',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'federation',
+            targetId: req.params.id,
+            before: null,
+            after: null,
+            notes: 'invalid current password',
+          });
+          return reply.code(401).send({
+            error: {
+              code: 'invalid_current_password',
+              message: 'Invalid current password',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const code = generateEmailConfirmationCode();
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+        try {
+          const delivery = await sendMail({
+            to: federation.contactEmail,
+            subject: 'Подтверждение смены ключа защиты Streetlifting App',
+            text: [
+              `Код подтверждения смены ключа защиты федерации "${federation.nameRu}": ${code}`,
+              '',
+              'Код действует 15 минут. Если вы не запрашивали смену ключа, проигнорируйте письмо.',
+            ].join('\n'),
+          });
+
+          const token = await prisma.$transaction(async (tx) => {
+            const created = await tx.federationSecurityKeyRotationToken.create({
+              data: {
+                federationId: req.params.id,
+                codeHash: hashSecurityKeyRotationCode(code),
+                createdByUserId: req.user!.id,
+                expiresAt,
+              },
+            });
+            await audit.record(
+              {
+                ...audit.fromRequest(req),
+                actorUserId: req.user!.id,
+                action: 'federation.security_key_rotation.requested',
+                result: 'success',
+                scopeFederationId: req.params.id,
+                scopeCompetitionId: null,
+                targetType: 'federation_security_key_rotation_token',
+                targetId: created.id,
+                before: null,
+                after: {
+                  recipient: federation.contactEmail,
+                  expiresAt,
+                  provider: delivery.provider,
+                  messageId: delivery.messageId,
+                },
+              },
+              tx,
+            );
+            return created;
+          });
+
+          return reply.code(201).send({
+            status: 'confirmation_sent',
+            expiresAt: token.expiresAt,
+            recipient: federation.contactEmail,
+          });
+        } catch (err) {
+          const isNotConfigured = err instanceof MailerNotConfiguredError;
+          const isDeliveryError = err instanceof MailerDeliveryError;
+          await audit.record({
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.security_key_rotation.request_failed',
+            result: 'failure',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'federation',
+            targetId: req.params.id,
+            before: null,
+            after: { recipient: federation.contactEmail },
+            notes: err instanceof Error ? err.message : 'unknown mailer error',
+          });
+
+          if (isNotConfigured) {
+            return reply.code(503).send({
+              error: {
+                code: 'mailer_not_configured',
+                message: 'Mail delivery is not configured',
+                requestId: req.requestId,
+              },
+            });
+          }
+          log.error({ err, federationId: req.params.id }, 'security key confirmation email failed');
+          return reply.code(502).send({
+            error: {
+              code: isDeliveryError ? 'mailer_delivery_failed' : 'mailer_error',
+              message: 'Mail delivery failed',
+              requestId: req.requestId,
+            },
+          });
+        }
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/federations/:id/security-key-rotation/confirm',
+      { preHandler: requireAuth(), config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } },
+      async (req, reply) => {
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'federation_admin role required',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const parsed = SecurityKeyRotationConfirmInput.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const federation = await prisma.federation.findUnique({
+          where: { id: req.params.id },
+          select: { id: true },
+        });
+        if (!federation) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+
+        const codeHash = hashSecurityKeyRotationCode(parsed.data.code);
+        const token = await prisma.federationSecurityKeyRotationToken.findFirst({
+          where: {
+            federationId: req.params.id,
+            createdByUserId: req.user!.id,
+            codeHash,
+            usedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (!token) {
+          await audit.record({
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.security_key_rotation.confirm_denied',
+            result: 'denied',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'federation',
+            targetId: req.params.id,
+            before: null,
+            after: null,
+            notes: 'invalid, expired, or already used code',
+          });
+          return reply.code(410).send({
+            error: {
+              code: 'security_key_rotation_code_invalid',
+              message: 'Security key rotation code is invalid or expired',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const newSecurityKey = randomUUID();
+        const updated = await prisma.$transaction(async (tx) => {
+          await tx.federationSecurityKeyRotationToken.update({
+            where: { id: token.id },
+            data: { usedAt: new Date() },
+          });
+          const federationUpdated = await tx.federation.update({
+            where: { id: req.params.id },
+            data: { securityKey: newSecurityKey },
+          });
+          await audit.record(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'federation.security_key.rotated',
+              result: 'success',
+              scopeFederationId: req.params.id,
+              scopeCompetitionId: null,
+              targetType: 'federation',
+              targetId: req.params.id,
+              before: { rotated: false },
+              after: { rotated: true, confirmationTokenId: token.id },
+            },
+            tx,
+          );
+          return federationUpdated;
+        });
+
+        return { federation: updated };
       },
     );
 

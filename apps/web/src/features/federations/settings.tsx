@@ -14,8 +14,10 @@ import { ApiClientError } from '../../lib/api-client.js';
 import { useAuthStore } from '../../lib/auth/store.js';
 import {
   type FederationAuditEntryDto,
+  useConfirmFederationSecurityKeyRotation,
   useFederationAudit,
   useFederationDashboard,
+  useRequestFederationSecurityKeyRotation,
   useTestFederationEmail,
   useUpdateFederation,
 } from './api.js';
@@ -43,6 +45,11 @@ function auditLabel(action: string): string {
     'federation.plate_set.deleted': 'Комплект удален',
     'federation.receipt.created': 'Поступление',
     'federation.writeoff.created': 'Списание',
+    'federation.security_key_rotation.requested': 'Запрошена смена ключа',
+    'federation.security_key_rotation.request_failed': 'Смена ключа: ошибка письма',
+    'federation.security_key_rotation.request_denied': 'Смена ключа: отказ',
+    'federation.security_key_rotation.confirm_denied': 'Смена ключа: неверный код',
+    'federation.security_key.rotated': 'Ключ защиты сменен',
   };
   return labels[action] ?? action;
 }
@@ -122,6 +129,8 @@ export default function FederationSettingsFeature() {
   const { data: auditData, isLoading: auditLoading } = useFederationAudit(id);
   const update = useUpdateFederation(id);
   const testEmail = useTestFederationEmail(id);
+  const requestSecurityKeyRotation = useRequestFederationSecurityKeyRotation(id);
+  const confirmSecurityKeyRotation = useConfirmFederationSecurityKeyRotation(id);
 
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
@@ -132,6 +141,9 @@ export default function FederationSettingsFeature() {
   const [cashierName, setCashierName] = useState('');
   const [notificationsDisabled, setNotificationsDisabled] = useState(false);
   const [isPublicResultsClosed, setIsPublicResultsClosed] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [securityKeyCode, setSecurityKeyCode] = useState('');
+  const [securityKeyRotationRequested, setSecurityKeyRotationRequested] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -161,6 +173,11 @@ export default function FederationSettingsFeature() {
           'federation.support_ticket.created',
           'federation.support_ticket.message_created',
           'federation.support_ticket.status_updated',
+          'federation.security_key_rotation.requested',
+          'federation.security_key_rotation.request_failed',
+          'federation.security_key_rotation.request_denied',
+          'federation.security_key_rotation.confirm_denied',
+          'federation.security_key.rotated',
         ].includes(entry.action),
       ),
     [auditRows],
@@ -220,6 +237,50 @@ export default function FederationSettingsFeature() {
         toast.error('Почтовая доставка не настроена на сервере');
       } else if (err instanceof ApiClientError && err.code === 'mailer_delivery_failed') {
         toast.error('Почтовый сервер отклонил тестовое письмо');
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Error');
+      }
+    }
+  }
+
+  async function requestSecurityKeyChange() {
+    if (currentPassword.trim().length === 0) {
+      toast.error('Введите текущий пароль');
+      return;
+    }
+    try {
+      const result = await requestSecurityKeyRotation.mutateAsync({ currentPassword });
+      setSecurityKeyRotationRequested(true);
+      setCurrentPassword('');
+      toast.success(`Код подтверждения отправлен: ${result.recipient}`);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.code === 'invalid_current_password') {
+        toast.error('Текущий пароль указан неверно');
+      } else if (err instanceof ApiClientError && err.code === 'contact_email_missing') {
+        toast.error('Заполните email федерации перед сменой ключа');
+      } else if (err instanceof ApiClientError && err.code === 'mailer_not_configured') {
+        toast.error('Почтовая доставка не настроена на сервере');
+      } else if (err instanceof ApiClientError && err.code === 'mailer_delivery_failed') {
+        toast.error('Почтовый сервер отклонил письмо с кодом');
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Error');
+      }
+    }
+  }
+
+  async function confirmSecurityKeyChange() {
+    if (!/^\d{6}$/.test(securityKeyCode.trim())) {
+      toast.error('Введите 6 цифр из письма');
+      return;
+    }
+    try {
+      await confirmSecurityKeyRotation.mutateAsync({ code: securityKeyCode.trim() });
+      setSecurityKeyCode('');
+      setSecurityKeyRotationRequested(false);
+      toast.success('Ключ защиты федерации сменен');
+    } catch (err) {
+      if (err instanceof ApiClientError && err.code === 'security_key_rotation_code_invalid') {
+        toast.error('Код неверный, истек или уже использован');
       } else {
         toast.error(err instanceof Error ? err.message : 'Error');
       }
@@ -385,6 +446,63 @@ export default function FederationSettingsFeature() {
                   />
                   <label>Ключ защиты:</label>
                   <input className="pt-field font-mono" value={f.securityKey} readOnly />
+                </div>
+
+                <div className="pt-info-pink space-y-3">
+                  <WorkspaceSectionTitle>Смена ключа защиты</WorkspaceSectionTitle>
+                  <p className="text-sm">
+                    Ключ используется как секрет федерации. Для смены нужен текущий пароль и код,
+                    отправленный на email федерации.
+                  </p>
+                  <div className="pt-form-grid max-w-5xl">
+                    <label htmlFor="securityKeyPassword">Текущий пароль:</label>
+                    <input
+                      id="securityKeyPassword"
+                      className="pt-field"
+                      type="password"
+                      autoComplete="current-password"
+                      value={currentPassword}
+                      onChange={(event) => setCurrentPassword(event.target.value)}
+                      disabled={!canManage || requestSecurityKeyRotation.isPending}
+                    />
+                    <label htmlFor="securityKeyCode">Код из письма:</label>
+                    <input
+                      id="securityKeyCode"
+                      className="pt-field font-mono"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder={
+                        securityKeyRotationRequested ? '123456' : 'Сначала запросите код'
+                      }
+                      value={securityKeyCode}
+                      onChange={(event) =>
+                        setSecurityKeyCode(event.target.value.replace(/\D/g, '').slice(0, 6))
+                      }
+                      disabled={!canManage || confirmSecurityKeyRotation.isPending}
+                    />
+                  </div>
+                  <WorkspaceToolbar>
+                    <WorkspaceButton
+                      type="button"
+                      tone="danger"
+                      onClick={() => void requestSecurityKeyChange()}
+                      disabled={!canManage || requestSecurityKeyRotation.isPending}
+                    >
+                      {requestSecurityKeyRotation.isPending ? 'Отправляем...' : 'Отправить код'}
+                    </WorkspaceButton>
+                    <WorkspaceButton
+                      type="button"
+                      tone="green"
+                      onClick={() => void confirmSecurityKeyChange()}
+                      disabled={
+                        !canManage ||
+                        confirmSecurityKeyRotation.isPending ||
+                        securityKeyCode.length !== 6
+                      }
+                    >
+                      {confirmSecurityKeyRotation.isPending ? 'Проверяем...' : 'Сменить ключ'}
+                    </WorkspaceButton>
+                  </WorkspaceToolbar>
                 </div>
 
                 <div className="pt-info-green space-y-2">

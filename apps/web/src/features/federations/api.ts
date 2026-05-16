@@ -119,6 +119,12 @@ export interface FederationTestEmailResponse {
   messageId: string | null;
 }
 
+export interface FederationSecurityKeyRotationResponse {
+  status: 'confirmation_sent';
+  recipient: string;
+  expiresAt: string;
+}
+
 export interface FederationPlateSetDto {
   id: string;
   federationId: string | null;
@@ -240,6 +246,30 @@ export function useTestFederationEmail(id: string) {
   return useMutation({
     mutationFn: () => api.federations.testEmail(id),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useRequestFederationSecurityKeyRotation(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { currentPassword: string }) =>
+      api.federations.requestSecurityKeyRotation(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
+    },
+  });
+}
+
+export function useConfirmFederationSecurityKeyRotation(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { code: string }) => api.federations.confirmSecurityKeyRotation(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['federations'] });
+      void qc.invalidateQueries({ queryKey: ['federations', id] });
+      void qc.invalidateQueries({ queryKey: ['federations', id, 'dashboard'] });
       void qc.invalidateQueries({ queryKey: ['federations', id, 'audit'] });
     },
   });

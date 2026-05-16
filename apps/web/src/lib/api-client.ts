@@ -38,6 +38,7 @@ import type {
   FederationDashboardResponse,
   FederationPlateSetDto,
   FederationReceiptDto,
+  FederationSecurityKeyRotationResponse,
   SupportTicketDto,
   SupportTicketMessageDto,
   SupportTicketStatus,
@@ -295,6 +296,19 @@ export const api = {
       request(`/federations/${id}/telegram-bind-token`, { method: 'POST' }),
     testEmail: (id: string): Promise<FederationTestEmailResponse> =>
       request(`/federations/${id}/test-email`, { method: 'POST' }),
+    requestSecurityKeyRotation: (
+      id: string,
+      data: { currentPassword: string },
+    ): Promise<FederationSecurityKeyRotationResponse> =>
+      request(`/federations/${id}/security-key-rotation`, { method: 'POST', body: data }),
+    confirmSecurityKeyRotation: (
+      id: string,
+      data: { code: string },
+    ): Promise<{ federation: Federation }> =>
+      request(`/federations/${id}/security-key-rotation/confirm`, {
+        method: 'POST',
+        body: data,
+      }),
     createFeedback: (
       id: string,
       data: { message: string },

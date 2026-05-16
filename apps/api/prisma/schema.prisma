@@ -199,6 +199,7 @@ model User {
   supportTickets  SupportTicket[] @relation("SupportTicketAuthor")
   supportMessages SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
   telegramBindTokens TelegramBindToken[] @relation("TelegramBindTokenCreator")
+  securityKeyRotationTokens FederationSecurityKeyRotationToken[] @relation("SecurityKeyRotationTokenCreator")
 
   @@map("user")
 }
@@ -285,8 +286,27 @@ model Federation {
   telegramBindTokens TelegramBindToken[]
   telegramSubscriptions TelegramSubscription[]
   telegramNotifications TelegramNotification[]
+  securityKeyRotationTokens FederationSecurityKeyRotationToken[]
 
   @@map("federation")
+}
+
+model FederationSecurityKeyRotationToken {
+  id              String    @id @default(uuid()) @db.Uuid
+  federationId    String    @db.Uuid
+  codeHash        String
+  createdByUserId String    @db.Uuid
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  expiresAt       DateTime  @db.Timestamptz(6)
+  usedAt          DateTime? @db.Timestamptz(6)
+
+  federation    Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  createdByUser User       @relation("SecurityKeyRotationTokenCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@index([federationId, expiresAt])
+  @@index([createdByUserId])
+  @@unique([federationId, codeHash, usedAt])
+  @@map("federation_security_key_rotation_token")
 }
 
 /// Regional branch ("отделение") of a federation. Federations may have any
