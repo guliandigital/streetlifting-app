@@ -1,0 +1,444 @@
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link } from '@tanstack/react-router';
+import { Card, CardContent, CardHeader, CardTitle } from '@streetlifting/ui';
+
+interface FederationRow {
+  code: string;
+  shortName: string;
+  name: string;
+  eventCount: number | null;
+  href: string;
+}
+
+interface CityRow {
+  countryCode: string;
+  countryName: string;
+  city: string;
+  eventCount: number | null;
+  href: string;
+}
+
+interface CompetitionRow {
+  fed: string;
+  regionId: string;
+  regionName: string;
+  meetId: string;
+  name: string;
+  leadingDate: string;
+  href: string;
+}
+
+interface AthleteMentionRow {
+  meetId: string;
+  sportsmanId: string;
+  name: string;
+  birthYear: string;
+  team: string;
+  division: string;
+  gender: string;
+  category: string;
+  href: string;
+}
+
+interface PowerTableOpenData {
+  generatedAt: string;
+  source: {
+    system: string;
+    federation: string;
+    federationCode: string;
+    collectedAt: string;
+    mode: string;
+  };
+  counts: {
+    federations: number;
+    clubs: number;
+    cities: number;
+    competitions: number;
+    athleteMentions: number;
+    uniquePublicAthletes: number;
+    judges: number;
+  };
+  notes: string[];
+  federations: FederationRow[];
+  clubs: FederationRow[];
+  cities: CityRow[];
+  competitions: CompetitionRow[];
+  athleteMentions: AthleteMentionRow[];
+}
+
+type Tab = 'athletes' | 'competitions' | 'federations' | 'cities' | 'clubs' | 'judges';
+
+const tabs: Array<{ id: Tab; label: string }> = [
+  { id: 'athletes', label: 'Спортсмены' },
+  { id: 'competitions', label: 'Соревнования ISF' },
+  { id: 'federations', label: 'Федерации' },
+  { id: 'cities', label: 'Города' },
+  { id: 'clubs', label: 'Клубы' },
+  { id: 'judges', label: 'Судьи' },
+];
+
+function numberLabel(value: number | null): string {
+  return value === null ? '-' : new Intl.NumberFormat('ru-RU').format(value);
+}
+
+function includesQuery(values: Array<string | number | null | undefined>, query: string): boolean {
+  if (!query) return true;
+  const haystack = values.filter(Boolean).join(' ').toLowerCase();
+  return haystack.includes(query);
+}
+
+function eventUrl(href: string): string {
+  if (href.startsWith('http')) return href;
+  if (href.startsWith('/')) return `https://powertable.ru${href}`;
+  return `https://powertable.ru/api/hs/p/${href}`;
+}
+
+export default function PowerTableOpenDataFeature() {
+  const [data, setData] = useState<PowerTableOpenData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('athletes');
+  const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/data/powertable/open-data.json', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return (await response.json()) as PowerTableOpenData;
+      })
+      .then((payload) => {
+        if (!cancelled) setData(payload);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'unknown error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const athletes = useMemo(
+    () =>
+      (data?.athleteMentions ?? []).filter((row) =>
+        includesQuery(
+          [row.name, row.sportsmanId, row.meetId, row.team, row.division, row.gender, row.category],
+          normalizedQuery,
+        ),
+      ),
+    [data?.athleteMentions, normalizedQuery],
+  );
+
+  const competitions = useMemo(
+    () =>
+      (data?.competitions ?? []).filter((row) =>
+        includesQuery([row.meetId, row.name, row.regionName, row.leadingDate], normalizedQuery),
+      ),
+    [data?.competitions, normalizedQuery],
+  );
+
+  const federations = useMemo(
+    () =>
+      (data?.federations ?? []).filter((row) =>
+        includesQuery([row.code, row.shortName, row.name, row.eventCount], normalizedQuery),
+      ),
+    [data?.federations, normalizedQuery],
+  );
+
+  const cities = useMemo(
+    () =>
+      (data?.cities ?? []).filter((row) =>
+        includesQuery(
+          [row.countryCode, row.countryName, row.city, row.eventCount],
+          normalizedQuery,
+        ),
+      ),
+    [data?.cities, normalizedQuery],
+  );
+
+  const clubs = useMemo(
+    () =>
+      (data?.clubs ?? []).filter((row) =>
+        includesQuery([row.code, row.shortName, row.name, row.eventCount], normalizedQuery),
+      ),
+    [data?.clubs, normalizedQuery],
+  );
+
+  return (
+    <div data-testid="powertable-open-data" className="mx-auto max-w-7xl px-6 py-8 space-y-6">
+      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-2">
+          <div className="text-sm font-semibold text-primary">PowerTable public import</div>
+          <h1 className="text-3xl font-semibold tracking-tight">Открытые данные стритлифтинга</h1>
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Публичная read-only выгрузка PowerTable по ISF: федерации, клубы, города, соревнования и
+            строки спортсменов из открытых рабочих протоколов.
+          </p>
+        </div>
+        <Link to="/login" className="text-sm font-semibold text-primary hover:underline">
+          Войти в рабочий кабинет
+        </Link>
+      </header>
+
+      {error ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Данные недоступны</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">{error}</CardContent>
+        </Card>
+      ) : null}
+
+      {!data && !error ? <p className="text-sm text-muted-foreground">Загрузка данных...</p> : null}
+
+      {data ? (
+        <>
+          <section className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+            <Metric label="Федерации" value={data.counts.federations} />
+            <Metric label="Клубы" value={data.counts.clubs} />
+            <Metric label="Города" value={data.counts.cities} />
+            <Metric label="Соревнования ISF" value={data.counts.competitions} />
+            <Metric label="Строки спортсменов" value={data.counts.athleteMentions} />
+            <Metric label="Уникальные спортсмены" value={data.counts.uniquePublicAthletes} />
+          </section>
+
+          <Card>
+            <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_auto]">
+              <label className="space-y-1">
+                <span className="text-sm font-medium">Поиск по открытым данным</span>
+                <input
+                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="ФИО, город, федерация, id соревнования"
+                />
+              </label>
+              <div className="flex flex-wrap items-end gap-2">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                      activeTab === tab.id
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border hover:text-primary'
+                    }`}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {activeTab === 'athletes' ? <AthletesTable rows={athletes} /> : null}
+          {activeTab === 'competitions' ? <CompetitionsTable rows={competitions} /> : null}
+          {activeTab === 'federations' ? (
+            <FederationLikeTable rows={federations} title="Федерации PowerTable" />
+          ) : null}
+          {activeTab === 'cities' ? <CitiesTable rows={cities} /> : null}
+          {activeTab === 'clubs' ? (
+            <FederationLikeTable rows={clubs} title="Клубы PowerTable" />
+          ) : null}
+          {activeTab === 'judges' ? <JudgesNotice /> : null}
+
+          <footer className="rounded-md border border-border bg-muted/40 p-4 text-xs leading-6 text-muted-foreground">
+            <div>
+              Источник: {data.source.system}, federation={data.source.federationCode}, collected{' '}
+              {new Date(data.source.collectedAt).toLocaleString('ru-RU')}.
+            </div>
+            {data.notes.map((note) => (
+              <div key={note}>{note}</div>
+            ))}
+          </footer>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function Metric(props: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-border bg-card p-4">
+      <div className="text-2xl font-semibold tabular-nums">{numberLabel(props.value)}</div>
+      <div className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
+        {props.label}
+      </div>
+    </div>
+  );
+}
+
+function AthletesTable(props: { rows: AthleteMentionRow[] }) {
+  return (
+    <DataCard title={`Спортсмены · ${numberLabel(props.rows.length)}`}>
+      <table className="min-w-full text-sm">
+        <thead className="border-b border-border bg-muted/50">
+          <tr>
+            <th className="px-3 py-2 text-left">PowerTable ID</th>
+            <th className="px-3 py-2 text-left">Спортсмен</th>
+            <th className="px-3 py-2 text-left">Год</th>
+            <th className="px-3 py-2 text-left">Пол</th>
+            <th className="px-3 py-2 text-left">Дивизион</th>
+            <th className="px-3 py-2 text-left">Команда</th>
+            <th className="px-3 py-2 text-left">Соревнование</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.rows.slice(0, 500).map((row, index) => (
+            <tr
+              key={`${row.meetId}-${row.sportsmanId}-${index}`}
+              className="border-b border-border/60"
+            >
+              <td className="px-3 py-2 font-mono text-xs">{row.sportsmanId || '-'}</td>
+              <td className="px-3 py-2 font-medium">{row.name}</td>
+              <td className="px-3 py-2 tabular-nums">{row.birthYear || '-'}</td>
+              <td className="px-3 py-2">{row.gender || '-'}</td>
+              <td className="px-3 py-2">{row.division || '-'}</td>
+              <td className="px-3 py-2">{row.team || '-'}</td>
+              <td className="px-3 py-2">
+                <a
+                  className="text-primary hover:underline"
+                  href={eventUrl(row.href)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {row.meetId}
+                </a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {props.rows.length > 500 ? (
+        <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+          Показаны первые 500 строк. Уточните поиск, чтобы сузить список.
+        </div>
+      ) : null}
+    </DataCard>
+  );
+}
+
+function CompetitionsTable(props: { rows: CompetitionRow[] }) {
+  return (
+    <DataCard title={`Соревнования ISF · ${numberLabel(props.rows.length)}`}>
+      <table className="min-w-full text-sm">
+        <thead className="border-b border-border bg-muted/50">
+          <tr>
+            <th className="px-3 py-2 text-left">ID</th>
+            <th className="px-3 py-2 text-left">Регион</th>
+            <th className="px-3 py-2 text-left">Название</th>
+            <th className="px-3 py-2 text-left">Дата в названии</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.rows.map((row) => (
+            <tr key={row.meetId} className="border-b border-border/60">
+              <td className="px-3 py-2 font-mono text-xs">
+                <a
+                  className="text-primary hover:underline"
+                  href={eventUrl(row.href)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {row.meetId}
+                </a>
+              </td>
+              <td className="px-3 py-2">{row.regionName || '-'}</td>
+              <td className="px-3 py-2 font-medium">{row.name}</td>
+              <td className="px-3 py-2">{row.leadingDate || '-'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </DataCard>
+  );
+}
+
+function FederationLikeTable(props: { rows: FederationRow[]; title: string }) {
+  return (
+    <DataCard title={`${props.title} · ${numberLabel(props.rows.length)}`}>
+      <table className="min-w-full text-sm">
+        <thead className="border-b border-border bg-muted/50">
+          <tr>
+            <th className="px-3 py-2 text-left">Код</th>
+            <th className="px-3 py-2 text-left">Короткое имя</th>
+            <th className="px-3 py-2 text-left">Название</th>
+            <th className="px-3 py-2 text-right">Соревнований</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.rows.map((row) => (
+            <tr key={`${row.code}-${row.shortName}`} className="border-b border-border/60">
+              <td className="px-3 py-2 font-mono text-xs">{row.code}</td>
+              <td className="px-3 py-2 font-medium">{row.shortName}</td>
+              <td className="px-3 py-2">{row.name || '-'}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{numberLabel(row.eventCount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </DataCard>
+  );
+}
+
+function CitiesTable(props: { rows: CityRow[] }) {
+  return (
+    <DataCard title={`Города · ${numberLabel(props.rows.length)}`}>
+      <table className="min-w-full text-sm">
+        <thead className="border-b border-border bg-muted/50">
+          <tr>
+            <th className="px-3 py-2 text-left">Страна</th>
+            <th className="px-3 py-2 text-left">Город</th>
+            <th className="px-3 py-2 text-right">Соревнований</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.rows.map((row) => (
+            <tr key={`${row.countryCode}-${row.city}`} className="border-b border-border/60">
+              <td className="px-3 py-2">
+                <span className="font-mono text-xs">{row.countryCode}</span>{' '}
+                <span className="text-muted-foreground">{row.countryName}</span>
+              </td>
+              <td className="px-3 py-2 font-medium">{row.city}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{numberLabel(row.eventCount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </DataCard>
+  );
+}
+
+function JudgesNotice() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Судьи</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm text-muted-foreground">
+        <p>
+          Публичный PowerTable API не отдаёт каталог судей. Для переноса судей нужен официальный
+          экспорт из кабинета федерации или federation `sk` с endpoint, который содержит судейские
+          назначения.
+        </p>
+        <p>
+          В этой публикации не используются закрытые токены и не добавляются догадки вместо реальных
+          данных.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DataCard(props: { title: string; children: ReactNode }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{props.title}</CardTitle>
+      </CardHeader>
+      <CardContent className="overflow-x-auto p-0">{props.children}</CardContent>
+    </Card>
+  );
+}

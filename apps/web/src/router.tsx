@@ -142,6 +142,12 @@ const PublicFederationRegistrationFeature = () => (
     loader={() => import('./features/public-registration/federation.js')}
   />
 );
+const PowerTableOpenDataFeature = () => (
+  <LazyModule
+    module="powertable-open-data"
+    loader={() => import('./features/powertable-open-data/index.js')}
+  />
+);
 const AthletesListFeature = () => (
   <LazyModule module="athletes" loader={() => import('./features/athletes/index.js')} />
 );
@@ -441,6 +447,12 @@ const publicFederationRegistrationRoute = createRoute({
   component: PublicFederationRegistrationFeature,
 });
 
+const powerTableOpenDataRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/open-data/powertable',
+  component: PowerTableOpenDataFeature,
+});
+
 const athletesListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/athletes',
@@ -570,6 +582,7 @@ const routeTree = rootRoute.addChildren([
   publicCompetitionResultsRoute,
   publicCompetitionRegistrationRoute,
   publicFederationRegistrationRoute,
+  powerTableOpenDataRoute,
   athletesListRoute,
   athleteNewRoute,
   athleteDetailRoute,

@@ -484,8 +484,8 @@ export function RootLayout() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <header className="border-b border-border px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <img
             src={theme === 'dark' ? '/brand/symbol-inverse.png' : '/brand/symbol-color.png'}
             alt=""
@@ -496,7 +496,7 @@ export function RootLayout() {
           </Link>
         </div>
 
-        <nav className="flex items-center gap-4 text-sm">
+        <nav className="flex flex-wrap items-center justify-end gap-2 text-sm sm:gap-4">
           <button
             type="button"
             onClick={() => setTheme(nextTheme)}
@@ -592,9 +592,18 @@ export function RootLayout() {
               </Button>
             </>
           ) : (
-            <Button asChild size="sm">
-              <Link to="/login">{t('header.login')}</Link>
-            </Button>
+            <>
+              <Link
+                to="/open-data/powertable"
+                className="whitespace-nowrap text-foreground hover:text-primary"
+                activeProps={{ className: 'text-primary' }}
+              >
+                Открытые данные
+              </Link>
+              <Button asChild size="sm">
+                <Link to="/login">{t('header.login')}</Link>
+              </Button>
+            </>
           )}
         </nav>
       </header>

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
@@ -95,6 +95,16 @@ export default function LoginFeature() {
           </form>
         </CardContent>
       </Card>
+      <div className="mt-4 rounded-md border border-border bg-card/70 p-4 text-sm text-muted-foreground">
+        <div className="font-semibold text-foreground">Открытая выгрузка PowerTable</div>
+        <p className="mt-1">
+          Федерациям и операторам доступен публичный справочник соревнований ISF, городов, клубов и
+          спортсменов из рабочих протоколов.
+        </p>
+        <Link to="/open-data/powertable" className="mt-2 inline-block font-semibold text-primary">
+          Открыть данные
+        </Link>
+      </div>
     </div>
   );
 }
