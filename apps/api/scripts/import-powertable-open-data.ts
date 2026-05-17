@@ -7,6 +7,7 @@
  * - chapters are keyed by federation + PowerTable region id
  * - competitions are keyed by federation + PT-<meetId>
  * - athletes are keyed by federationCardNumber = PT:<sportsmanId>
+ * - nominations are keyed by competition + athlete + classic_total + PowerTable division
  * - cities are inserted only when no city with the same country/name exists
  *
  * Usage:
@@ -53,7 +54,11 @@ interface AthleteMentionRow {
   name: string;
   birthYear: string;
   team: string;
+  division: string;
   gender: string;
+  category: string;
+  href: string;
+  bodyWeightKg?: number;
 }
 
 interface PowerTableOpenData {
@@ -74,6 +79,9 @@ interface Counters {
   updated: number;
   skipped: number;
 }
+
+type Gender = 'M' | 'F';
+type VeteranTier = 'youth' | 'junior' | 'open' | 'm1' | 'm2' | 'm3' | 'm4' | 'm5';
 
 const ISO3_TO_ISO2: Record<string, string> = {
   BLR: 'BY',
@@ -140,6 +148,14 @@ function genderFromPowerTable(value: string): 'M' | 'F' | null {
   if (normalized === 'man' || normalized === 'm') return 'M';
   if (normalized === 'woman' || normalized === 'f') return 'F';
   return null;
+}
+
+function parseNumber(value: string | number | null | undefined): number | null {
+  const normalized = String(value ?? '')
+    .trim()
+    .replace(',', '.');
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return null;
+  return Number(normalized);
 }
 
 function splitName(fullName: string): { lastName: string; firstName: string; middleName?: string } {
@@ -488,6 +504,281 @@ function competitionDescription(row: CompetitionRow): string {
   return parts.join('\n');
 }
 
+function veteranCoefficient(tier: VeteranTier): number {
+  const coefficients: Record<VeteranTier, number> = {
+    youth: 1,
+    junior: 1,
+    open: 1,
+    m1: 1.025,
+    m2: 1.05,
+    m3: 1.075,
+    m4: 1.1,
+    m5: 1.125,
+  };
+  return coefficients[tier];
+}
+
+function divisionSpec(row: AthleteMentionRow): {
+  code: string;
+  name: string;
+  veteranTier: VeteranTier;
+  ageMin: number | null;
+  ageMax: number | null;
+} {
+  const text = cleanText(row.division);
+  const normalized = text.toLowerCase();
+
+  if (normalized.includes('sub-juniors')) {
+    return {
+      code: 'YOUTH',
+      name: text || 'Sub-Juniors [13-17]',
+      veteranTier: 'youth',
+      ageMin: 13,
+      ageMax: 17,
+    };
+  }
+  if (normalized.includes('juniors')) {
+    return {
+      code: 'JUNIOR',
+      name: text || 'Juniors [18-22]',
+      veteranTier: 'junior',
+      ageMin: 18,
+      ageMax: 22,
+    };
+  }
+  if (normalized.includes('masters m1')) {
+    return {
+      code: 'M1',
+      name: text || 'Masters M1 [40-44]',
+      veteranTier: 'm1',
+      ageMin: 40,
+      ageMax: 44,
+    };
+  }
+  if (normalized.includes('masters m2')) {
+    return {
+      code: 'M2',
+      name: text || 'Masters M2 [45-49]',
+      veteranTier: 'm2',
+      ageMin: 45,
+      ageMax: 49,
+    };
+  }
+  if (normalized.includes('masters m3')) {
+    return {
+      code: 'M3',
+      name: text || 'Masters M3 [50-54]',
+      veteranTier: 'm3',
+      ageMin: 50,
+      ageMax: 54,
+    };
+  }
+  if (normalized.includes('masters m4')) {
+    return {
+      code: 'M4',
+      name: text || 'Masters M4 [55-59]',
+      veteranTier: 'm4',
+      ageMin: 55,
+      ageMax: 59,
+    };
+  }
+  if (normalized.includes('masters m5')) {
+    return {
+      code: 'M5',
+      name: text || 'Masters M5 [60-99]',
+      veteranTier: 'm5',
+      ageMin: 60,
+      ageMax: 99,
+    };
+  }
+
+  return {
+    code: 'OPEN',
+    name: text || 'Open [13-99]',
+    veteranTier: 'open',
+    ageMin: 13,
+    ageMax: 99,
+  };
+}
+
+function divisionCode(row: AthleteMentionRow, gender: Gender): string {
+  return `PT_${gender}_${divisionSpec(row).code}`.slice(0, 32);
+}
+
+function divisionName(row: AthleteMentionRow, gender: Gender): string {
+  const prefix = gender === 'M' ? 'Men' : 'Women';
+  return `${prefix}, ${divisionSpec(row).name}`;
+}
+
+function normalizeWeightCode(value: number): string {
+  return String(value).replace('.', '_');
+}
+
+function weightClassSpec(row: AthleteMentionRow): {
+  code: string;
+  nameRu: string;
+  nameEn: string;
+  weightMin: number | null;
+  weightMax: number | null;
+  order: number;
+} {
+  const raw = cleanText(row.category).replace(/^-\s*/, '');
+  if (!raw || raw === '-') {
+    return {
+      code: 'PT_UNSPECIFIED',
+      nameRu: 'PowerTable: без весовой категории',
+      nameEn: 'PowerTable: unspecified weight class',
+      weightMin: null,
+      weightMax: null,
+      order: 999,
+    };
+  }
+
+  const plus = raw.match(/^\+?(\d+(?:[,.]\d+)?)\s*kg$/i);
+  if (plus && raw.startsWith('+')) {
+    const min = parseNumber(plus[1]);
+    if (min !== null) {
+      return {
+        code: `PT_${normalizeWeightCode(min)}_PLUS`.slice(0, 32),
+        nameRu: `свыше ${min} кг`,
+        nameEn: `over ${min} kg`,
+        weightMin: min,
+        weightMax: null,
+        order: Math.round(min * 10) + 10000,
+      };
+    }
+  }
+
+  const max = parseNumber(raw.replace(/\s*kg$/i, ''));
+  if (max !== null) {
+    return {
+      code: `PT_${normalizeWeightCode(max)}`.slice(0, 32),
+      nameRu: `до ${max} кг`,
+      nameEn: `up to ${max} kg`,
+      weightMin: null,
+      weightMax: max,
+      order: Math.round(max * 10),
+    };
+  }
+
+  return {
+    code: `PT_${raw.toUpperCase().replace(/[^A-ZА-ЯЁ0-9]+/gi, '_')}`.slice(0, 32),
+    nameRu: raw,
+    nameEn: raw,
+    weightMin: null,
+    weightMax: null,
+    order: 998,
+  };
+}
+
+async function ensurePowerTableDivision(
+  competitionId: string,
+  row: AthleteMentionRow,
+  gender: Gender,
+  dryRun: boolean,
+  counters: Counters,
+  cache: Map<string, string>,
+): Promise<string | null> {
+  const code = divisionCode(row, gender);
+  const cacheKey = `${competitionId}:${code}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const spec = divisionSpec(row);
+  const existing = await prisma.division.findUnique({
+    where: { competitionId_code: { competitionId, code } },
+  });
+
+  if (dryRun) {
+    if (existing) counters.updated++;
+    else counters.created++;
+    const id = existing?.id ?? `dry-division:${cacheKey}`;
+    cache.set(cacheKey, id);
+    return id;
+  }
+
+  const data = {
+    nameRu: divisionName(row, gender),
+    nameEn: divisionName(row, gender),
+    gender,
+    veteranTier: spec.veteranTier,
+    ageMin: spec.ageMin,
+    ageMax: spec.ageMax,
+    veteranCoefficient: veteranCoefficient(spec.veteranTier),
+  };
+
+  const division = await prisma.division.upsert({
+    where: { competitionId_code: { competitionId, code } },
+    create: { competitionId, code, ...data },
+    update: data,
+  });
+
+  if (existing) counters.updated++;
+  else counters.created++;
+  cache.set(cacheKey, division.id);
+  return division.id;
+}
+
+async function ensurePowerTableWeightClass(
+  divisionId: string,
+  disciplineId: string,
+  row: AthleteMentionRow,
+  dryRun: boolean,
+  counters: Counters,
+  cache: Map<string, string>,
+): Promise<string | null> {
+  const spec = weightClassSpec(row);
+  const cacheKey = `${divisionId}:${disciplineId}:${spec.code}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const canQuery = !divisionId.startsWith('dry-division:');
+  const existing = canQuery
+    ? await prisma.weightClass.findFirst({ where: { divisionId, code: spec.code } })
+    : null;
+
+  if (dryRun) {
+    if (existing) counters.updated++;
+    else counters.created++;
+    const id = existing?.id ?? `dry-weight-class:${cacheKey}`;
+    cache.set(cacheKey, id);
+    return id;
+  }
+
+  if (existing) {
+    await prisma.weightClass.update({
+      where: { id: existing.id },
+      data: {
+        disciplineId,
+        nameRu: spec.nameRu,
+        nameEn: spec.nameEn,
+        weightMin: spec.weightMin,
+        weightMax: spec.weightMax,
+        order: spec.order,
+      },
+    });
+    counters.updated++;
+    cache.set(cacheKey, existing.id);
+    return existing.id;
+  }
+
+  const weightClass = await prisma.weightClass.create({
+    data: {
+      divisionId,
+      disciplineId,
+      code: spec.code,
+      nameRu: spec.nameRu,
+      nameEn: spec.nameEn,
+      weightMin: spec.weightMin,
+      weightMax: spec.weightMax,
+      order: spec.order,
+    },
+  });
+  counters.created++;
+  cache.set(cacheKey, weightClass.id);
+  return weightClass.id;
+}
+
 async function importCompetitions(
   data: PowerTableOpenData,
   federationId: string | null,
@@ -563,6 +854,150 @@ async function importCompetitions(
   }
 
   return counters;
+}
+
+async function importNominations(
+  data: PowerTableOpenData,
+  federationId: string | null,
+  dryRun: boolean,
+): Promise<{
+  divisions: Counters;
+  weightClasses: Counters;
+  nominations: Counters;
+}> {
+  const divisions: Counters = { created: 0, updated: 0, skipped: 0 };
+  const weightClasses: Counters = { created: 0, updated: 0, skipped: 0 };
+  const nominations: Counters = { created: 0, updated: 0, skipped: 0 };
+
+  if (!federationId) {
+    nominations.skipped = data.athleteMentions.length;
+    return { divisions, weightClasses, nominations };
+  }
+
+  const discipline = await prisma.discipline.findUnique({ where: { code: 'classic_total' } });
+  if (!discipline) {
+    nominations.skipped = data.athleteMentions.length;
+    return { divisions, weightClasses, nominations };
+  }
+
+  const competitions = await prisma.competition.findMany({
+    where: { federationId, code: { startsWith: 'PT-' } },
+    select: { id: true, code: true },
+  });
+  const competitionsByMeetId = new Map(
+    competitions.map((competition) => [competition.code.replace(/^PT-/, ''), competition.id]),
+  );
+
+  const divisionCache = new Map<string, string>();
+  const weightClassCache = new Map<string, string>();
+
+  for (const row of data.athleteMentions) {
+    const sportsmanId = cleanText(row.sportsmanId);
+    const competitionId = competitionsByMeetId.get(cleanText(row.meetId));
+    const gender = genderFromPowerTable(row.gender);
+    if (!sportsmanId || !competitionId || !gender) {
+      nominations.skipped++;
+      continue;
+    }
+
+    const athlete = await prisma.athlete.findFirst({
+      where: { federationCardNumber: `PT:${sportsmanId}` },
+      select: { id: true },
+    });
+    if (!athlete) {
+      nominations.skipped++;
+      continue;
+    }
+
+    const divisionId = await ensurePowerTableDivision(
+      competitionId,
+      row,
+      gender,
+      dryRun,
+      divisions,
+      divisionCache,
+    );
+    if (!divisionId) {
+      nominations.skipped++;
+      continue;
+    }
+
+    const weightClassId = await ensurePowerTableWeightClass(
+      divisionId,
+      discipline.id,
+      row,
+      dryRun,
+      weightClasses,
+      weightClassCache,
+    );
+    if (!weightClassId) {
+      nominations.skipped++;
+      continue;
+    }
+
+    const existing =
+      divisionId.startsWith('dry-division:') || weightClassId.startsWith('dry-weight-class:')
+        ? null
+        : await prisma.nomination.findFirst({
+            where: {
+              competitionId,
+              athleteId: athlete.id,
+              disciplineId: discipline.id,
+              divisionId,
+            },
+          });
+
+    if (dryRun) {
+      if (existing) nominations.updated++;
+      else nominations.created++;
+      continue;
+    }
+
+    const bodyWeightAtWeighIn = parseNumber(row.bodyWeightKg);
+    const notes = truncate(
+      [
+        'Imported from PowerTable public snapshot as classic_total nomination.',
+        powerTableHrefUrl(row.href) ? `Source: ${powerTableHrefUrl(row.href)}` : undefined,
+        cleanText(row.category) ? `PowerTable category: ${cleanText(row.category)}` : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      2000,
+    );
+
+    const nominationData = {
+      weightClassId,
+      declaredWeightClassId: weightClassId,
+      bodyWeightAtWeighIn,
+      status: 'draft' as const,
+      isEntryFeePaid: false,
+      paymentStatus: 'unpaid' as const,
+      paidAmountKopecks: 0n,
+      isMandatePassed: false,
+      notes,
+    };
+
+    if (existing) {
+      await prisma.nomination.update({
+        where: { id: existing.id },
+        data: nominationData,
+      });
+      nominations.updated++;
+    } else {
+      await prisma.nomination.create({
+        data: {
+          competitionId,
+          athleteId: athlete.id,
+          disciplineId: discipline.id,
+          divisionId,
+          ...nominationData,
+        },
+      });
+      nominations.created++;
+    }
+  }
+
+  return { divisions, weightClasses, nominations };
 }
 
 async function ensurePowerTableRegion(countryCode: string, countryName: string, dryRun: boolean) {
@@ -752,6 +1187,7 @@ const chapterCounters = await importChapters(snapshot, federationResult.id, dryR
 const competitionCounters = await importCompetitions(snapshot, federationResult.id, dryRun);
 const cityCounters = await importCities(snapshot, dryRun);
 const athleteCounters = await importAthletes(snapshot, dryRun);
+const nominationCounters = await importNominations(snapshot, federationResult.id, dryRun);
 
 logCounters('federation', federationResult.counters);
 logCounters('powertable_federations', federationLikeCounters.federations);
@@ -759,6 +1195,9 @@ logCounters('powertable_clubs', federationLikeCounters.clubs);
 logCounters('federation_tags', federationTagCounters);
 logCounters('federation_chapters', chapterCounters);
 logCounters('competitions', competitionCounters);
+logCounters('competition_divisions', nominationCounters.divisions);
+logCounters('competition_weight_classes', nominationCounters.weightClasses);
+logCounters('nominations', nominationCounters.nominations);
 logCounters('cities', cityCounters);
 logCounters('athletes', athleteCounters);
 console.log('judges: skipped=all, reason=PowerTable public snapshot does not expose judge catalog');

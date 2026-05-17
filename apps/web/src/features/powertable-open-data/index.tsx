@@ -41,6 +41,7 @@ interface AthleteMentionRow {
   gender: string;
   category: string;
   href: string;
+  bodyWeightKg?: number;
 }
 
 interface PowerTableOpenData {
@@ -283,7 +284,9 @@ function AthletesTable(props: { rows: AthleteMentionRow[] }) {
             <th className="px-3 py-2 text-left">Спортсмен</th>
             <th className="px-3 py-2 text-left">Год</th>
             <th className="px-3 py-2 text-left">Пол</th>
+            <th className="px-3 py-2 text-left">Вес</th>
             <th className="px-3 py-2 text-left">Дивизион</th>
+            <th className="px-3 py-2 text-left">Категория</th>
             <th className="px-3 py-2 text-left">Команда</th>
             <th className="px-3 py-2 text-left">Соревнование</th>
           </tr>
@@ -298,7 +301,9 @@ function AthletesTable(props: { rows: AthleteMentionRow[] }) {
               <td className="px-3 py-2 font-medium">{row.name}</td>
               <td className="px-3 py-2 tabular-nums">{row.birthYear || '-'}</td>
               <td className="px-3 py-2">{row.gender || '-'}</td>
+              <td className="px-3 py-2 tabular-nums">{row.bodyWeightKg ?? '-'}</td>
               <td className="px-3 py-2">{row.division || '-'}</td>
+              <td className="px-3 py-2">{row.category || '-'}</td>
               <td className="px-3 py-2">{row.team || '-'}</td>
               <td className="px-3 py-2">
                 <a
