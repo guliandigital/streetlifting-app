@@ -3,6 +3,7 @@
  *
  * The importer is intentionally idempotent:
  * - federation is keyed by PowerTable federation code
+ * - public PowerTable federation-like references are keyed by PTF:<code> / PTC:<code>
  * - chapters are keyed by federation + PowerTable region id
  * - athletes are keyed by federationCardNumber = PT:<sportsmanId>
  * - cities are inserted only when no city with the same country/name exists
@@ -22,6 +23,7 @@ interface FederationRow {
   shortName: string;
   name: string;
   eventCount: number | null;
+  href?: string;
 }
 
 interface CityRow {
@@ -53,6 +55,7 @@ interface PowerTableOpenData {
     collectedAt: string;
   };
   federations: FederationRow[];
+  clubs: FederationRow[];
   cities: CityRow[];
   competitions: CompetitionRow[];
   athleteMentions: AthleteMentionRow[];
@@ -156,6 +159,44 @@ function countryCodeForCompetition(row: CompetitionRow | undefined): string {
   return 'RU';
 }
 
+function powerTableUrl(row: FederationRow): string | undefined {
+  const href = cleanText(row.href);
+  if (!href) return undefined;
+  if (href.startsWith('http://') || href.startsWith('https://')) return truncate(href, 2048);
+  if (href.startsWith('/')) return truncate(`https://powertable.ru${href}`, 2048);
+  return truncate(`https://powertable.ru/api/hs/p/${href}`, 2048);
+}
+
+function federationDisplayName(row: FederationRow): string {
+  return cleanText(row.name) || cleanText(row.shortName) || `PowerTable ${cleanText(row.code)}`;
+}
+
+function federationReferenceCode(prefix: 'PTF' | 'PTC', row: FederationRow): string {
+  return `${prefix}-${cleanText(row.code)}`.slice(0, 16);
+}
+
+function inferCountryCodeFromFederation(row: FederationRow): string {
+  const text = `${row.shortName} ${row.name}`.toLowerCase();
+  if (text.includes('belarus') || text.includes('беларус')) return 'BY';
+  if (text.includes('казахстан') || text.includes('kazakhstan')) return 'KZ';
+  if (text.includes('kyrgyz') || text.includes('киргиз') || text.includes('кыргыз')) return 'KG';
+  if (text.includes('приднестров') || text.includes('moldova') || text.includes('молдов'))
+    return 'MD';
+  if (text.includes('spain') || text.includes('испан')) return 'ES';
+  if (text.includes('poland') || text.includes('польш')) return 'PL';
+  if (text.includes('lithuania') || text.includes('литв')) return 'LT';
+  if (text.includes('france') || text.includes('франц')) return 'FR';
+  if (text.includes('germany') || text.includes('герман')) return 'DE';
+  if (text.includes('latvia') || text.includes('латви')) return 'LV';
+  if (text.includes('iran') || text.includes('иран')) return 'IR';
+  if (text.includes('serbia') || text.includes('серб')) return 'RS';
+  if (text.includes('uzbekistan') || text.includes('узбек')) return 'UZ';
+  if (text.includes('egypt') || text.includes('егип')) return 'EG';
+  if (text.includes('india') || text.includes('индия')) return 'IN';
+  if (text.includes('армения') || text.includes('armenia')) return 'AM';
+  return 'RU';
+}
+
 function defaultInputPath(): string {
   return path.resolve(process.cwd(), '../../apps/web/public/data/powertable/open-data.json');
 }
@@ -182,6 +223,7 @@ async function ensureSourceFederation(
   const existing = await prisma.federation.findUnique({ where: { code: source.code } });
   const nameRu = source.name || source.shortName || data.source.federation;
   const nameEn = source.name || source.shortName || data.source.federation;
+  const sourceUrl = powerTableUrl(source);
 
   if (dryRun) {
     if (existing) counters.updated++;
@@ -197,6 +239,7 @@ async function ensureSourceFederation(
           nameEn,
           countryCode: existing.countryCode,
           billingTariffKopecksPerNomination: existing.billingTariffKopecksPerNomination,
+          websiteUrl: existing.websiteUrl ?? sourceUrl,
         },
       })
     : await prisma.federation.create({
@@ -207,12 +250,148 @@ async function ensureSourceFederation(
           countryCode: 'RU',
           billingTariffKopecksPerNomination: 0n,
           securityKey: randomUUID(),
+          websiteUrl: sourceUrl,
         },
       });
 
   if (existing) counters.updated++;
   else counters.created++;
   return { id: federation.id, counters };
+}
+
+async function importFederationLikeRows(
+  rows: FederationRow[],
+  prefix: 'PTF' | 'PTC',
+  dryRun: boolean,
+): Promise<Counters> {
+  const counters: Counters = { created: 0, updated: 0, skipped: 0 };
+  const uniqueRows = new Map<string, FederationRow>();
+  for (const row of rows) {
+    const code = cleanText(row.code);
+    if (!code) {
+      counters.skipped++;
+      continue;
+    }
+    uniqueRows.set(code, row);
+  }
+
+  for (const row of uniqueRows.values()) {
+    const code = federationReferenceCode(prefix, row);
+    const name = federationDisplayName(row);
+    const existing = await prisma.federation.findUnique({ where: { code } });
+    const websiteUrl = powerTableUrl(row);
+
+    if (dryRun) {
+      if (existing) counters.updated++;
+      else counters.created++;
+      continue;
+    }
+
+    if (existing) {
+      await prisma.federation.update({
+        where: { id: existing.id },
+        data: {
+          nameRu: name,
+          nameEn: name,
+          countryCode: inferCountryCodeFromFederation(row),
+          websiteUrl: existing.websiteUrl ?? websiteUrl,
+          billingTariffKopecksPerNomination: existing.billingTariffKopecksPerNomination,
+        },
+      });
+      counters.updated++;
+    } else {
+      await prisma.federation.create({
+        data: {
+          code,
+          nameRu: name,
+          nameEn: name,
+          countryCode: inferCountryCodeFromFederation(row),
+          billingTariffKopecksPerNomination: 0n,
+          securityKey: randomUUID(),
+          websiteUrl,
+        },
+      });
+      counters.created++;
+    }
+  }
+
+  return counters;
+}
+
+async function importFederationLikeReferences(
+  data: PowerTableOpenData,
+  dryRun: boolean,
+): Promise<{
+  federations: Counters;
+  clubs: Counters;
+}> {
+  const federationRows = data.federations.filter(
+    (row) => cleanText(row.code) !== data.source.federationCode,
+  );
+  const clubRows = data.clubs ?? [];
+
+  return {
+    federations: await importFederationLikeRows(federationRows, 'PTF', dryRun),
+    clubs: await importFederationLikeRows(clubRows, 'PTC', dryRun),
+  };
+}
+
+async function ensureFederationTags(dryRun: boolean): Promise<Counters> {
+  const counters: Counters = { created: 0, updated: 0, skipped: 0 };
+  const tags = [
+    {
+      code: 'powertable_public',
+      nameRu: 'PowerTable public import',
+      nameEn: 'PowerTable public import',
+      sortOrder: 900,
+    },
+    {
+      code: 'powertable_federation',
+      nameRu: 'PowerTable federation reference',
+      nameEn: 'PowerTable federation reference',
+      sortOrder: 901,
+    },
+    {
+      code: 'powertable_club',
+      nameRu: 'PowerTable club reference',
+      nameEn: 'PowerTable club reference',
+      sortOrder: 902,
+    },
+  ];
+
+  for (const tag of tags) {
+    const existing = await prisma.lookupValue.findUnique({
+      where: { kind_code: { kind: 'federation_tag', code: tag.code } },
+    });
+
+    if (dryRun) {
+      if (existing) counters.updated++;
+      else counters.created++;
+      continue;
+    }
+
+    await prisma.lookupValue.upsert({
+      where: { kind_code: { kind: 'federation_tag', code: tag.code } },
+      create: {
+        kind: 'federation_tag',
+        code: tag.code,
+        nameRu: tag.nameRu,
+        nameEn: tag.nameEn,
+        sortOrder: tag.sortOrder,
+      },
+      update: {
+        nameRu: tag.nameRu,
+        nameEn: tag.nameEn,
+        sortOrder: tag.sortOrder,
+        isActive: true,
+      },
+    });
+
+    if (existing) counters.updated++;
+    else counters.created++;
+  }
+
+  return counters;
 }
 
 async function importChapters(
@@ -449,11 +628,16 @@ console.log(
 if (dryRun) console.log('Mode: dry-run, no database writes');
 
 const federationResult = await ensureSourceFederation(snapshot, dryRun);
+const federationLikeCounters = await importFederationLikeReferences(snapshot, dryRun);
+const federationTagCounters = await ensureFederationTags(dryRun);
 const chapterCounters = await importChapters(snapshot, federationResult.id, dryRun);
 const cityCounters = await importCities(snapshot, dryRun);
 const athleteCounters = await importAthletes(snapshot, dryRun);
 
 logCounters('federation', federationResult.counters);
+logCounters('powertable_federations', federationLikeCounters.federations);
+logCounters('powertable_clubs', federationLikeCounters.clubs);
+logCounters('federation_tags', federationTagCounters);
 logCounters('federation_chapters', chapterCounters);
 logCounters('cities', cityCounters);
 logCounters('athletes', athleteCounters);
