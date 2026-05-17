@@ -64,6 +64,114 @@ const COLUMN_OPTIONS: { key: string; label: string; defaultOn: boolean }[] = [
   { key: 'sum-attempts', label: 'СуммаПопыток', defaultOn: false },
 ];
 
+function sanitizeMusicFilename(value: string): string {
+  return (
+    value
+      .replace(/[\\/:"*?<>|]+/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120) || 'athlete'
+  );
+}
+
+function downloadTextFile(filename: string, content: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function playlistContent(nominations: NominationDto[]): string {
+  const lines = ['#EXTM3U'];
+  for (const nomination of nominations.slice().sort(sortForPlatform)) {
+    const athleteName = fullName(nomination.athlete);
+    const entryPrefix = nomination.entryNumber ? `${nomination.entryNumber} - ` : '';
+    const fileName = sanitizeMusicFilename(`${entryPrefix}${athleteName}.mp3`);
+    lines.push(`#EXTINF:-1,${athleteName}`);
+    lines.push(`C:\\PowerTable_music\\${fileName}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+async function playToneSequence(voiceJudges: boolean, voiceLang: 'ru' | 'en'): Promise<void> {
+  const AudioContextCtor =
+    window.AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) {
+    throw new Error('AudioContext is not supported');
+  }
+
+  const context = new AudioContextCtor();
+  await context.resume();
+  const gain = context.createGain();
+  gain.gain.setValueAtTime(0.001, context.currentTime);
+  gain.connect(context.destination);
+
+  const scheduleTone = (frequency: number, offset: number, duration: number) => {
+    const oscillator = context.createOscillator();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(frequency, context.currentTime + offset);
+    oscillator.connect(gain);
+    gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + offset + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + offset + duration);
+    oscillator.start(context.currentTime + offset);
+    oscillator.stop(context.currentTime + offset + duration);
+  };
+
+  scheduleTone(880, 0, 0.16);
+  scheduleTone(1200, 0.24, 0.12);
+  scheduleTone(1200, 0.42, 0.12);
+
+  window.setTimeout(() => void context.close(), 900);
+
+  if (voiceJudges && 'speechSynthesis' in window) {
+    speakText(voiceLang === 'ru' ? 'Вес взят' : 'Good lift', voiceLang);
+  }
+}
+
+async function playSingleTone(frequency: number, duration = 0.14): Promise<void> {
+  const AudioContextCtor =
+    window.AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return;
+
+  const context = new AudioContextCtor();
+  await context.resume();
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(frequency, context.currentTime);
+  gain.gain.setValueAtTime(0.001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + duration);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + duration);
+  window.setTimeout(() => void context.close(), Math.ceil(duration * 1000) + 80);
+}
+
+function speakText(text: string, voiceLang: 'ru' | 'en'): void {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = voiceLang === 'ru' ? 'ru-RU' : 'en-US';
+  window.speechSynthesis.speak(utterance);
+}
+
+function speakJudgeResult(result: 'good_lift' | 'no_lift' | 'withdrawn', voiceLang: 'ru' | 'en') {
+  if (voiceLang === 'ru') {
+    speakText(result === 'good_lift' ? 'Вес взят' : 'Попытка неудачная', voiceLang);
+    return;
+  }
+  speakText(result === 'good_lift' ? 'Good lift' : 'No lift', voiceLang);
+}
+
 function selectableNominations(nominations: NominationDto[]): NominationDto[] {
   return nominations
     .filter((nomination) => !['finished', 'disqualified', 'withdrawn'].includes(nomination.status))
@@ -79,6 +187,8 @@ function ParamsTab({
   setColumns,
   hidePhoto,
   setHidePhoto,
+  onRefresh,
+  refreshing,
 }: {
   platformNumber: number;
   setPlatformNumber: (n: number) => void;
@@ -88,6 +198,8 @@ function ParamsTab({
   setColumns: (v: Record<string, boolean>) => void;
   hidePhoto: boolean;
   setHidePhoto: (v: boolean) => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_minmax(280px,360px)]">
@@ -110,8 +222,8 @@ function ParamsTab({
           />
         </div>
         <WorkspaceToolbar>
-          <WorkspaceButton type="button" icon="refresh" tone="green">
-            Обновить список
+          <WorkspaceButton type="button" icon="refresh" tone="green" onClick={onRefresh}>
+            {refreshing ? 'Обновляем...' : 'Обновить список'}
           </WorkspaceButton>
         </WorkspaceToolbar>
         <div className="pt-info-yellow">
@@ -172,13 +284,21 @@ function ParamsTab({
   );
 }
 
-function HeightsTab({ data }: { data: CompetitionOpsResponse }) {
+function HeightsTab({
+  data,
+  onRefresh,
+  refreshing,
+}: {
+  data: CompetitionOpsResponse;
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
   const rows = data.nominations.slice().sort(sortForPlatform);
   return (
     <WorkspacePanel className="p-3">
       <WorkspaceToolbar>
-        <WorkspaceButton type="button" icon="refresh" tone="green">
-          Обновить
+        <WorkspaceButton type="button" icon="refresh" tone="green" onClick={onRefresh}>
+          {refreshing ? 'Обновляем...' : 'Обновить'}
         </WorkspaceButton>
       </WorkspaceToolbar>
       <table className="pt-grid mt-2">
@@ -226,6 +346,7 @@ function HeightsTab({ data }: { data: CompetitionOpsResponse }) {
 }
 
 function SoundTab({
+  nominations,
   useSound,
   setUseSound,
   voiceJudges,
@@ -235,6 +356,7 @@ function SoundTab({
   useMusic,
   setUseMusic,
 }: {
+  nominations: NominationDto[];
   useSound: boolean;
   setUseSound: (v: boolean) => void;
   voiceJudges: boolean;
@@ -244,6 +366,24 @@ function SoundTab({
   useMusic: boolean;
   setUseMusic: (v: boolean) => void;
 }) {
+  async function testSound() {
+    try {
+      await playToneSequence(voiceJudges, voiceLang);
+      toast.success('Тестовый звук воспроизведен');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Звук недоступен в этом браузере');
+    }
+  }
+
+  function downloadPlaylist() {
+    if (nominations.length === 0) {
+      toast.error('Нет номинаций для плейлиста');
+      return;
+    }
+    downloadTextFile('streetlifting-playlist.m3u', playlistContent(nominations), 'audio/x-mpegurl');
+    toast.success('Плейлист сформирован');
+  }
+
   return (
     <div className="space-y-3">
       <WorkspacePanel className="p-3 space-y-3">
@@ -254,7 +394,7 @@ function SoundTab({
             onChange={setUseSound}
             label="Использовать звуковое уведомление:"
           />
-          <WorkspaceButton type="button" icon="music">
+          <WorkspaceButton type="button" icon="music" onClick={() => void testSound()}>
             Проверить звук
           </WorkspaceButton>
         </div>
@@ -294,8 +434,8 @@ function SoundTab({
         <WorkspaceSectionTitle>Настройка музыкального сопровождения</WorkspaceSectionTitle>
         <ol className="pt-muted text-sm space-y-1 ml-4 list-decimal">
           <li>
-            Установите галочку «Использовать музыкальное сопровождение». Будут загружены ранее не
-            загруженные персональные мелодии спортсменов.
+            Установите галочку «Использовать музыкальное сопровождение», чтобы сформировать плейлист
+            по текущему порядку номинаций.
           </li>
           <li>
             <WorkspaceCheckbox
@@ -305,22 +445,21 @@ function SoundTab({
             />
           </li>
           <li>
-            Скопируйте подборку музыки в формате mp3 в папку{' '}
-            <code className="font-mono">C:\PowerTable_music</code>.
+            Скопируйте подборку mp3 в папку <code className="font-mono">C:\PowerTable_music</code>.
+            Имена файлов в плейлисте совпадают с номером участника и ФИО.
           </li>
           <li>
-            <WorkspaceButton type="button" icon="music" tone="green">
-              Создать плейлист / запустить плеер
+            <WorkspaceButton
+              type="button"
+              icon="music"
+              tone="green"
+              disabled={!useMusic || nominations.length === 0}
+              onClick={downloadPlaylist}
+            >
+              Скачать плейлист
             </WorkspaceButton>
           </li>
-          <li>
-            Спортсмены могут добавлять любимую композицию в формате mp3 через мессенджер Telegram,
-            бот <strong>@PowerTable_bot</strong>.
-          </li>
-          <li>
-            Основной фон играет с громкостью 80%. Если спортсмен добавил музыку, она играет на 100%.
-          </li>
-          <li>Громкость автоматически снижается на 50% пока работает таймер выхода на помост.</li>
+          <li>Откройте скачанный M3U-файл в локальном плеере на компьютере оператора.</li>
         </ol>
       </WorkspacePanel>
     </div>
@@ -330,7 +469,7 @@ function SoundTab({
 export default function CompetitionOperatorFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/competitions/$id/operator' });
-  const { data, isLoading, error } = useCompetitionOps(id);
+  const { data, isLoading, error, refetch, isFetching } = useCompetitionOps(id);
   const updateNomination = useUpdateNomination(id);
   const upsertAttempt = useUpsertAttempt(id);
   const [selectedNominationId, setSelectedNominationId] = useState('');
@@ -393,6 +532,21 @@ export default function CompetitionOperatorFeature() {
     return () => window.clearInterval(interval);
   }, [timerRunning]);
 
+  useEffect(() => {
+    if (!useSound) return;
+    if (timerRunning && timerSeconds === 30) {
+      void playSingleTone(880, 0.16);
+      if (voiceJudges) speakText(voiceLang === 'ru' ? '30 секунд' : '30 seconds', voiceLang);
+    }
+    if (timerRunning && timerSeconds > 0 && timerSeconds <= 3) {
+      void playSingleTone(1200, 0.1);
+    }
+    if (timerSeconds === 0) {
+      void playSingleTone(440, 0.22);
+      if (voiceJudges) speakText(voiceLang === 'ru' ? 'Время вышло' : 'Time', voiceLang);
+    }
+  }, [timerRunning, timerSeconds, useSound, voiceJudges, voiceLang]);
+
   async function setStatus(status: NominationDto['status']) {
     if (!selected) return;
     try {
@@ -442,6 +596,14 @@ export default function CompetitionOperatorFeature() {
         },
       });
       toast.success(t('competitionOperator.attemptSaved'));
+      if (result !== 'pending') {
+        if (useSound) {
+          void playSingleTone(result === 'good_lift' ? 880 : 220, 0.18);
+        }
+        if (voiceJudges) {
+          speakJudgeResult(result === 'good_lift' ? 'good_lift' : 'no_lift', voiceLang);
+        }
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error');
     }
@@ -499,11 +661,16 @@ export default function CompetitionOperatorFeature() {
             setColumns={setColumns}
             hidePhoto={hidePhoto}
             setHidePhoto={setHidePhoto}
+            onRefresh={() => void refetch()}
+            refreshing={isFetching}
           />
         )}
-        {activeTab === 'heights' && <HeightsTab data={data} />}
+        {activeTab === 'heights' && (
+          <HeightsTab data={data} onRefresh={() => void refetch()} refreshing={isFetching} />
+        )}
         {activeTab === 'sound' && (
           <SoundTab
+            nominations={data.nominations}
             useSound={useSound}
             setUseSound={setUseSound}
             voiceJudges={voiceJudges}
