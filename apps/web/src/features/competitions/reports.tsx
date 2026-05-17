@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
@@ -42,32 +42,6 @@ const REPORTS_TABS: { key: ReportsTab; label: string; icon: WorkspaceIconName }[
   { key: 'references', label: 'Справки', icon: 'certificate' },
 ];
 
-function StubSection({
-  title,
-  description,
-  children,
-  tone = 'gray',
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-  tone?: 'gray' | 'green' | 'yellow' | 'pink';
-}) {
-  const toneClass: Record<string, string> = {
-    gray: 'pt-info-gray',
-    green: 'pt-info-green',
-    yellow: 'pt-info-yellow',
-    pink: 'pt-info-pink',
-  };
-  return (
-    <WorkspacePanel className={`p-3 space-y-2 ${toneClass[tone]}`}>
-      <WorkspaceSectionTitle>{title}</WorkspaceSectionTitle>
-      {description ? <div className="pt-muted text-sm">{description}</div> : null}
-      <WorkspaceToolbar>{children}</WorkspaceToolbar>
-    </WorkspacePanel>
-  );
-}
-
 function isPastCompetition(endDate: string): boolean {
   const end = new Date(endDate);
   if (Number.isNaN(end.getTime())) return false;
@@ -106,6 +80,13 @@ function formatDateTime(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('ru-RU');
 }
 
 function formatNumber(value: number | null | undefined): string {
@@ -266,6 +247,33 @@ function buildClubSummary(data: CompetitionOpsResponse) {
   }
 
   return [...groups.values()].sort((a, b) => b.total - a.total || a.club.localeCompare(b.club));
+}
+
+function judgeName(assignment: CompetitionOpsResponse['judgeAssignments'][number]): string {
+  return [assignment.judge.lastName, assignment.judge.firstName, assignment.judge.middleName]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function attemptSummary(nomination: NominationDto): string {
+  if (nomination.attempts.length === 0) return '—';
+  return nomination.attempts
+    .map((attempt) =>
+      [
+        attempt.component?.nameRu ?? attempt.component?.code ?? 'попытка',
+        attempt.attemptNumber,
+        formatKg(attempt.weightKg),
+        attempt.repsCount ? `x${attempt.repsCount}` : null,
+        attempt.result,
+      ]
+        .filter(Boolean)
+        .join(' '),
+    )
+    .join('; ');
+}
+
+function groupNominationCount(data: CompetitionOpsResponse, groupId: string): number {
+  return data.nominations.filter((nomination) => nomination.groupId === groupId).length;
 }
 
 export default function CompetitionReportsFeature() {
@@ -503,25 +511,63 @@ export default function CompetitionReportsFeature() {
 
         {activeTab === 'protocols' && (
           <div className="space-y-3">
-            <StubSection
-              title="Форма протоколов соревнований ФПР"
-              description="Требуется LibreOffice для PDF-экспорта."
-            >
-              <WorkspaceButton type="button" icon="document">
-                Подробный
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="document">
-                Сжатый
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="document">
-                Сокращённый
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="document">
-                Выгрузка в АСП Паурлифтинг
-              </WorkspaceButton>
-            </StubSection>
+            <WorkspacePanel className="p-3 space-y-3">
+              <WorkspaceSectionTitle>Стандартный протокол соревнования</WorkspaceSectionTitle>
+              <WorkspaceToolbar>
+                <WorkspaceButton
+                  type="button"
+                  icon="document"
+                  onClick={() => void exportFile('protocol', 'csv')}
+                >
+                  Итоговый протокол CSV
+                </WorkspaceButton>
+                <WorkspaceButton
+                  type="button"
+                  icon="chart"
+                  tone="green"
+                  onClick={() => void exportFile('protocol', 'xlsx')}
+                >
+                  Итоговый протокол XLSX
+                </WorkspaceButton>
+                <Link
+                  to="/competitions/$id/protocol-print"
+                  params={{ id }}
+                  className="pt-link-button"
+                >
+                  Печатный протокол
+                </Link>
+              </WorkspaceToolbar>
+              <div className="grid gap-3 md:grid-cols-4">
+                <div className="pt-info-green p-3">
+                  <div className="pt-muted text-sm">Номинаций</div>
+                  <div className="text-2xl font-semibold tabular-nums">
+                    {data.nominations.length}
+                  </div>
+                </div>
+                <div className="pt-info-yellow p-3">
+                  <div className="pt-muted text-sm">Завершено</div>
+                  <div className="text-2xl font-semibold tabular-nums">
+                    {
+                      data.nominations.filter((nomination) => nomination.status === 'finished')
+                        .length
+                    }
+                  </div>
+                </div>
+                <div className="pt-info-gray p-3">
+                  <div className="pt-muted text-sm">Дисциплин</div>
+                  <div className="text-2xl font-semibold tabular-nums">
+                    {new Set(data.nominations.map((nomination) => nomination.disciplineId)).size}
+                  </div>
+                </div>
+                <div className="pt-info-pink p-3">
+                  <div className="pt-muted text-sm">Рекордов</div>
+                  <div className="text-2xl font-semibold tabular-nums">{data.records.length}</div>
+                </div>
+              </div>
+            </WorkspacePanel>
 
-            <StubSection title="Формы протоколов для большого количества дисциплин" tone="green">
+            <WorkspacePanel className="p-3 space-y-3">
+              <WorkspaceSectionTitle>Протоколы по дисциплинам</WorkspaceSectionTitle>
               <WorkspaceButton
                 type="button"
                 icon="chart"
@@ -530,148 +576,332 @@ export default function CompetitionReportsFeature() {
               >
                 Дисциплины на отдельном листе
               </WorkspaceButton>
-              <WorkspaceButton
-                type="button"
-                icon="chart"
-                tone="green"
-                onClick={() => void exportFile('protocol', 'xlsx')}
-              >
-                Дисциплины на одном листе
-              </WorkspaceButton>
-            </StubSection>
-
-            <StubSection title="Выгрузка во внешний файл с листами (необходим LibreOffice)">
-              <WorkspaceButton
-                type="button"
-                icon="document"
-                onClick={() => void exportFile('protocol', 'csv')}
-              >
-                Итоговый протокол CSV
-              </WorkspaceButton>
-              <WorkspaceButton
-                type="button"
-                icon="document"
-                onClick={() => void exportFile('protocol', 'xlsx')}
-              >
-                Итоговый протокол (ENGLISH) XLSX
-              </WorkspaceButton>
-            </StubSection>
-
-            <StubSection
-              title="WRPF / WEPF / WSF / СПР / ФЖД / WAF / CAP"
-              description="Экспорт в форматах сторонних федераций."
-            >
-              <WorkspaceButton type="button" icon="document">
-                Итоговый протокол
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="chart">
-                Выгрузка XLSX
-              </WorkspaceButton>
-            </StubSection>
-
-            <StubSection title="Выгрузка протоколов в сторонние сервисы" tone="yellow">
-              <WorkspaceButton type="button" icon="link">
-                allpowerlifting.com v1 от 09.2020
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="link">
-                Прямая через API allpowerlifting.com (тест)
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="link">
-                OpenPowerLifting
-              </WorkspaceButton>
-            </StubSection>
+              <table className="pt-grid mt-2">
+                <thead>
+                  <tr>
+                    <th className="text-left">Дисциплина</th>
+                    <th>Номинаций</th>
+                    <th>Завершено</th>
+                    <th>Лучший результат</th>
+                    <th>Лучшие очки</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...new Set(data.nominations.map((nomination) => nomination.discipline.nameRu))]
+                    .sort()
+                    .map((discipline) => {
+                      const rowsForDiscipline = data.nominations.filter(
+                        (nomination) => nomination.discipline.nameRu === discipline,
+                      );
+                      return (
+                        <tr key={discipline}>
+                          <td>{discipline}</td>
+                          <td className="text-right tabular-nums">{rowsForDiscipline.length}</td>
+                          <td className="text-right tabular-nums">
+                            {
+                              rowsForDiscipline.filter(
+                                (nomination) => nomination.status === 'finished',
+                              ).length
+                            }
+                          </td>
+                          <td className="text-right tabular-nums">
+                            {formatNumber(
+                              Math.max(
+                                ...rowsForDiscipline.map(
+                                  (nomination) => nomination.bestSuccessfulAttemptKg ?? 0,
+                                ),
+                              ) || null,
+                            )}
+                          </td>
+                          <td className="text-right tabular-nums">
+                            {formatNumber(
+                              Math.max(
+                                ...rowsForDiscipline.map(
+                                  (nomination) => nomination.finalScore ?? 0,
+                                ),
+                              ) || null,
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </WorkspacePanel>
           </div>
         )}
 
         {activeTab === 'blanks' && (
-          <StubSection
-            title="Пустографики"
-            description="Печать пустых форм для секретариата и судей."
-          >
-            <WorkspaceButton type="button" icon="print">
-              Бланк весов
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="print">
-              Бланк попыток (3 подхода)
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="print">
-              Бланк решения судей
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="print">
-              Бланк протокола ВК
-            </WorkspaceButton>
-          </StubSection>
+          <div className="space-y-3">
+            <WorkspacePanel className="p-3 space-y-3">
+              <WorkspaceToolbar>
+                <WorkspaceButton type="button" icon="print" onClick={() => window.print()}>
+                  Печать / PDF
+                </WorkspaceButton>
+                <WorkspaceButton type="button" icon="document" onClick={exportStandardReportCsv}>
+                  CSV активного отчета
+                </WorkspaceButton>
+              </WorkspaceToolbar>
+              <WorkspaceSectionTitle>Бланк взвешивания</WorkspaceSectionTitle>
+              <table className="pt-grid">
+                <thead>
+                  <tr>
+                    <th>№</th>
+                    <th className="text-left">Спортсмен</th>
+                    <th className="text-left">Дисциплина</th>
+                    <th>Заявл.</th>
+                    <th>Факт. вес</th>
+                    <th>Подпись</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {secretaryRows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="text-right tabular-nums">{row.entryNumber ?? '—'}</td>
+                      <td>{row.athlete}</td>
+                      <td>{row.discipline}</td>
+                      <td className="text-center">{row.declaredWeightClass}</td>
+                      <td className="text-right tabular-nums">{formatKg(row.bodyWeight)}</td>
+                      <td />
+                    </tr>
+                  ))}
+                  {secretaryRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="pt-muted italic text-center">
+                        Номинаций нет.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </WorkspacePanel>
+
+            <WorkspacePanel className="p-3 space-y-3">
+              <WorkspaceSectionTitle>Бланк попыток</WorkspaceSectionTitle>
+              <table className="pt-grid">
+                <thead>
+                  <tr>
+                    <th>№</th>
+                    <th className="text-left">Спортсмен</th>
+                    <th className="text-left">Упражнение</th>
+                    <th>1</th>
+                    <th>2</th>
+                    <th>3</th>
+                    <th>Решение судей</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.nominations.map((nomination) => (
+                    <tr key={nomination.id}>
+                      <td className="text-right tabular-nums">{nomination.entryNumber ?? '—'}</td>
+                      <td>{athleteFullName(nomination)}</td>
+                      <td>{nomination.discipline.nameRu}</td>
+                      <td />
+                      <td />
+                      <td />
+                      <td />
+                    </tr>
+                  ))}
+                  {data.nominations.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="pt-muted italic text-center">
+                        Номинаций нет.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </WorkspacePanel>
+          </div>
         )}
 
         {activeTab === 'nominations' && (
-          <StubSection
-            title="Печать номинаций"
-            description="Списки спортсменов с номинациями для секретариата."
-          >
-            <WorkspaceButton type="button" icon="nomination">
-              Все номинации
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="nomination">
-              По группам
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="nomination">
-              По помостам
-            </WorkspaceButton>
-            <Link to="/competitions/$id/nominations" params={{ id }} className="pt-link-button">
-              Открыть страницу номинаций
-            </Link>
-          </StubSection>
+          <WorkspacePanel className="p-3 space-y-3">
+            <WorkspaceToolbar>
+              <Link to="/competitions/$id/nominations" params={{ id }} className="pt-link-button">
+                Открыть страницу номинаций
+              </Link>
+              <WorkspaceButton type="button" icon="document" onClick={exportStandardReportCsv}>
+                CSV
+              </WorkspaceButton>
+            </WorkspaceToolbar>
+            <WorkspaceSectionTitle>Печать номинаций</WorkspaceSectionTitle>
+            <table className="pt-grid">
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th className="text-left">Спортсмен</th>
+                  <th className="text-left">Дисциплина</th>
+                  <th className="text-left">Дивизион</th>
+                  <th>ВК</th>
+                  <th>Поток</th>
+                  <th>Группа</th>
+                  <th>Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                {secretaryRows.map((row) => (
+                  <tr key={row.id}>
+                    <td className="text-right tabular-nums">{row.entryNumber ?? '—'}</td>
+                    <td>{row.athlete}</td>
+                    <td>{row.discipline}</td>
+                    <td>{row.division}</td>
+                    <td className="text-center">{row.actualWeightClass}</td>
+                    <td className="text-center">{row.flight}</td>
+                    <td className="text-center">{row.group}</td>
+                    <td className="text-center">{row.status}</td>
+                  </tr>
+                ))}
+                {secretaryRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="pt-muted italic text-center">
+                      Номинаций нет.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </WorkspacePanel>
         )}
 
         {activeTab === 'judges' && (
-          <StubSection
-            title="Назначения судей"
-            description="Печать назначений для бригад и кодов авторизации."
-          >
-            <WorkspaceButton type="button" icon="judges">
-              Печать назначения судей
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="judges">
-              Печать назначения судей (English)
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="telegram">
-              Печать кодов быстрой авторизации в телеграм
-            </WorkspaceButton>
-          </StubSection>
+          <WorkspacePanel className="p-3 space-y-3">
+            <WorkspaceToolbar>
+              <Link to="/competitions/$id/judges" params={{ id }} className="pt-link-button">
+                Открыть назначения
+              </Link>
+              <WorkspaceButton type="button" icon="print" onClick={() => window.print()}>
+                Печать / PDF
+              </WorkspaceButton>
+            </WorkspaceToolbar>
+            <WorkspaceSectionTitle>Назначения судей</WorkspaceSectionTitle>
+            <table className="pt-grid">
+              <thead>
+                <tr>
+                  <th className="text-left">Судья</th>
+                  <th>Роль</th>
+                  <th className="text-left">Помост</th>
+                  <th>Категория</th>
+                  <th>Карточка</th>
+                  <th>Назначен</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.judgeAssignments.map((assignment) => (
+                  <tr key={assignment.id}>
+                    <td>{judgeName(assignment)}</td>
+                    <td className="text-center">{assignment.role}</td>
+                    <td>{assignment.platform?.name ?? 'Все помосты'}</td>
+                    <td className="text-center">{assignment.judge.categoryRu ?? '—'}</td>
+                    <td className="text-center">{assignment.judge.cardNumber ?? '—'}</td>
+                    <td className="text-center">{formatDateTime(assignment.assignedAt)}</td>
+                  </tr>
+                ))}
+                {data.judgeAssignments.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="pt-muted italic text-center">
+                      Судьи не назначены.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </WorkspacePanel>
         )}
 
         {activeTab === 'cards' && (
-          <StubSection
-            title="Карточки спортсменов"
-            description="Индивидуальные карточки для секретариата и помоста."
-          >
-            <WorkspaceButton type="button" icon="list">
-              Карточки A4
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="list">
-              Карточки A5 на 2 на лист
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="list">
-              Карточки только взвешенных
-            </WorkspaceButton>
-          </StubSection>
+          <WorkspacePanel className="p-3 space-y-3">
+            <WorkspaceToolbar>
+              <WorkspaceButton type="button" icon="print" onClick={() => window.print()}>
+                Печать / PDF
+              </WorkspaceButton>
+            </WorkspaceToolbar>
+            <WorkspaceSectionTitle>Карточки спортсменов</WorkspaceSectionTitle>
+            <table className="pt-grid">
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th className="text-left">Спортсмен</th>
+                  <th className="text-left">Дисциплина</th>
+                  <th>ВК</th>
+                  <th>Вес</th>
+                  <th className="text-left">Попытки</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.nominations.map((nomination) => (
+                  <tr key={nomination.id}>
+                    <td className="text-right tabular-nums">{nomination.entryNumber ?? '—'}</td>
+                    <td>{athleteFullName(nomination)}</td>
+                    <td>{nomination.discipline.nameRu}</td>
+                    <td className="text-center">{nomination.weightClass.nameRu}</td>
+                    <td className="text-right tabular-nums">
+                      {formatKg(nomination.bodyWeightAtWeighIn)}
+                    </td>
+                    <td className="max-w-[520px] text-xs">{attemptSummary(nomination)}</td>
+                  </tr>
+                ))}
+                {data.nominations.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="pt-muted italic text-center">
+                      Номинаций нет.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </WorkspacePanel>
         )}
 
         {activeTab === 'schedule' && (
-          <StubSection
-            title="Расписание"
-            description="Расписание помостов и групп с временами выходов."
-          >
-            <WorkspaceButton type="button" icon="history">
-              Полное расписание
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="history">
-              По помостам
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="history">
-              По группам
-            </WorkspaceButton>
-          </StubSection>
+          <WorkspacePanel className="p-3 space-y-3">
+            <WorkspaceToolbar>
+              <Link to="/competitions/$id/schedule" params={{ id }} className="pt-link-button">
+                Открыть планировщик
+              </Link>
+              <WorkspaceButton type="button" icon="print" onClick={() => window.print()}>
+                Печать / PDF
+              </WorkspaceButton>
+            </WorkspaceToolbar>
+            <WorkspaceSectionTitle>Расписание помостов и групп</WorkspaceSectionTitle>
+            <table className="pt-grid">
+              <thead>
+                <tr>
+                  <th className="text-left">Помост</th>
+                  <th>Поток</th>
+                  <th>Группа</th>
+                  <th>Старт</th>
+                  <th>Номинаций</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.platforms.flatMap((platform) =>
+                  platform.flights.flatMap((flight) =>
+                    flight.groups.map((group) => (
+                      <tr key={group.id}>
+                        <td>{platform.name}</td>
+                        <td className="text-center">{flight.code}</td>
+                        <td className="text-center">{group.name}</td>
+                        <td className="text-center">{formatDateTime(flight.startTime)}</td>
+                        <td className="text-right tabular-nums">
+                          {groupNominationCount(data, group.id)}
+                        </td>
+                      </tr>
+                    )),
+                  ),
+                )}
+                {data.platforms.every((platform) =>
+                  platform.flights.every((flight) => flight.groups.length === 0),
+                ) ? (
+                  <tr>
+                    <td colSpan={5} className="pt-muted italic text-center">
+                      Группы не сформированы.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </WorkspacePanel>
         )}
 
         {activeTab === 'reports' && (
@@ -948,20 +1178,48 @@ export default function CompetitionReportsFeature() {
         )}
 
         {activeTab === 'references' && (
-          <StubSection
-            title="Справки"
-            description="Справки об участии, грамоты участника, благодарственные письма."
-          >
-            <Link to="/competitions/$id/certificates" params={{ id }} className="pt-link-button">
-              Открыть Печать грамот
-            </Link>
-            <WorkspaceButton type="button" icon="certificate">
-              Справка об участии
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="certificate">
-              Благодарственное письмо
-            </WorkspaceButton>
-          </StubSection>
+          <WorkspacePanel className="p-3 space-y-3">
+            <WorkspaceToolbar>
+              <Link to="/competitions/$id/certificates" params={{ id }} className="pt-link-button">
+                Открыть Печать грамот
+              </Link>
+              <WorkspaceButton type="button" icon="print" onClick={() => window.print()}>
+                Печать / PDF
+              </WorkspaceButton>
+            </WorkspaceToolbar>
+            <WorkspaceSectionTitle>Справки и сертификаты участников</WorkspaceSectionTitle>
+            <table className="pt-grid">
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th className="text-left">Спортсмен</th>
+                  <th className="text-left">Справка</th>
+                  <th className="text-left">Основание</th>
+                  <th>Дата</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.nominations.map((nomination) => (
+                  <tr key={nomination.id}>
+                    <td className="text-right tabular-nums">{nomination.entryNumber ?? '—'}</td>
+                    <td>{athleteFullName(nomination)}</td>
+                    <td>Справка об участии</td>
+                    <td>
+                      {nomination.discipline.nameRu} · {nomination.weightClass.nameRu}
+                    </td>
+                    <td className="text-center">{formatDate(data.competition.startDate)}</td>
+                  </tr>
+                ))}
+                {data.nominations.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="pt-muted italic text-center">
+                      Номинаций нет.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </WorkspacePanel>
         )}
       </div>
     </WorkspacePage>

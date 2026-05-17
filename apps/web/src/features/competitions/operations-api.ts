@@ -132,6 +132,7 @@ export interface NominationDto {
     middleName: string | null;
     dateOfBirth: string;
     clubName: string | null;
+    coachName: string | null;
     federationCardNumber: string | null;
     photoUrl: string | null;
   };
@@ -208,6 +209,27 @@ export interface JudgeAssignmentDto {
   } | null;
 }
 
+export interface CompetitionRecordDto {
+  id: string;
+  scope: 'federation' | 'national' | 'continental' | 'world';
+  federationId: string | null;
+  result: number;
+  pointsScore: number | null;
+  achievedOn: string;
+  ratifiedAt: string | null;
+  notes: string | null;
+  athlete: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    middleName: string | null;
+  };
+  discipline: { id: string; code: string; nameRu: string; nameEn: string };
+  division: { id: string; code: string; nameRu: string; nameEn: string };
+  weightClass: { id: string; code: string; nameRu: string; nameEn: string };
+  federation: { id: string; code: string; nameRu: string } | null;
+}
+
 export interface CompetitionOpsResponse {
   competition: {
     id: string;
@@ -230,6 +252,7 @@ export interface CompetitionOpsResponse {
   platforms: PlatformDto[];
   judgeAssignments: JudgeAssignmentDto[];
   nominations: NominationDto[];
+  records: CompetitionRecordDto[];
   scoreboardRows: ScoreboardRowDto[];
   accounting: {
     totalNominations: number;

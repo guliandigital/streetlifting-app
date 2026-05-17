@@ -678,52 +678,67 @@ function sendXlsx(
 }
 
 async function getOpsPayload(competitionId: string) {
-  const [competition, divisions, platforms, judgeAssignments, nominations] = await Promise.all([
-    prisma.competition.findUnique({
-      where: { id: competitionId },
-      select: {
-        id: true,
-        federationId: true,
-        code: true,
-        nameRu: true,
-        nameEn: true,
-        startDate: true,
-        endDate: true,
-        entryFeeKopecks: true,
-        federation: {
-          select: {
-            id: true,
-            code: true,
-            nameRu: true,
-            billingTariffKopecksPerNomination: true,
-            isPublicResultsClosed: true,
+  const [competition, divisions, platforms, judgeAssignments, nominations, records] =
+    await Promise.all([
+      prisma.competition.findUnique({
+        where: { id: competitionId },
+        select: {
+          id: true,
+          federationId: true,
+          code: true,
+          nameRu: true,
+          nameEn: true,
+          startDate: true,
+          endDate: true,
+          entryFeeKopecks: true,
+          federation: {
+            select: {
+              id: true,
+              code: true,
+              nameRu: true,
+              billingTariffKopecksPerNomination: true,
+              isPublicResultsClosed: true,
+            },
           },
         },
-      },
-    }),
-    prisma.division.findMany({
-      where: { competitionId },
-      orderBy: [{ gender: 'asc' }, { code: 'asc' }],
-      include: { weightClasses: { orderBy: { order: 'asc' } } },
-    }),
-    prisma.platform.findMany({
-      where: { competitionId },
-      orderBy: { order: 'asc' },
-      include: {
-        flights: { orderBy: { order: 'asc' }, include: { groups: { orderBy: { order: 'asc' } } } },
-      },
-    }),
-    prisma.judgeAssignment.findMany({
-      where: { competitionId },
-      orderBy: [{ role: 'asc' }, { assignedAt: 'asc' }],
-      include: { judge: true, platform: true },
-    }),
-    prisma.nomination.findMany({
-      where: { competitionId },
-      orderBy: [{ entryNumber: 'asc' }, { createdAt: 'asc' }],
-      include: nominationInclude,
-    }),
-  ]);
+      }),
+      prisma.division.findMany({
+        where: { competitionId },
+        orderBy: [{ gender: 'asc' }, { code: 'asc' }],
+        include: { weightClasses: { orderBy: { order: 'asc' } } },
+      }),
+      prisma.platform.findMany({
+        where: { competitionId },
+        orderBy: { order: 'asc' },
+        include: {
+          flights: {
+            orderBy: { order: 'asc' },
+            include: { groups: { orderBy: { order: 'asc' } } },
+          },
+        },
+      }),
+      prisma.judgeAssignment.findMany({
+        where: { competitionId },
+        orderBy: [{ role: 'asc' }, { assignedAt: 'asc' }],
+        include: { judge: true, platform: true },
+      }),
+      prisma.nomination.findMany({
+        where: { competitionId },
+        orderBy: [{ entryNumber: 'asc' }, { createdAt: 'asc' }],
+        include: nominationInclude,
+      }),
+      prisma.record.findMany({
+        where: { competitionId },
+        orderBy: [{ achievedOn: 'desc' }, { result: 'desc' }],
+        include: {
+          athlete: true,
+          discipline: true,
+          division: true,
+          weightClass: true,
+          federation: { select: { id: true, code: true, nameRu: true } },
+        },
+      }),
+    ]);
 
   if (!competition) return null;
 
@@ -767,6 +782,7 @@ async function getOpsPayload(competitionId: string) {
     platforms,
     judgeAssignments,
     nominations,
+    records,
     scoreboardRows,
     accounting: {
       totalNominations: total,

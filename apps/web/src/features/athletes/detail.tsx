@@ -49,6 +49,14 @@ function formatNumber(value: number | null | undefined, suffix = ''): string {
   return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)}${suffix}`;
 }
 
+function formatBytes(value: string | number): string {
+  const bytes = typeof value === 'string' ? Number(value) : value;
+  if (!Number.isFinite(bytes)) return '-';
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+}
+
 function attemptResultLabel(result: AthleteAttemptDto['result']): string {
   switch (result) {
     case 'good_lift':
@@ -486,14 +494,9 @@ export default function AthleteDetailFeature() {
           <WorkspacePanel className="p-3 space-y-3">
             <WorkspaceSectionTitle>Документы</WorkspaceSectionTitle>
             <div className="pt-info-yellow">
-              Анти-допинг сертификаты, страховка, медицинские допуски. Загрузка файлов будет
-              включена после подключения документ-стораджа.
+              Файлы, привязанные к карточке спортсмена: фото, сертификаты, допуски и прочие
+              документы.
             </div>
-            <WorkspaceToolbar>
-              <WorkspaceButton type="button" icon="add" disabled>
-                Загрузить документ
-              </WorkspaceButton>
-            </WorkspaceToolbar>
             <table className="pt-grid">
               <thead>
                 <tr>
@@ -505,11 +508,22 @@ export default function AthleteDetailFeature() {
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td colSpan={5} className="pt-muted italic text-center">
-                    Документы не загружены.
-                  </td>
-                </tr>
+                {data.attachments.map((file) => (
+                  <tr key={file.id}>
+                    <td>{formatDate(file.uploadedAt)}</td>
+                    <td>{file.kind}</td>
+                    <td className="text-left">{file.filename}</td>
+                    <td>{formatBytes(file.sizeBytes)}</td>
+                    <td>активен</td>
+                  </tr>
+                ))}
+                {data.attachments.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="pt-muted italic text-center">
+                      Документы не загружены.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </WorkspacePanel>

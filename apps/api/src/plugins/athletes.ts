@@ -125,6 +125,19 @@ export const athletesPlugin: FeaturePlugin = {
                 weightClass: { select: { id: true, code: true, nameRu: true, nameEn: true } },
               },
             },
+            attachments: {
+              where: { deletedAt: null },
+              orderBy: { uploadedAt: 'desc' },
+              take: 50,
+              select: {
+                id: true,
+                kind: true,
+                filename: true,
+                mimeType: true,
+                sizeBytes: true,
+                uploadedAt: true,
+              },
+            },
           },
         });
         if (!athlete) {
@@ -132,7 +145,7 @@ export const athletesPlugin: FeaturePlugin = {
             error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
           });
         }
-        const { nominations, records, ...athleteProfile } = athlete;
+        const { nominations, records, attachments, ...athleteProfile } = athlete;
         const appearances = [...nominations].sort((left, right) => {
           const byDate =
             right.competition.startDate.getTime() - left.competition.startDate.getTime();
@@ -142,7 +155,7 @@ export const athletesPlugin: FeaturePlugin = {
         const sortedRecords = [...records].sort(
           (left, right) => right.achievedOn.getTime() - left.achievedOn.getTime(),
         );
-        return { athlete: athleteProfile, appearances, records: sortedRecords };
+        return { athlete: athleteProfile, appearances, records: sortedRecords, attachments };
       },
     );
 

@@ -528,62 +528,93 @@ function PlatesTabContent() {
   );
 }
 
-function BarsTabContent() {
-  const [allowArbitrary, setAllowArbitrary] = useState(false);
+function BarsTabContent({ ops }: { ops: CompetitionOpsResponse | undefined }) {
+  const rows = new Map<
+    string,
+    {
+      key: string;
+      discipline: string;
+      exercise: string;
+      equipment: string;
+      attemptCount: number;
+      fixedWeightKg: number | null;
+    }
+  >();
+  for (const nomination of ops?.nominations ?? []) {
+    const components = nomination.discipline.components;
+    if (components.length === 0) {
+      rows.set(nomination.discipline.id, {
+        key: nomination.discipline.id,
+        discipline: nomination.discipline.nameRu,
+        exercise: nomination.discipline.nameRu,
+        equipment: nomination.discipline.format,
+        attemptCount: nomination.discipline.attemptCount,
+        fixedWeightKg: nomination.discipline.fixedWeightKg,
+      });
+      continue;
+    }
+    for (const component of components) {
+      rows.set(component.id, {
+        key: component.id,
+        discipline: nomination.discipline.nameRu,
+        exercise: component.nameRu,
+        equipment: component.equipment,
+        attemptCount: component.attemptCount,
+        fixedWeightKg: component.fixedWeightKg,
+      });
+    }
+  }
+  const tableRows = [...rows.values()].sort(
+    (left, right) =>
+      left.discipline.localeCompare(right.discipline) ||
+      left.exercise.localeCompare(right.exercise),
+  );
+
   return (
     <WorkspacePanel className="p-3">
-      <WorkspaceCheckbox
-        checked={allowArbitrary}
-        onChange={setAllowArbitrary}
-        label="Включить возможность указывать произвольный вес грифа каждой номинации"
-      />
-      <WorkspaceToolbar className="mt-2">
-        <WorkspaceButton type="button" icon="refresh" tone="green">
-          Заполнить стандартными весами грифов
-        </WorkspaceButton>
-        <span className="pt-muted text-sm">
-          Здесь можно указать индивидуальный вес грифа и замков, который отличается от официального.
-        </span>
-      </WorkspaceToolbar>
+      <WorkspaceSectionTitle>Грифы, снаряды и попытки по дисциплинам</WorkspaceSectionTitle>
       <table className="pt-grid mt-2">
         <thead>
           <tr>
-            <th>Вес грифа</th>
-            <th>Вес замков</th>
             <th className="text-left">Упражнение</th>
             <th className="text-left">Дисциплина</th>
+            <th>Оборудование</th>
+            <th>Попыток</th>
+            <th>Фикс. вес</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td colSpan={4} className="pt-muted italic text-center">
-              Произвольные веса грифов не заданы.
-            </td>
-          </tr>
+          {tableRows.map((row) => (
+            <tr key={row.key}>
+              <td>{row.exercise}</td>
+              <td>{row.discipline}</td>
+              <td className="text-center">{row.equipment}</td>
+              <td className="text-right tabular-nums">{row.attemptCount}</td>
+              <td className="text-right tabular-nums">
+                {row.fixedWeightKg === null ? '—' : `${row.fixedWeightKg} кг`}
+              </td>
+            </tr>
+          ))}
+          {tableRows.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="pt-muted italic text-center">
+                Номинации не созданы, список упражнений пуст.
+              </td>
+            </tr>
+          ) : null}
         </tbody>
       </table>
     </WorkspacePanel>
   );
 }
 
-function StagesTabContent() {
-  const [isFinal, setIsFinal] = useState(false);
+function StagesTabContent({ competition }: { competition: CompetitionDto }) {
   return (
     <WorkspacePanel className="p-3">
       <div className="pt-info-yellow mb-3">
-        Генеральный секретарь имеет возможность объединить несколько соревнований в рамках этапов.
-        Для финала рассчитываются призовые места на основании выступлений среди всех этапов.
+        В текущей версии этапы показываются как хронология текущего соревнования. Отдельная модель
+        серии этапов будет добавлена только после утверждения правил объединения зачетов.
       </div>
-      <WorkspaceCheckbox
-        checked={isFinal}
-        onChange={setIsFinal}
-        label="Это финал этапов соревнований:"
-      />
-      <WorkspaceToolbar className="mt-2">
-        <WorkspaceButton type="button" icon="add" disabled={!isFinal}>
-          Добавить
-        </WorkspaceButton>
-      </WorkspaceToolbar>
       <table className="pt-grid mt-2">
         <thead>
           <tr>
@@ -598,12 +629,15 @@ function StagesTabContent() {
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td colSpan={8} className="pt-muted italic text-center">
-              {isFinal
-                ? 'Добавьте этапы, входящие в финал.'
-                : 'Не указано как финал — этапы пока недоступны.'}
-            </td>
+          <tr className="is-selected">
+            <td className="text-right tabular-nums">1</td>
+            <td>{competition.nameRu}</td>
+            <td>{competition.city ?? '—'}</td>
+            <td className="text-center">{formatDate(competition.startDate)}</td>
+            <td className="text-center">{formatDate(competition.endDate)}</td>
+            <td>{competition.federation.nameRu}</td>
+            <td>{competition.status}</td>
+            <td className="font-mono text-xs">{competition.code}</td>
           </tr>
         </tbody>
       </table>
@@ -776,8 +810,8 @@ export default function CompetitionDetailFeature() {
         {activeTab === 'weight' && <WeightClassesTabContent ops={opsData} />}
         {activeTab === 'age' && <AgeClassesTabContent ops={opsData} />}
         {activeTab === 'plates' && <PlatesTabContent />}
-        {activeTab === 'bars' && <BarsTabContent />}
-        {activeTab === 'stages' && <StagesTabContent />}
+        {activeTab === 'bars' && <BarsTabContent ops={opsData} />}
+        {activeTab === 'stages' && <StagesTabContent competition={c} />}
       </div>
     </WorkspacePage>
   );

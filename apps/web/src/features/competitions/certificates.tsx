@@ -11,7 +11,7 @@ import {
   type WorkspaceIconName,
 } from '../../components/workspace.js';
 import { nominationGenderStats } from './gender-stats.js';
-import { useCompetitionOps } from './operations-api.js';
+import { useCompetitionOps, type CompetitionOpsResponse } from './operations-api.js';
 
 type CertTab = 'filters' | 'nominations' | 'records' | 'teams' | 'coaches' | 'certificate';
 
@@ -44,6 +44,25 @@ function toggleValue(values: string[], value: string, enabled: boolean): string[
 
 function weightFilterKey(gender: 'F' | 'M', weightClass: string): string {
   return `${gender}:${weightClass}`;
+}
+
+function recordScopeLabel(scope: CompetitionOpsResponse['records'][number]['scope']): string {
+  switch (scope) {
+    case 'federation':
+      return 'Федерация';
+    case 'national':
+      return 'Национальный';
+    case 'continental':
+      return 'Континентальный';
+    case 'world':
+      return 'Мировой';
+  }
+}
+
+function recordAthleteName(record: CompetitionOpsResponse['records'][number]): string {
+  return [record.athlete.lastName, record.athlete.firstName, record.athlete.middleName]
+    .filter(Boolean)
+    .join(' ');
 }
 
 interface WeightFilterRow {
@@ -540,26 +559,39 @@ export default function CompetitionCertificatesFeature() {
       {activeTab === 'records' && (
         <WorkspacePanel className="p-3 print:hidden">
           <WorkspaceSectionTitle>Рекорды</WorkspaceSectionTitle>
-          <div className="pt-info-yellow mb-3">
-            Здесь отображаются установленные рекорды соревнования: рекорд федерации, России, мира.
-            После обновления списка нужные грамоты будут включены в печать.
-          </div>
           <table className="pt-grid">
             <thead>
               <tr>
                 <th className="text-left">Спортсмен</th>
                 <th className="text-left">Дисциплина</th>
+                <th className="text-left">Дивизион</th>
                 <th>ВК</th>
                 <th>Результат</th>
                 <th>Тип рекорда</th>
+                <th>Статус</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colSpan={5} className="pt-muted italic text-center">
-                  Рекорды не зафиксированы (или подсистема рекордов не подключена).
-                </td>
-              </tr>
+              {data.records.map((record) => (
+                <tr key={record.id}>
+                  <td>{recordAthleteName(record)}</td>
+                  <td>{record.discipline.nameRu}</td>
+                  <td>{record.division.nameRu}</td>
+                  <td className="text-center">{record.weightClass.nameRu}</td>
+                  <td className="text-right tabular-nums">{record.result}</td>
+                  <td className="text-center">{recordScopeLabel(record.scope)}</td>
+                  <td className="text-center">
+                    {record.ratifiedAt ? 'ратифицирован' : 'не ратифицирован'}
+                  </td>
+                </tr>
+              ))}
+              {data.records.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="pt-muted italic text-center">
+                    Рекорды по этому соревнованию не зафиксированы.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </WorkspacePanel>
@@ -639,9 +671,7 @@ export default function CompetitionCertificatesFeature() {
               {(() => {
                 const coachMap = new Map<string, { count: number; podiums: number }>();
                 for (const nom of data.nominations) {
-                  const coach = (
-                    nom.athlete as unknown as { coachName?: string }
-                  ).coachName?.trim();
+                  const coach = nom.athlete.coachName?.trim();
                   const key = coach || 'Без тренера';
                   const r = data.scoreboardRows.find((s) => s.nominationId === nom.id);
                   const podium = r?.placeInClass != null && r.placeInClass <= 3 ? 1 : 0;
@@ -706,7 +736,9 @@ export default function CompetitionCertificatesFeature() {
               <div className="mt-3 text-3xl font-semibold">Сертификат участника</div>
               <div className="mt-2 text-sm">подтверждает участие в соревновании</div>
               <div className="mt-2 text-base font-semibold">{data.competition.nameRu}</div>
-              <div className="mt-6 text-sm pt-muted">[ ФИО спортсмена ]</div>
+              <div className="mt-6 text-sm pt-muted">
+                {rows[0]?.athleteName ?? data.scoreboardRows[0]?.athleteName ?? 'ФИО спортсмена'}
+              </div>
               <div className="mt-8 grid grid-cols-2 gap-12 text-left text-xs">
                 <div className="border-t border-black pt-1">Главный судья</div>
                 <div className="border-t border-black pt-1">Главный секретарь</div>

@@ -91,10 +91,20 @@ export interface AthleteRecordDto {
   weightClass: { id: string; code: string; nameRu: string; nameEn: string };
 }
 
+export interface AthleteAttachmentDto {
+  id: string;
+  kind: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: string | number;
+  uploadedAt: string;
+}
+
 export interface AthleteDetailResponse {
   athlete: AthleteDto;
   appearances: AthleteAppearanceDto[];
   records: AthleteRecordDto[];
+  attachments: AthleteAttachmentDto[];
 }
 
 export function useAthletes(search: string, limit = 50, offset = 0) {
