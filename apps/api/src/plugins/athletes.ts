@@ -70,13 +70,79 @@ export const athletesPlugin: FeaturePlugin = {
       '/athletes/:id',
       { preHandler: requireAuth() },
       async (req, reply) => {
-        const athlete = await prisma.athlete.findUnique({ where: { id: req.params.id } });
+        const athlete = await prisma.athlete.findUnique({
+          where: { id: req.params.id },
+          include: {
+            nominations: {
+              include: {
+                competition: {
+                  select: {
+                    id: true,
+                    code: true,
+                    nameRu: true,
+                    startDate: true,
+                    endDate: true,
+                    city: true,
+                    status: true,
+                    federation: { select: { id: true, code: true, nameRu: true } },
+                  },
+                },
+                discipline: { select: { id: true, code: true, nameRu: true, nameEn: true } },
+                division: {
+                  select: {
+                    id: true,
+                    code: true,
+                    nameRu: true,
+                    nameEn: true,
+                    gender: true,
+                    veteranTier: true,
+                  },
+                },
+                weightClass: {
+                  select: {
+                    id: true,
+                    code: true,
+                    nameRu: true,
+                    nameEn: true,
+                    weightMin: true,
+                    weightMax: true,
+                  },
+                },
+                attempts: {
+                  orderBy: [{ attemptNumber: 'asc' }],
+                  include: {
+                    component: { select: { id: true, code: true, nameRu: true, nameEn: true } },
+                  },
+                },
+              },
+            },
+            records: {
+              include: {
+                federation: { select: { id: true, code: true, nameRu: true } },
+                competition: { select: { id: true, code: true, nameRu: true, startDate: true } },
+                discipline: { select: { id: true, code: true, nameRu: true, nameEn: true } },
+                division: { select: { id: true, code: true, nameRu: true, nameEn: true } },
+                weightClass: { select: { id: true, code: true, nameRu: true, nameEn: true } },
+              },
+            },
+          },
+        });
         if (!athlete) {
           return reply.code(404).send({
             error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
           });
         }
-        return { athlete };
+        const { nominations, records, ...athleteProfile } = athlete;
+        const appearances = [...nominations].sort((left, right) => {
+          const byDate =
+            right.competition.startDate.getTime() - left.competition.startDate.getTime();
+          if (byDate !== 0) return byDate;
+          return left.discipline.code.localeCompare(right.discipline.code);
+        });
+        const sortedRecords = [...records].sort(
+          (left, right) => right.achievedOn.getTime() - left.achievedOn.getTime(),
+        );
+        return { athlete: athleteProfile, appearances, records: sortedRecords };
       },
     );
 

@@ -46,7 +46,11 @@ import type {
   FederationWriteoffDto,
   TelegramBindTokenDto,
 } from '../features/federations/api.js';
-import type { AthleteDto, AthleteListResponse } from '../features/athletes/api.js';
+import type {
+  AthleteDetailResponse,
+  AthleteDto,
+  AthleteListResponse,
+} from '../features/athletes/api.js';
 import type { DisciplineDto } from '../features/disciplines/api.js';
 import type { JudgeDto, JudgeListResponse } from '../features/judges/api.js';
 import type { CompetitionDto, CompetitionListResponse } from '../features/competitions/api.js';
@@ -507,7 +511,7 @@ export const api = {
       const qs = q.toString();
       return request(`/athletes${qs ? `?${qs}` : ''}`);
     },
-    get: (id: string): Promise<{ athlete: AthleteDto }> => request(`/athletes/${id}`),
+    get: (id: string): Promise<AthleteDetailResponse> => request(`/athletes/${id}`),
     create: (data: AthleteCreate): Promise<{ athlete: AthleteDto }> =>
       request('/athletes', { method: 'POST', body: data }),
     update: (id: string, data: AthleteUpdate): Promise<{ athlete: AthleteDto }> =>

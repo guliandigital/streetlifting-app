@@ -136,6 +136,26 @@ export interface FederationPlateSetDto {
   plates: unknown;
 }
 
+export interface FederationRecordDto {
+  id: string;
+  scope: 'federation' | 'national' | 'continental' | 'world';
+  result: number;
+  pointsScore: number | null;
+  achievedOn: string;
+  ratifiedAt: string | null;
+  notes: string | null;
+  athlete: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    middleName: string | null;
+  };
+  competition: { id: string; code: string; nameRu: string; startDate: string };
+  discipline: { id: string; code: string; nameRu: string; nameEn: string };
+  division: { id: string; code: string; nameRu: string; nameEn: string };
+  weightClass: { id: string; code: string; nameRu: string; nameEn: string };
+}
+
 export interface TelegramBindTokenDto {
   code: string;
   expiresAt: string;
@@ -166,8 +186,9 @@ export interface FederationDashboardResponse {
     startDate: string;
     endDate: string;
     status: string;
-    _count: { nominations: number };
+    _count: { nominations: number; records: number };
   }>;
+  records: FederationRecordDto[];
   balance: {
     receivedNominations: number;
     consumedNominations: number;

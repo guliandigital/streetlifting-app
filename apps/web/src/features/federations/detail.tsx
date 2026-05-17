@@ -42,6 +42,11 @@ function formatDate(value: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('ru-RU');
 }
 
+function formatNumber(value: number | null | undefined, suffix = ''): string {
+  if (value === null || value === undefined) return '-';
+  return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)}${suffix}`;
+}
+
 function normalizeNumber(value: string): number {
   const parsed = Number(value.replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -52,6 +57,35 @@ interface ConnectionSample {
   checkedAt: string;
   latencyMs: number | null;
   ok: boolean;
+}
+
+interface PowerTableReferenceRow {
+  dsp?: string;
+  disciplineCode?: string;
+  disciplineLabel?: string;
+  levelCode?: string;
+  levelLabel?: string;
+  countryCode?: string;
+  countryLabel?: string;
+  year?: string;
+  dataDate?: string | null;
+  cells: string[];
+}
+
+interface PowerTableOpenData {
+  generatedAt: string;
+  counts?: {
+    normRows?: number;
+    recordRows?: number;
+    athleteRatingRows?: number;
+    coachRatingRows?: number;
+  };
+  publicReferences?: {
+    normRows?: PowerTableReferenceRow[];
+    recordRows?: PowerTableReferenceRow[];
+    athleteRatingRows?: PowerTableReferenceRow[];
+    coachRatingRows?: PowerTableReferenceRow[];
+  };
 }
 
 function connectionQuality(latencyMs: number | null, ok: boolean): string {
@@ -389,6 +423,98 @@ function competitionOptionLabel(
   return `${competition.code} · ${competition.nameRu} · ${startDate} · ${competition.status}`;
 }
 
+function recordScopeLabel(scope: FederationDashboardResponse['records'][number]['scope']): string {
+  switch (scope) {
+    case 'federation':
+      return 'Федерация';
+    case 'national':
+      return 'Национальный';
+    case 'continental':
+      return 'Континентальный';
+    case 'world':
+      return 'Мировой';
+  }
+}
+
+function federationRecordAthleteName(
+  record: FederationDashboardResponse['records'][number],
+): string {
+  return [record.athlete.lastName, record.athlete.firstName, record.athlete.middleName]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function referenceCellsLabel(row: PowerTableReferenceRow): string {
+  return row.cells.filter(Boolean).join(' · ') || '-';
+}
+
+function PowerTableReferencePanel({ data }: { data: PowerTableOpenData }) {
+  const references = data.publicReferences;
+  const recordRows = references?.recordRows ?? [];
+  const normRows = references?.normRows ?? [];
+  const athleteRatingRows = references?.athleteRatingRows ?? [];
+  const coachRatingRows = references?.coachRatingRows ?? [];
+
+  return (
+    <WorkspacePanel className="p-3 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <WorkspaceSectionTitle>PowerTable public: рекорды и рейтинги</WorkspaceSectionTitle>
+        <Link to="/open-data/powertable" className="pt-link-button">
+          <WorkspaceIcon name="records" />
+          Открытые данные
+        </Link>
+      </div>
+      <div className="pt-metric-strip">
+        <div className="pt-metric-cell">
+          <span>Рекорды</span>
+          <strong>{recordRows.length}</strong>
+        </div>
+        <div className="pt-metric-cell">
+          <span>Нормативы</span>
+          <strong>{normRows.length}</strong>
+        </div>
+        <div className="pt-metric-cell">
+          <span>Рейтинг спортсменов</span>
+          <strong>{athleteRatingRows.length}</strong>
+        </div>
+        <div className="pt-metric-cell">
+          <span>Рейтинг тренеров</span>
+          <strong>{coachRatingRows.length}</strong>
+        </div>
+      </div>
+      <div className="overflow-x-auto overflow-y-auto max-h-[520px]">
+        <table className="pt-grid">
+          <thead>
+            <tr>
+              <th>Уровень</th>
+              <th className="text-left">Дисциплина</th>
+              <th className="text-left">Строка PowerTable</th>
+              <th>Дата выгрузки</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recordRows.map((row, index) => (
+              <tr key={`${row.dsp ?? 'record'}-${row.levelCode ?? 'level'}-${index}`}>
+                <td>{row.levelLabel ?? row.levelCode ?? '-'}</td>
+                <td className="text-left">{row.disciplineLabel ?? row.disciplineCode ?? '-'}</td>
+                <td className="text-left">{referenceCellsLabel(row)}</td>
+                <td>{row.dataDate ?? '-'}</td>
+              </tr>
+            ))}
+            {recordRows.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="italic">
+                  Публичные рекорды PowerTable в выгрузке не найдены.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </WorkspacePanel>
+  );
+}
+
 export default function FederationDetailFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/federations/$id' });
@@ -403,6 +529,7 @@ export default function FederationDetailFeature() {
   const testEmail = useTestFederationEmail(id);
   const [connectionSamples, setConnectionSamples] = useState<ConnectionSample[]>([]);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState('');
+  const [powerTableOpenData, setPowerTableOpenData] = useState<PowerTableOpenData | null>(null);
   const averageLatencyMs = useMemo(() => {
     const healthySamples = connectionSamples.filter(
       (sample): sample is ConnectionSample & { latencyMs: number } =>
@@ -442,6 +569,32 @@ export default function FederationDetailFeature() {
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (data?.federation.code !== '0010') {
+      setPowerTableOpenData(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetch('/data/powertable/open-data.json', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return (await response.json()) as PowerTableOpenData;
+      })
+      .then((payload) => {
+        if (!cancelled) setPowerTableOpenData(payload);
+      })
+      .catch(() => {
+        if (!cancelled) setPowerTableOpenData(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.federation.code]);
 
   useEffect(() => {
     const competitions = data?.competitions ?? [];
@@ -896,6 +1049,122 @@ export default function FederationDetailFeature() {
               />
             </dl>
           </WorkspacePanel>
+
+          <WorkspacePanel className="p-3 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <WorkspaceSectionTitle>Соревнования федерации</WorkspaceSectionTitle>
+              <Link to="/competitions" className="pt-link-button">
+                <WorkspaceIcon name="competition" />
+                Все соревнования
+              </Link>
+            </div>
+            <div className="overflow-x-auto overflow-y-auto max-h-[420px]">
+              <table className="pt-grid">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Код</th>
+                    <th className="text-left">Название</th>
+                    <th>Статус</th>
+                    <th>Номинаций</th>
+                    <th>Рекордов</th>
+                    <th>Карточка</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.competitions.map((competition, index) => (
+                    <tr key={competition.id} className={index === 0 ? 'is-selected' : undefined}>
+                      <td>{formatDate(competition.startDate)}</td>
+                      <td className="font-mono text-xs">{competition.code}</td>
+                      <td className="text-left">{competition.nameRu}</td>
+                      <td>{competition.status}</td>
+                      <td className="text-right tabular-nums">{competition._count.nominations}</td>
+                      <td className="text-right tabular-nums">{competition._count.records}</td>
+                      <td>
+                        <Link
+                          to="/competitions/$id"
+                          params={{ id: competition.id }}
+                          className="pt-link"
+                        >
+                          открыть
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                  {data.competitions.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="italic">
+                        У федерации пока нет соревнований.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </WorkspacePanel>
+
+          <WorkspacePanel className="p-3 space-y-3">
+            <WorkspaceSectionTitle>Рекорды федерации</WorkspaceSectionTitle>
+            <div className="overflow-x-auto overflow-y-auto max-h-[420px]">
+              <table className="pt-grid">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Уровень</th>
+                    <th className="text-left">Спортсмен</th>
+                    <th className="text-left">Соревнование</th>
+                    <th className="text-left">Дисциплина</th>
+                    <th>Дивизион</th>
+                    <th>ВК</th>
+                    <th>Результат</th>
+                    <th>Статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.records.map((record, index) => (
+                    <tr key={record.id} className={index === 0 ? 'is-selected' : undefined}>
+                      <td>{formatDate(record.achievedOn)}</td>
+                      <td>{recordScopeLabel(record.scope)}</td>
+                      <td className="text-left">
+                        <Link
+                          to="/athletes/$id"
+                          params={{ id: record.athlete.id }}
+                          className="pt-link"
+                        >
+                          {federationRecordAthleteName(record)}
+                        </Link>
+                      </td>
+                      <td className="text-left">
+                        <Link
+                          to="/competitions/$id"
+                          params={{ id: record.competition.id }}
+                          className="pt-link"
+                        >
+                          {record.competition.nameRu}
+                        </Link>
+                      </td>
+                      <td className="text-left">{record.discipline.nameRu}</td>
+                      <td>{record.division.nameRu}</td>
+                      <td>{record.weightClass.nameRu}</td>
+                      <td className="text-right tabular-nums">
+                        {formatNumber(record.result, ' кг')}
+                      </td>
+                      <td>{record.ratifiedAt ? 'ратифицирован' : 'не ратифицирован'}</td>
+                    </tr>
+                  ))}
+                  {data.records.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="italic">
+                        Нормализованные рекорды в базе пока не зафиксированы.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </WorkspacePanel>
+
+          {powerTableOpenData ? <PowerTableReferencePanel data={powerTableOpenData} /> : null}
 
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
             <WorkspacePanel className="p-3">

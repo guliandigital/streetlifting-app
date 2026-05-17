@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useParams } from '@tanstack/react-router';
+import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
 import {
@@ -12,7 +12,12 @@ import {
   type WorkspaceIconName,
 } from '../../components/workspace.js';
 import { useAuthStore } from '../../lib/auth/store.js';
-import { useAthlete, useUpdateAthlete } from './api.js';
+import {
+  useAthlete,
+  useUpdateAthlete,
+  type AthleteAttemptDto,
+  type AthleteRecordDto,
+} from './api.js';
 import { calculateAge, formatDateOfBirth } from './format.js';
 import { useCountries, useRegions } from '../../lib/references-api.js';
 
@@ -32,6 +37,62 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
       <dd>{value || <span className="italic text-muted-foreground">—</span>}</dd>
     </>
   );
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('ru-RU');
+}
+
+function formatNumber(value: number | null | undefined, suffix = ''): string {
+  if (value === null || value === undefined) return '-';
+  return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)}${suffix}`;
+}
+
+function attemptResultLabel(result: AthleteAttemptDto['result']): string {
+  switch (result) {
+    case 'good_lift':
+      return 'зачет';
+    case 'no_lift':
+      return 'незачет';
+    case 'withdrawn':
+      return 'снят';
+    case 'pending':
+      return 'ожидает';
+  }
+}
+
+function formatAttempt(attempt: AthleteAttemptDto): string {
+  const component = attempt.component?.nameRu ?? attempt.component?.code;
+  const reps = attempt.repsCount && attempt.repsCount > 1 ? ` x${attempt.repsCount}` : '';
+  const lift = `${formatNumber(attempt.weightKg, ' кг')}${reps}`;
+  return `${component ? `${component}: ` : ''}${lift} (${attemptResultLabel(attempt.result)})`;
+}
+
+function formatPlace(row: {
+  placeInClass: number | null;
+  placeInDivision: number | null;
+  placeOverall: number | null;
+}): string {
+  const parts = [
+    row.placeInClass !== null ? `ВК ${row.placeInClass}` : null,
+    row.placeInDivision !== null ? `див. ${row.placeInDivision}` : null,
+    row.placeOverall !== null ? `абс. ${row.placeOverall}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' / ') : '-';
+}
+
+function recordScopeLabel(scope: AthleteRecordDto['scope']): string {
+  switch (scope) {
+    case 'federation':
+      return 'Федерация';
+    case 'national':
+      return 'Национальный';
+    case 'continental':
+      return 'Континентальный';
+    case 'world':
+      return 'Мировой';
+  }
 }
 
 export default function AthleteDetailFeature() {
@@ -142,7 +203,12 @@ export default function AthleteDetailFeature() {
         </>
       }
       tabs={ATHLETE_TABS.map((tab) => ({
-        label: tab.key === 'appearances' ? `${tab.label} (0)` : tab.label,
+        label:
+          tab.key === 'appearances'
+            ? `${tab.label} (${data.appearances.length})`
+            : tab.key === 'records'
+              ? `${tab.label} (${data.records.length})`
+              : tab.label,
         icon: tab.icon,
         active: activeTab === tab.key,
         onClick: () => setActiveTab(tab.key),
@@ -292,30 +358,69 @@ export default function AthleteDetailFeature() {
           <WorkspacePanel className="p-3 space-y-3">
             <WorkspaceSectionTitle>История выступлений</WorkspaceSectionTitle>
             <div className="pt-info-yellow">
-              Кросс-соревновательная история спортсмена. После накопления выступлений тут появятся
-              номинации, веса, места и очки.
+              Связанные номинации спортсмена из соревнований платформы и импортированных данных.
             </div>
-            <table className="pt-grid">
-              <thead>
-                <tr>
-                  <th>Дата</th>
-                  <th className="text-left">Соревнование</th>
-                  <th className="text-left">Дисциплина</th>
-                  <th>ВК</th>
-                  <th>Возр.</th>
-                  <th>Лучший</th>
-                  <th>Очки</th>
-                  <th>Место</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colSpan={8} className="pt-muted italic text-center">
-                    Выступлений ещё нет.
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="pt-grid">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th className="text-left">Соревнование</th>
+                    <th className="text-left">Федерация</th>
+                    <th className="text-left">Дисциплина</th>
+                    <th>Дивизион</th>
+                    <th>ВК</th>
+                    <th>Вес</th>
+                    <th>Итог</th>
+                    <th>Лучший</th>
+                    <th>Место</th>
+                    <th className="text-left">Попытки</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.appearances.map((row, index) => (
+                    <tr key={row.id} className={index === 0 ? 'is-selected' : undefined}>
+                      <td>{formatDate(row.competition.startDate)}</td>
+                      <td className="text-left">
+                        <Link
+                          to="/competitions/$id"
+                          params={{ id: row.competition.id }}
+                          className="pt-link"
+                        >
+                          {row.competition.nameRu}
+                        </Link>
+                        <div className="pt-muted text-xs">
+                          {row.competition.code}
+                          {row.competition.city ? ` · ${row.competition.city}` : ''}
+                        </div>
+                      </td>
+                      <td className="text-left">{row.competition.federation.nameRu}</td>
+                      <td className="text-left">{row.discipline.nameRu}</td>
+                      <td>{row.division.nameRu}</td>
+                      <td>{row.weightClass.nameRu}</td>
+                      <td className="text-right tabular-nums">
+                        {formatNumber(row.bodyWeightAtWeighIn, ' кг')}
+                      </td>
+                      <td className="text-right tabular-nums">{formatNumber(row.finalScore)}</td>
+                      <td className="text-right tabular-nums">
+                        {formatNumber(row.bestSuccessfulAttemptKg, ' кг')}
+                      </td>
+                      <td>{formatPlace(row)}</td>
+                      <td className="max-w-[360px] text-left text-xs">
+                        {row.attempts.length > 0 ? row.attempts.map(formatAttempt).join('; ') : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                  {data.appearances.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="pt-muted italic text-center">
+                        Выступлений ещё нет.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           </WorkspacePanel>
         )}
 
@@ -323,27 +428,57 @@ export default function AthleteDetailFeature() {
           <WorkspacePanel className="p-3 space-y-3">
             <WorkspaceSectionTitle>Рекорды спортсмена</WorkspaceSectionTitle>
             <div className="pt-info-yellow">
-              Список рекордов федерации, России и мира, удерживаемых спортсменом. Подсистема
-              рекордов будет включена в следующем релизе.
+              Рекорды, которые связаны с карточкой спортсмена через соревнование, дисциплину и
+              весовую категорию.
             </div>
-            <table className="pt-grid">
-              <thead>
-                <tr>
-                  <th>Дата</th>
-                  <th className="text-left">Дисциплина</th>
-                  <th>ВК</th>
-                  <th>Результат</th>
-                  <th>Тип рекорда</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colSpan={5} className="pt-muted italic text-center">
-                    Рекорды не зафиксированы.
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="pt-grid">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Уровень</th>
+                    <th className="text-left">Соревнование</th>
+                    <th className="text-left">Дисциплина</th>
+                    <th>Дивизион</th>
+                    <th>ВК</th>
+                    <th>Результат</th>
+                    <th>Статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.records.map((record, index) => (
+                    <tr key={record.id} className={index === 0 ? 'is-selected' : undefined}>
+                      <td>{formatDate(record.achievedOn)}</td>
+                      <td>{recordScopeLabel(record.scope)}</td>
+                      <td className="text-left">
+                        <Link
+                          to="/competitions/$id"
+                          params={{ id: record.competition.id }}
+                          className="pt-link"
+                        >
+                          {record.competition.nameRu}
+                        </Link>
+                        <div className="pt-muted text-xs">{record.competition.code}</div>
+                      </td>
+                      <td className="text-left">{record.discipline.nameRu}</td>
+                      <td>{record.division.nameRu}</td>
+                      <td>{record.weightClass.nameRu}</td>
+                      <td className="text-right tabular-nums">
+                        {formatNumber(record.result, ' кг')}
+                      </td>
+                      <td>{record.ratifiedAt ? 'ратифицирован' : 'не ратифицирован'}</td>
+                    </tr>
+                  ))}
+                  {data.records.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="pt-muted italic text-center">
+                        Рекорды не зафиксированы.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           </WorkspacePanel>
         )}
 

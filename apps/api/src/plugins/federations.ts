@@ -314,8 +314,7 @@ export const federationsPlugin: FeaturePlugin = {
           prisma.competition.findMany({
             where: { federationId: req.params.id },
             orderBy: [{ startDate: 'desc' }, { nameRu: 'asc' }],
-            take: 12,
-            include: { _count: { select: { nominations: true } } },
+            include: { _count: { select: { nominations: true, records: true } } },
           }),
           prisma.federation.findMany({
             where: {
@@ -354,6 +353,33 @@ export const federationsPlugin: FeaturePlugin = {
         const receivedNominations = receipts.reduce((sum, item) => sum + item.nominationsCount, 0);
         const consumedNominations = writeoffs.reduce((sum, item) => sum + item.nominationsCount, 0);
         const receivedAmountKopecks = receipts.reduce((sum, item) => sum + item.amountKopecks, 0n);
+        const records = await prisma.record.findMany({
+          where: {
+            OR: [{ federationId: req.params.id }, { competition: { federationId: req.params.id } }],
+          },
+          orderBy: [{ achievedOn: 'desc' }, { result: 'desc' }],
+          include: {
+            athlete: {
+              select: {
+                id: true,
+                lastName: true,
+                firstName: true,
+                middleName: true,
+              },
+            },
+            competition: {
+              select: {
+                id: true,
+                code: true,
+                nameRu: true,
+                startDate: true,
+              },
+            },
+            discipline: { select: { id: true, code: true, nameRu: true, nameEn: true } },
+            division: { select: { id: true, code: true, nameRu: true, nameEn: true } },
+            weightClass: { select: { id: true, code: true, nameRu: true, nameEn: true } },
+          },
+        });
         const regionalComparison = peerFederations.map((item) => ({
           federationId: item.id,
           code: item.code,
@@ -379,6 +405,7 @@ export const federationsPlugin: FeaturePlugin = {
           telegramSubscriptionCodeExpiresAt: activeTelegramToken?.expiresAt ?? null,
           telegramSubscriptions,
           regionalComparison,
+          records,
         };
       },
     );
