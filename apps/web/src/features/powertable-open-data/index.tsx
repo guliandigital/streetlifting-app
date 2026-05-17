@@ -46,7 +46,7 @@ interface AthleteMentionRow {
   disciplineCode?: string;
   disciplineLabel?: string;
   bodyWeightKg?: number;
-  resultValue?: number;
+  resultValue?: number | null;
   attempts?: PowerTableAttemptRow[];
 }
 

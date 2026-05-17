@@ -145,9 +145,9 @@ export default tseslint.config(
     },
   },
 
-  // Web helper scripts run in Node and are intentionally CLI-oriented.
+  // Helper scripts run in Node and are intentionally CLI-oriented.
   {
-    files: ['apps/web/scripts/**/*.mjs'],
+    files: ['apps/web/scripts/**/*.mjs', 'scripts/build-powertable-open-data.mjs'],
     languageOptions: {
       globals: { ...globals.node, ...globals.browser },
     },
