@@ -47,6 +47,7 @@ import type {
   TelegramBindTokenDto,
 } from '../features/federations/api.js';
 import type {
+  AthleteAttachmentDto,
   AthleteDetailResponse,
   AthleteDto,
   AthleteListResponse,
@@ -516,6 +517,20 @@ export const api = {
       request('/athletes', { method: 'POST', body: data }),
     update: (id: string, data: AthleteUpdate): Promise<{ athlete: AthleteDto }> =>
       request(`/athletes/${id}`, { method: 'PATCH', body: data }),
+    uploadAttachment: (
+      id: string,
+      data: {
+        filename: string;
+        mimeType: string;
+        contentBase64: string;
+        kind?: 'athlete_photo' | 'misc';
+      },
+    ): Promise<{ attachment: AthleteAttachmentDto }> =>
+      request(`/athletes/${id}/attachments`, { method: 'POST', body: data }),
+    deleteAttachment: (id: string, attachmentId: string): Promise<{ status: 'ok' }> =>
+      request(`/athletes/${id}/attachments/${attachmentId}`, { method: 'DELETE' }),
+    downloadAttachment: (id: string, attachmentId: string): Promise<Blob> =>
+      requestBlob(`/athletes/${id}/attachments/${attachmentId}/download`),
   },
 
   disciplines: {

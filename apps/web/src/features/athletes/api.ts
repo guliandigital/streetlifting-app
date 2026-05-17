@@ -93,7 +93,13 @@ export interface AthleteRecordDto {
 
 export interface AthleteAttachmentDto {
   id: string;
-  kind: string;
+  kind:
+    | 'athlete_photo'
+    | 'federation_file'
+    | 'competition_file'
+    | 'certificate_pdf'
+    | 'protocol_pdf'
+    | 'misc';
   filename: string;
   mimeType: string;
   sizeBytes: string | number;
@@ -134,6 +140,33 @@ export function useUpdateAthlete(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: AthleteUpdate) => api.athletes.update(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['athletes'] });
+      void qc.invalidateQueries({ queryKey: ['athletes', id] });
+    },
+  });
+}
+
+export function useUploadAthleteAttachment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      filename: string;
+      mimeType: string;
+      contentBase64: string;
+      kind?: 'athlete_photo' | 'misc';
+    }) => api.athletes.uploadAttachment(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['athletes'] });
+      void qc.invalidateQueries({ queryKey: ['athletes', id] });
+    },
+  });
+}
+
+export function useDeleteAthleteAttachment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (attachmentId: string) => api.athletes.deleteAttachment(id, attachmentId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['athletes'] });
       void qc.invalidateQueries({ queryKey: ['athletes', id] });

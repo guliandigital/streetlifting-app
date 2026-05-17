@@ -14,7 +14,12 @@ import {
 import { useAuthStore } from '../../lib/auth/store.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import { formatRub, rubToKopecks } from '../../lib/money.js';
-import { type CompetitionDto, useCompetition, useUpdateCompetition } from './api.js';
+import {
+  type CompetitionDto,
+  useCompetition,
+  useCompetitions,
+  useUpdateCompetition,
+} from './api.js';
 import { type CompetitionOpsResponse, useCompetitionOps } from './operations-api.js';
 import { useDisciplines } from '../disciplines/api.js';
 import {
@@ -608,12 +613,26 @@ function BarsTabContent({ ops }: { ops: CompetitionOpsResponse | undefined }) {
   );
 }
 
-function StagesTabContent({ competition }: { competition: CompetitionDto }) {
+function StagesTabContent({
+  competition,
+  federationCompetitions,
+}: {
+  competition: CompetitionDto;
+  federationCompetitions: CompetitionDto[];
+}) {
+  const stageRows =
+    federationCompetitions.length > 0
+      ? [...federationCompetitions].sort(
+          (left, right) =>
+            new Date(left.startDate).getTime() - new Date(right.startDate).getTime() ||
+            left.nameRu.localeCompare(right.nameRu),
+        )
+      : [competition];
+
   return (
     <WorkspacePanel className="p-3">
       <div className="pt-info-yellow mb-3">
-        В текущей версии этапы показываются как хронология текущего соревнования. Отдельная модель
-        серии этапов будет добавлена только после утверждения правил объединения зачетов.
+        Хронология соревнований этой федерации. Текущее соревнование выделено в таблице.
       </div>
       <table className="pt-grid mt-2">
         <thead>
@@ -629,16 +648,22 @@ function StagesTabContent({ competition }: { competition: CompetitionDto }) {
           </tr>
         </thead>
         <tbody>
-          <tr className="is-selected">
-            <td className="text-right tabular-nums">1</td>
-            <td>{competition.nameRu}</td>
-            <td>{competition.city ?? '—'}</td>
-            <td className="text-center">{formatDate(competition.startDate)}</td>
-            <td className="text-center">{formatDate(competition.endDate)}</td>
-            <td>{competition.federation.nameRu}</td>
-            <td>{competition.status}</td>
-            <td className="font-mono text-xs">{competition.code}</td>
-          </tr>
+          {stageRows.map((row, index) => (
+            <tr key={row.id} className={row.id === competition.id ? 'is-selected' : undefined}>
+              <td className="text-right tabular-nums">{index + 1}</td>
+              <td>
+                <Link to="/competitions/$id" params={{ id: row.id }} className="pt-link">
+                  {row.nameRu}
+                </Link>
+              </td>
+              <td>{row.city ?? '—'}</td>
+              <td className="text-center">{formatDate(row.startDate)}</td>
+              <td className="text-center">{formatDate(row.endDate)}</td>
+              <td>{row.federation.nameRu}</td>
+              <td>{row.status}</td>
+              <td className="font-mono text-xs">{row.code}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </WorkspacePanel>
@@ -652,6 +677,12 @@ export default function CompetitionDetailFeature() {
   const user = useAuthStore((s) => s.user);
   const { data, isLoading, error } = useCompetition(id);
   const { data: opsData } = useCompetitionOps(id);
+  const federationId = data?.competition.federationId;
+  const { data: federationCompetitionsData } = useCompetitions({
+    ...(federationId ? { federationId } : {}),
+    limit: 200,
+    enabled: Boolean(federationId),
+  });
   const [activeTab, setActiveTab] = useState<DetailTab>('settings');
 
   if (isLoading) {
@@ -811,7 +842,12 @@ export default function CompetitionDetailFeature() {
         {activeTab === 'age' && <AgeClassesTabContent ops={opsData} />}
         {activeTab === 'plates' && <PlatesTabContent />}
         {activeTab === 'bars' && <BarsTabContent ops={opsData} />}
-        {activeTab === 'stages' && <StagesTabContent competition={c} />}
+        {activeTab === 'stages' && (
+          <StagesTabContent
+            competition={c}
+            federationCompetitions={federationCompetitionsData?.competitions ?? [c]}
+          />
+        )}
       </div>
     </WorkspacePage>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
@@ -12,10 +12,14 @@ import {
   type WorkspaceIconName,
 } from '../../components/workspace.js';
 import { useAuthStore } from '../../lib/auth/store.js';
+import { api, ApiClientError } from '../../lib/api-client.js';
 import {
   useAthlete,
+  useDeleteAthleteAttachment,
   useUpdateAthlete,
+  useUploadAthleteAttachment,
   type AthleteAttemptDto,
+  type AthleteAttachmentDto,
   type AthleteRecordDto,
 } from './api.js';
 import { calculateAge, formatDateOfBirth } from './format.js';
@@ -29,6 +33,20 @@ const ATHLETE_TABS: { key: AthleteTab; label: string; icon: WorkspaceIconName }[
   { key: 'records', label: 'Рекорды', icon: 'records' },
   { key: 'documents', label: 'Документы', icon: 'document' },
 ];
+
+const MAX_ATHLETE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      resolve(result.includes(',') ? result.slice(result.indexOf(',') + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('File read failed'));
+    reader.readAsDataURL(file);
+  });
+}
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -55,6 +73,23 @@ function formatBytes(value: string | number): string {
   if (bytes < 1024) return `${bytes} Б`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
   return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+}
+
+function attachmentKindLabel(kind: AthleteAttachmentDto['kind']): string {
+  switch (kind) {
+    case 'athlete_photo':
+      return 'Фото';
+    case 'certificate_pdf':
+      return 'Сертификат';
+    case 'protocol_pdf':
+      return 'Протокол';
+    case 'competition_file':
+      return 'Файл соревнования';
+    case 'federation_file':
+      return 'Файл федерации';
+    case 'misc':
+      return 'Документ';
+  }
 }
 
 function attemptResultLabel(result: AthleteAttemptDto['result']): string {
@@ -108,6 +143,8 @@ export default function AthleteDetailFeature() {
   const { id } = useParams({ from: '/athletes/$id' });
   const { data, isLoading, error } = useAthlete(id);
   const update = useUpdateAthlete(id);
+  const uploadAttachment = useUploadAthleteAttachment(id);
+  const deleteAttachment = useDeleteAthleteAttachment(id);
   const user = useAuthStore((s) => s.user);
   const { data: countriesData } = useCountries();
   const countryRow = countriesData?.countries.find((c) => c.codeIso2 === data?.athlete.countryCode);
@@ -123,6 +160,14 @@ export default function AthleteDetailFeature() {
   const [clubName, setClubName] = useState('');
   const [coachName, setCoachName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const documentInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<File | null>(null);
+  const [photoObjectUrl, setPhotoObjectUrl] = useState<string | null>(null);
+
+  const athletePhotoAttachment = data?.attachments.find(
+    (file) => file.kind === 'athlete_photo' && file.mimeType.toLowerCase().startsWith('image/'),
+  );
 
   useEffect(() => {
     if (!data) return;
@@ -134,6 +179,32 @@ export default function AthleteDetailFeature() {
     setCoachName(data.athlete.coachName ?? '');
     setCardNumber(data.athlete.federationCardNumber ?? '');
   }, [data]);
+
+  useEffect(() => {
+    if (!athletePhotoAttachment) {
+      setPhotoObjectUrl(null);
+      return;
+    }
+
+    let active = true;
+    let objectUrl: string | null = null;
+
+    void api.athletes
+      .downloadAttachment(id, athletePhotoAttachment.id)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPhotoObjectUrl(objectUrl);
+      })
+      .catch(() => {
+        if (active) setPhotoObjectUrl(null);
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [athletePhotoAttachment, id]);
 
   if (isLoading) {
     return <WorkspaceState>{t('common.loading')}</WorkspaceState>;
@@ -173,6 +244,71 @@ export default function AthleteDetailFeature() {
     }
   }
 
+  async function uploadFile(file: File, kind: 'athlete_photo' | 'misc') {
+    if (file.size > MAX_ATHLETE_ATTACHMENT_BYTES) {
+      toast.error('Файл должен быть не больше 5 МБ');
+      return;
+    }
+    if (kind === 'athlete_photo' && !file.type.startsWith('image/')) {
+      toast.error('Фото должно быть изображением');
+      return;
+    }
+
+    try {
+      const contentBase64 = await fileToBase64(file);
+      await uploadAttachment.mutateAsync({
+        filename: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        contentBase64,
+        kind,
+      });
+      toast.success(kind === 'athlete_photo' ? 'Фото загружено' : 'Документ загружен');
+    } catch (err) {
+      if (err instanceof ApiClientError && err.code === 'invalid_file') {
+        toast.error('Файл пустой, слишком большой или имеет неверный тип');
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Error');
+      }
+    }
+  }
+
+  async function uploadSelectedDocument(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedDocument) {
+      toast.error('Выберите файл');
+      return;
+    }
+    await uploadFile(selectedDocument, 'misc');
+    setSelectedDocument(null);
+    if (documentInputRef.current) documentInputRef.current.value = '';
+  }
+
+  async function downloadAttachment(file: AthleteAttachmentDto) {
+    try {
+      const blob = await api.athletes.downloadAttachment(id, file.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = file.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
+  async function removeAttachment(file: AthleteAttachmentDto) {
+    if (!window.confirm(`Удалить файл «${file.filename}»?`)) return;
+    try {
+      await deleteAttachment.mutateAsync(file.id);
+      toast.success('Файл удален');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
   return (
     <WorkspacePage
       title={fullName}
@@ -194,20 +330,6 @@ export default function AthleteDetailFeature() {
               {update.isPending ? 'Сохранение…' : 'Сохранить'}
             </WorkspaceButton>
           ) : null}
-          <WorkspaceButton
-            type="button"
-            icon="warning"
-            onClick={() => toast.info('Заявка о дубликате будет отправлена администратору.')}
-          >
-            Заявить о дубликате
-          </WorkspaceButton>
-          <WorkspaceButton
-            type="button"
-            icon="warning"
-            onClick={() => toast.info('Жалоба на спам будет отправлена администратору.')}
-          >
-            Спам
-          </WorkspaceButton>
         </>
       }
       tabs={ATHLETE_TABS.map((tab) => ({
@@ -216,7 +338,9 @@ export default function AthleteDetailFeature() {
             ? `${tab.label} (${data.appearances.length})`
             : tab.key === 'records'
               ? `${tab.label} (${data.records.length})`
-              : tab.label,
+              : tab.key === 'documents'
+                ? `${tab.label} (${data.attachments.length})`
+                : tab.label,
         icon: tab.icon,
         active: activeTab === tab.key,
         onClick: () => setActiveTab(tab.key),
@@ -228,9 +352,9 @@ export default function AthleteDetailFeature() {
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
             <WorkspacePanel className="p-3 space-y-3">
               <WorkspaceSectionTitle>Фото</WorkspaceSectionTitle>
-              {a.photoUrl ? (
+              {(photoObjectUrl ?? a.photoUrl) ? (
                 <img
-                  src={a.photoUrl}
+                  src={photoObjectUrl ?? a.photoUrl ?? undefined}
                   alt={fullName}
                   className="aspect-square w-full object-cover border border-[var(--pt-border)]"
                 />
@@ -240,9 +364,37 @@ export default function AthleteDetailFeature() {
                 </div>
               )}
               <WorkspaceToolbar>
-                <WorkspaceButton type="button" icon="add" disabled={!editing}>
-                  Загрузить
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    void uploadFile(file, 'athlete_photo').then(() => {
+                      if (photoInputRef.current) photoInputRef.current.value = '';
+                    });
+                  }}
+                />
+                <WorkspaceButton
+                  type="button"
+                  icon="add"
+                  disabled={!canEdit || uploadAttachment.isPending}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  {uploadAttachment.isPending ? 'Загружаем...' : 'Загрузить фото'}
                 </WorkspaceButton>
+                {athletePhotoAttachment ? (
+                  <WorkspaceButton
+                    type="button"
+                    icon="close"
+                    disabled={!canEdit || deleteAttachment.isPending}
+                    onClick={() => void removeAttachment(athletePhotoAttachment)}
+                  >
+                    Удалить
+                  </WorkspaceButton>
+                ) : null}
               </WorkspaceToolbar>
               <div className="pt-info-yellow text-xs">
                 ID: <span className="font-mono">{a.id}</span>
@@ -497,29 +649,75 @@ export default function AthleteDetailFeature() {
               Файлы, привязанные к карточке спортсмена: фото, сертификаты, допуски и прочие
               документы.
             </div>
+            {canEdit ? (
+              <form onSubmit={(event) => void uploadSelectedDocument(event)} className="space-y-2">
+                <div className="pt-form-grid max-w-4xl">
+                  <label htmlFor="athleteDocument">Файл:</label>
+                  <input
+                    id="athleteDocument"
+                    ref={documentInputRef}
+                    type="file"
+                    className="pt-field"
+                    onChange={(event) => setSelectedDocument(event.target.files?.[0] ?? null)}
+                  />
+                  <label>Ограничение:</label>
+                  <div className="pt-muted">До 5 МБ на файл.</div>
+                </div>
+                <WorkspaceToolbar>
+                  <WorkspaceButton
+                    type="submit"
+                    tone="green"
+                    icon="add"
+                    disabled={!selectedDocument || uploadAttachment.isPending}
+                  >
+                    {uploadAttachment.isPending ? 'Загружаем...' : 'Добавить документ'}
+                  </WorkspaceButton>
+                </WorkspaceToolbar>
+              </form>
+            ) : null}
             <table className="pt-grid">
               <thead>
                 <tr>
                   <th>Дата</th>
                   <th className="text-left">Тип</th>
                   <th className="text-left">Имя файла</th>
-                  <th>Срок до</th>
+                  <th>Размер</th>
                   <th>Статус</th>
+                  <th>Действие</th>
                 </tr>
               </thead>
               <tbody>
                 {data.attachments.map((file) => (
                   <tr key={file.id}>
                     <td>{formatDate(file.uploadedAt)}</td>
-                    <td>{file.kind}</td>
+                    <td>{attachmentKindLabel(file.kind)}</td>
                     <td className="text-left">{file.filename}</td>
                     <td>{formatBytes(file.sizeBytes)}</td>
                     <td>активен</td>
+                    <td className="space-x-1">
+                      <WorkspaceButton
+                        type="button"
+                        icon="document"
+                        onClick={() => void downloadAttachment(file)}
+                      >
+                        Скачать
+                      </WorkspaceButton>
+                      {canEdit ? (
+                        <WorkspaceButton
+                          type="button"
+                          icon="close"
+                          disabled={deleteAttachment.isPending}
+                          onClick={() => void removeAttachment(file)}
+                        >
+                          Удалить
+                        </WorkspaceButton>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
                 {data.attachments.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="pt-muted italic text-center">
+                    <td colSpan={6} className="pt-muted italic text-center">
                       Документы не загружены.
                     </td>
                   </tr>

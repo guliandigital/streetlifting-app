@@ -41,10 +41,16 @@ export interface CompetitionListResponse {
   offset: number;
 }
 
-export function useCompetitions(params: { federationId?: string; status?: string } = {}) {
+export function useCompetitions(
+  params: { federationId?: string; status?: string; limit?: number; offset?: number } & {
+    enabled?: boolean;
+  } = {},
+) {
+  const { enabled = true, ...query } = params;
   return useQuery<CompetitionListResponse>({
-    queryKey: ['competitions', params],
-    queryFn: () => api.competitions.list(params),
+    queryKey: ['competitions', query],
+    queryFn: () => api.competitions.list(query),
+    enabled,
   });
 }
 
