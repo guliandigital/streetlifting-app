@@ -170,6 +170,7 @@ function includesQuery(values: Array<string | number | null | undefined>, query:
 function referenceIncludesQuery(row: PowerTableReferenceRow, query: string): boolean {
   return includesQuery(
     [
+      row.federationCode,
       row.dsp,
       row.disciplineCode,
       row.disciplineLabel,
@@ -580,6 +581,7 @@ function ReferenceTable(props: {
       <table className="min-w-full text-sm">
         <thead className="border-b border-border bg-muted/50">
           <tr>
+            <th className="px-3 py-2 text-left">Фед.</th>
             {props.showDiscipline ? <th className="px-3 py-2 text-left">Дисциплина</th> : null}
             {props.showLevel ? <th className="px-3 py-2 text-left">Уровень</th> : null}
             {props.showYear ? <th className="px-3 py-2 text-left">Период</th> : null}
@@ -594,9 +596,10 @@ function ReferenceTable(props: {
         <tbody>
           {visibleRows.map((row, index) => (
             <tr
-              key={`${row.dsp ?? 'coach'}-${row.levelLabel ?? row.year ?? 'row'}-${index}`}
+              key={`${row.federationCode ?? 'fed'}-${row.dsp ?? 'coach'}-${row.levelLabel ?? row.year ?? 'row'}-${index}`}
               className="border-b border-border/60"
             >
+              <td className="px-3 py-2 font-mono text-xs">{row.federationCode || '-'}</td>
               {props.showDiscipline ? (
                 <td className="px-3 py-2">
                   <div className="font-medium">{row.disciplineLabel || '-'}</div>

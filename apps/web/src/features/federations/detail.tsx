@@ -89,6 +89,8 @@ interface PowerTableOpenData {
   };
 }
 
+const POWERTABLE_FEDERATION_CODES = new Set(['0010', '0036', '0097', '0108', '0081', '0122']);
+
 function connectionQuality(latencyMs: number | null, ok: boolean): string {
   if (!ok || latencyMs === null) return 'нет связи';
   if (latencyMs <= 300) return 'отлично';
@@ -449,12 +451,19 @@ function referenceCellsLabel(row: PowerTableReferenceRow): string {
   return row.cells.filter(Boolean).join(' · ') || '-';
 }
 
-function PowerTableReferencePanel({ data }: { data: PowerTableOpenData }) {
+function PowerTableReferencePanel({
+  data,
+  federationCode,
+}: {
+  data: PowerTableOpenData;
+  federationCode: string;
+}) {
   const references = data.publicReferences;
-  const recordRows = references?.recordRows ?? [];
-  const normRows = references?.normRows ?? [];
-  const athleteRatingRows = references?.athleteRatingRows ?? [];
-  const coachRatingRows = references?.coachRatingRows ?? [];
+  const matchesFederation = (row: PowerTableReferenceRow) => row.federationCode === federationCode;
+  const recordRows = (references?.recordRows ?? []).filter(matchesFederation);
+  const normRows = (references?.normRows ?? []).filter(matchesFederation);
+  const athleteRatingRows = (references?.athleteRatingRows ?? []).filter(matchesFederation);
+  const coachRatingRows = (references?.coachRatingRows ?? []).filter(matchesFederation);
 
   return (
     <WorkspacePanel className="p-3 space-y-3">
@@ -573,7 +582,7 @@ export default function FederationDetailFeature() {
 
   useEffect(() => {
     let cancelled = false;
-    if (data?.federation.code !== '0010') {
+    if (!data?.federation.code || !POWERTABLE_FEDERATION_CODES.has(data.federation.code)) {
       setPowerTableOpenData(null);
       return () => {
         cancelled = true;
@@ -1165,7 +1174,9 @@ export default function FederationDetailFeature() {
             </div>
           </WorkspacePanel>
 
-          {powerTableOpenData ? <PowerTableReferencePanel data={powerTableOpenData} /> : null}
+          {powerTableOpenData ? (
+            <PowerTableReferencePanel data={powerTableOpenData} federationCode={f.code} />
+          ) : null}
 
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
             <WorkspacePanel className="p-3">
