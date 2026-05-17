@@ -84,6 +84,7 @@ interface PowerTableOpenData {
   source: {
     federation: string;
     federationCode: string;
+    federationCodes?: string[];
     collectedAt: string;
   };
   federations: FederationRow[];
@@ -97,6 +98,17 @@ interface Counters {
   created: number;
   updated: number;
   skipped: number;
+}
+
+function emptyCounters(): Counters {
+  return { created: 0, updated: 0, skipped: 0 };
+}
+
+function addCounters(target: Counters, source: Counters): Counters {
+  target.created += source.created;
+  target.updated += source.updated;
+  target.skipped += source.skipped;
+  return target;
 }
 
 interface PowerTableRecordCandidate {
@@ -303,23 +315,51 @@ async function loadSnapshot(inputPath: string): Promise<PowerTableOpenData> {
   return JSON.parse(content) as PowerTableOpenData;
 }
 
+function sourceFederationCodes(data: PowerTableOpenData): string[] {
+  const codes = data.source.federationCodes?.length
+    ? data.source.federationCodes
+    : [data.source.federationCode];
+  return Array.from(new Set(codes.map(cleanText).filter(Boolean)));
+}
+
+function snapshotForFederation(
+  data: PowerTableOpenData,
+  federationCode: string,
+): PowerTableOpenData {
+  const competitions = data.competitions.filter((row) => cleanText(row.fed) === federationCode);
+  const meetIds = new Set(competitions.map((row) => cleanText(row.meetId)).filter(Boolean));
+  const source = data.federations.find((row) => row.code === federationCode);
+  return {
+    ...data,
+    source: {
+      ...data.source,
+      federation: source?.shortName || source?.name || federationCode,
+      federationCode,
+      federationCodes: [federationCode],
+    },
+    competitions,
+    athleteMentions: data.athleteMentions.filter((row) => meetIds.has(cleanText(row.meetId))),
+  };
+}
+
 async function ensureSourceFederation(
   data: PowerTableOpenData,
+  federationCode: string,
   dryRun: boolean,
 ): Promise<{
   id: string | null;
   counters: Counters;
 }> {
-  const counters: Counters = { created: 0, updated: 0, skipped: 0 };
-  const source = data.federations.find((row) => row.code === data.source.federationCode);
+  const counters = emptyCounters();
+  const source = data.federations.find((row) => row.code === federationCode);
   if (!source) {
     counters.skipped++;
     return { id: null, counters };
   }
 
   const existing = await prisma.federation.findUnique({ where: { code: source.code } });
-  const nameRu = source.name || source.shortName || data.source.federation;
-  const nameEn = source.name || source.shortName || data.source.federation;
+  const nameRu = source.name || source.shortName || `PowerTable ${federationCode}`;
+  const nameEn = source.name || source.shortName || `PowerTable ${federationCode}`;
   const sourceUrl = powerTableUrl(source);
 
   if (dryRun) {
@@ -1590,23 +1630,53 @@ const dryRun = hasFlag('--dry-run');
 const inputPath = path.resolve(readArg('--input') ?? defaultInputPath());
 
 const snapshot = await loadSnapshot(inputPath);
+const federationCodes = sourceFederationCodes(snapshot);
 console.log(`PowerTable snapshot: ${inputPath}`);
 console.log(
-  `Source federation: ${snapshot.source.federation} (${snapshot.source.federationCode}), collected ${snapshot.source.collectedAt}`,
+  `Source federations: ${federationCodes.join(', ')}, collected ${snapshot.source.collectedAt}`,
 );
 if (dryRun) console.log('Mode: dry-run, no database writes');
 
-const federationResult = await ensureSourceFederation(snapshot, dryRun);
+const federationCounters = emptyCounters();
 const federationLikeCounters = await importFederationLikeReferences(snapshot, dryRun);
 const federationTagCounters = await ensureFederationTags(dryRun);
-const chapterCounters = await importChapters(snapshot, federationResult.id, dryRun);
-const competitionCounters = await importCompetitions(snapshot, federationResult.id, dryRun);
+const chapterCounters = emptyCounters();
+const competitionCounters = emptyCounters();
+const nominationCounters = {
+  divisions: emptyCounters(),
+  weightClasses: emptyCounters(),
+  nominations: emptyCounters(),
+  attempts: emptyCounters(),
+};
+const recordCounters = emptyCounters();
 const cityCounters = await importCities(snapshot, dryRun);
 const athleteCounters = await importAthletes(snapshot, dryRun);
-const nominationCounters = await importNominations(snapshot, federationResult.id, dryRun);
-const recordCounters = await importPowerTableRecords(federationResult.id, dryRun);
 
-logCounters('federation', federationResult.counters);
+for (const federationCode of federationCodes) {
+  const federationSnapshot = snapshotForFederation(snapshot, federationCode);
+  const federationResult = await ensureSourceFederation(snapshot, federationCode, dryRun);
+  addCounters(federationCounters, federationResult.counters);
+  addCounters(
+    chapterCounters,
+    await importChapters(federationSnapshot, federationResult.id, dryRun),
+  );
+  addCounters(
+    competitionCounters,
+    await importCompetitions(federationSnapshot, federationResult.id, dryRun),
+  );
+  const perFederationNominations = await importNominations(
+    federationSnapshot,
+    federationResult.id,
+    dryRun,
+  );
+  addCounters(nominationCounters.divisions, perFederationNominations.divisions);
+  addCounters(nominationCounters.weightClasses, perFederationNominations.weightClasses);
+  addCounters(nominationCounters.nominations, perFederationNominations.nominations);
+  addCounters(nominationCounters.attempts, perFederationNominations.attempts);
+  addCounters(recordCounters, await importPowerTableRecords(federationResult.id, dryRun));
+}
+
+logCounters('federation', federationCounters);
 logCounters('powertable_federations', federationLikeCounters.federations);
 logCounters('powertable_clubs', federationLikeCounters.clubs);
 logCounters('federation_tags', federationTagCounters);

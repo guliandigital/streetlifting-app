@@ -60,6 +60,7 @@ interface ConnectionSample {
 }
 
 interface PowerTableReferenceRow {
+  federationCode?: string;
   dsp?: string;
   disciplineCode?: string;
   disciplineLabel?: string;

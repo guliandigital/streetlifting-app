@@ -59,6 +59,7 @@ interface PowerTableAttemptRow {
 }
 
 interface PowerTableReferenceRow {
+  federationCode?: string;
   dsp?: string;
   disciplineCode?: string;
   disciplineLabel?: string;
@@ -75,6 +76,7 @@ interface PowerTableReferenceRow {
 interface PowerTablePublicReferences {
   generatedAt: string;
   federationCode: string;
+  federationCodes?: string[];
   disciplines: Array<{
     dsp: string;
     disciplineCode: string;
@@ -97,6 +99,7 @@ interface PowerTableOpenData {
     system: string;
     federation: string;
     federationCode: string;
+    federationCodes?: string[];
     collectedAt: string;
     mode: string;
   };
@@ -237,7 +240,10 @@ export default function PowerTableOpenDataFeature() {
   const competitions = useMemo(
     () =>
       (data?.competitions ?? []).filter((row) =>
-        includesQuery([row.meetId, row.name, row.regionName, row.leadingDate], normalizedQuery),
+        includesQuery(
+          [row.fed, row.meetId, row.name, row.regionName, row.leadingDate],
+          normalizedQuery,
+        ),
       ),
     [data?.competitions, normalizedQuery],
   );
@@ -300,6 +306,8 @@ export default function PowerTableOpenDataFeature() {
       ),
     [data?.publicReferences?.coachRatingRows, normalizedQuery],
   );
+  const sourceFederationCodes =
+    data?.source.federationCodes ?? [data?.source.federationCode].filter(Boolean);
 
   return (
     <div data-testid="powertable-open-data" className="mx-auto max-w-7xl px-6 py-8 space-y-6">
@@ -332,10 +340,11 @@ export default function PowerTableOpenDataFeature() {
       {data ? (
         <>
           <section className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+            <Metric label="Streetlifting фед." value={sourceFederationCodes.length} />
             <Metric label="Федерации" value={data.counts.federations} />
             <Metric label="Клубы" value={data.counts.clubs} />
             <Metric label="Города" value={data.counts.cities} />
-            <Metric label="Соревнования ISF" value={data.counts.competitions} />
+            <Metric label="Соревнования" value={data.counts.competitions} />
             <Metric label="Строки спортсменов" value={data.counts.athleteMentions} />
             <Metric label="Уникальные спортсмены" value={data.counts.uniquePublicAthletes} />
             <Metric label="Дисциплины" value={data.counts.disciplines ?? 0} />
@@ -412,8 +421,8 @@ export default function PowerTableOpenDataFeature() {
 
           <footer className="rounded-md border border-border bg-muted/40 p-4 text-xs leading-6 text-muted-foreground">
             <div>
-              Источник: {data.source.system}, federation={data.source.federationCode}, collected{' '}
-              {new Date(data.source.collectedAt).toLocaleString('ru-RU')}.
+              Источник: {data.source.system}, federations={sourceFederationCodes.join(', ')},
+              collected {new Date(data.source.collectedAt).toLocaleString('ru-RU')}.
             </div>
             {data.notes.map((note) => (
               <div key={note}>{note}</div>
@@ -628,10 +637,11 @@ function ReferenceTable(props: {
 
 function CompetitionsTable(props: { rows: CompetitionRow[] }) {
   return (
-    <DataCard title={`Соревнования ISF · ${numberLabel(props.rows.length)}`}>
+    <DataCard title={`Соревнования streetlifting · ${numberLabel(props.rows.length)}`}>
       <table className="min-w-full text-sm">
         <thead className="border-b border-border bg-muted/50">
           <tr>
+            <th className="px-3 py-2 text-left">Фед.</th>
             <th className="px-3 py-2 text-left">ID</th>
             <th className="px-3 py-2 text-left">Регион</th>
             <th className="px-3 py-2 text-left">Город</th>
@@ -641,7 +651,8 @@ function CompetitionsTable(props: { rows: CompetitionRow[] }) {
         </thead>
         <tbody>
           {props.rows.map((row) => (
-            <tr key={row.meetId} className="border-b border-border/60">
+            <tr key={`${row.fed}-${row.meetId}`} className="border-b border-border/60">
+              <td className="px-3 py-2 font-mono text-xs">{row.fed}</td>
               <td className="px-3 py-2 font-mono text-xs">
                 <a
                   className="text-primary hover:underline"

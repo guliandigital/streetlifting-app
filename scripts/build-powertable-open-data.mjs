@@ -11,6 +11,68 @@ async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'));
 }
 
+async function readJsonIfExists(filePath, fallback) {
+  try {
+    return await readJson(filePath);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return fallback;
+    throw error;
+  }
+}
+
+async function readTextIfExists(filePath) {
+  try {
+    return await readFile(filePath, 'utf8');
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+function parseCsvLine(line) {
+  const cells = [];
+  let value = '';
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      if (quoted && line[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+    if (char === ',' && !quoted) {
+      cells.push(value);
+      value = '';
+      continue;
+    }
+    value += char;
+  }
+  cells.push(value);
+  return cells;
+}
+
+function parseCsv(text) {
+  const lines = text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .filter(Boolean);
+  if (lines.length === 0) return [];
+  const headers = parseCsvLine(lines[0]);
+  return lines
+    .slice(1)
+    .map((line) =>
+      cleanObject(
+        Object.fromEntries(
+          headers.map((header, index) => [header, parseCsvLine(line)[index] ?? '']),
+        ),
+      ),
+    );
+}
+
 function cleanObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }
@@ -75,6 +137,7 @@ function normalizeAthleteMention(row) {
 
 function normalizeReferenceRow(row) {
   return cleanObject({
+    federationCode: nonEmptyString(row.federationCode),
     dsp: nonEmptyString(row.dsp),
     disciplineCode: nonEmptyString(row.disciplineCode),
     disciplineLabel: nonEmptyString(row.disciplineLabel),
@@ -146,8 +209,38 @@ function countDisciplines(rows) {
   return new Set(rows.map((row) => row.disciplineCode).filter(Boolean)).size;
 }
 
+async function readCompetitionRows(inputDir, federationCodes, fallbackRows) {
+  const explicitRows = await readJsonIfExists(
+    path.join(inputDir, 'powertable-public-competitions.json'),
+    null,
+  );
+  const rows =
+    explicitRows?.length > 0
+      ? explicitRows
+      : (
+          await Promise.all(
+            federationCodes.map(async (fed) => {
+              const text = await readTextIfExists(path.join(inputDir, `fed-${fed}-all_sorev.csv`));
+              return text ? parseCsv(text) : [];
+            }),
+          )
+        ).flat();
+  if (rows.length === 0) return fallbackRows;
+
+  const fallbackByKey = new Map(fallbackRows.map((row) => [`${row.fed}:${row.meetId}`, row]));
+  return rows.map((row) => ({
+    ...row,
+    ...cleanObject({
+      city: row.city || fallbackByKey.get(`${row.fed}:${row.meetId}`)?.city,
+      startDate: row.startDate || fallbackByKey.get(`${row.fed}:${row.meetId}`)?.startDate,
+      endDate: row.endDate || fallbackByKey.get(`${row.fed}:${row.meetId}`)?.endDate,
+    }),
+  }));
+}
+
 function referenceEndpoint(endpoint) {
   return cleanObject({
+    federationCode: endpoint.federationCode,
     key: endpoint.key,
     url: endpoint.url,
     status: endpoint.status,
@@ -168,30 +261,101 @@ const basePath = path.resolve(readArg('--base') ?? outputPath);
 
 const baseSnapshot = await readJson(basePath);
 const manifest = await readJson(path.join(inputDir, 'manifest.json'));
-const publicResults = await readJson(path.join(inputDir, 'powertable-public-results.json'));
-const references = await readJson(
-  path.join(inputDir, `fed-${manifest.feds[0]}-public-references.json`),
+const federationCodes =
+  Array.isArray(manifest.feds) && manifest.feds.length > 0 ? manifest.feds : ['0010'];
+const loadedPublicResults = await readJsonIfExists(
+  path.join(inputDir, 'powertable-public-results.json'),
+  null,
 );
+const publicResults =
+  loadedPublicResults?.length > 0 ? loadedPublicResults : (baseSnapshot.athleteMentions ?? []);
+const competitions = await readCompetitionRows(
+  inputDir,
+  federationCodes,
+  baseSnapshot.competitions ?? [],
+);
+const referenceSnapshots = (
+  await Promise.all(
+    federationCodes.map(async (fed) => ({
+      fed,
+      references: await readJsonIfExists(
+        path.join(inputDir, `fed-${fed}-public-references.json`),
+        null,
+      ),
+    })),
+  )
+).filter((entry) => entry.references);
+
+function rowsWithFederationCode(rows, fed) {
+  return (rows ?? []).map((row) => ({ federationCode: fed, ...row }));
+}
+
+function endpointsWithFederationCode(endpoints, fed) {
+  return (endpoints ?? []).map((endpoint) => ({ federationCode: fed, ...endpoint }));
+}
+
+const mergedReferences = {
+  generatedAt: referenceSnapshots[0]?.references.generatedAt ?? manifest.generatedAt,
+  federationCodes,
+  endpoints: referenceSnapshots.flatMap((entry) =>
+    endpointsWithFederationCode(entry.references.endpoints, entry.fed),
+  ),
+  options: {
+    normDisciplines: referenceSnapshots.flatMap(
+      (entry) => entry.references.options?.normDisciplines ?? [],
+    ),
+    recordDisciplines: referenceSnapshots.flatMap(
+      (entry) => entry.references.options?.recordDisciplines ?? [],
+    ),
+    ratingDisciplines: referenceSnapshots.flatMap(
+      (entry) => entry.references.options?.ratingDisciplines ?? [],
+    ),
+    recordLevels: referenceSnapshots.flatMap(
+      (entry) => entry.references.options?.recordLevels ?? [],
+    ),
+  },
+  normRows: referenceSnapshots.flatMap((entry) =>
+    rowsWithFederationCode(entry.references.normRows, entry.fed),
+  ),
+  recordRows: referenceSnapshots.flatMap((entry) =>
+    rowsWithFederationCode(entry.references.recordRows, entry.fed),
+  ),
+  athleteRatingRows: referenceSnapshots.flatMap((entry) =>
+    rowsWithFederationCode(entry.references.athleteRatingRows, entry.fed),
+  ),
+  coachRatingRows: referenceSnapshots.flatMap((entry) =>
+    rowsWithFederationCode(entry.references.coachRatingRows, entry.fed),
+  ),
+};
 
 const athleteMentions = publicResults.map(normalizeAthleteMention);
-const publicReferences = {
-  generatedAt: references.generatedAt,
-  federationCode: references.federationCode,
-  endpoints: (references.endpoints ?? []).map(referenceEndpoint),
-  disciplines: buildDisciplines(baseSnapshot, references),
-  recordLevels: (references.options?.recordLevels ?? []).map(optionToPlain),
-  normRows: (references.normRows ?? []).map(normalizeReferenceRow),
-  recordRows: (references.recordRows ?? []).map(normalizeReferenceRow),
-  athleteRatingRows: (references.athleteRatingRows ?? []).map(normalizeReferenceRow),
-  coachRatingRows: (references.coachRatingRows ?? []).map(normalizeReferenceRow),
-};
+const publicReferences =
+  referenceSnapshots.length > 0
+    ? {
+        generatedAt: mergedReferences.generatedAt,
+        federationCode: federationCodes[0],
+        federationCodes,
+        endpoints: mergedReferences.endpoints.map(referenceEndpoint),
+        disciplines: buildDisciplines(baseSnapshot, mergedReferences),
+        recordLevels: mergedReferences.options.recordLevels.map(optionToPlain),
+        normRows: mergedReferences.normRows.map(normalizeReferenceRow),
+        recordRows: mergedReferences.recordRows.map(normalizeReferenceRow),
+        athleteRatingRows: mergedReferences.athleteRatingRows.map(normalizeReferenceRow),
+        coachRatingRows: mergedReferences.coachRatingRows.map(normalizeReferenceRow),
+      }
+    : {
+        ...(baseSnapshot.publicReferences ?? {}),
+        federationCode: federationCodes[0],
+        federationCodes,
+      };
 
 const snapshot = {
   generatedAt: manifest.generatedAt,
   source: {
     system: 'PowerTable public API',
-    federation: 'ISF',
-    federationCode: manifest.feds[0],
+    federation: federationCodes.length === 1 ? 'ISF' : 'Streetlifting federations',
+    federationCode: federationCodes[0],
+    federationCodes,
     collectedAt: manifest.generatedAt,
     mode: manifest.mode,
   },
@@ -199,14 +363,15 @@ const snapshot = {
     federations: baseSnapshot.federations.length,
     clubs: baseSnapshot.clubs.length,
     cities: baseSnapshot.cities.length,
-    competitions: baseSnapshot.competitions.length,
+    competitions: competitions.length,
     athleteMentions: athleteMentions.length,
     uniquePublicAthletes: countUniqueAthletes(athleteMentions),
     judges: 0,
     resultRows: athleteMentions.filter((row) => row.resultValue !== undefined).length,
     attempts: athleteMentions.reduce((total, row) => total + (row.attempts?.length ?? 0), 0),
     disciplines: countDisciplines(athleteMentions),
-    disciplinePages: manifest.summary.publicDisciplinePageCount,
+    disciplinePages:
+      manifest.summary.publicDisciplinePageCount || baseSnapshot.counts?.disciplinePages || 0,
     normRows: publicReferences.normRows.length,
     recordRows: publicReferences.recordRows.length,
     athleteRatingRows: publicReferences.athleteRatingRows.length,
@@ -222,7 +387,7 @@ const snapshot = {
   federations: baseSnapshot.federations,
   clubs: baseSnapshot.clubs,
   cities: baseSnapshot.cities,
-  competitions: baseSnapshot.competitions,
+  competitions,
   athleteMentions,
   publicReferences,
 };
