@@ -9,6 +9,7 @@
  * - athletes are keyed by federationCardNumber = PT:<sportsmanId>
  * - nominations are keyed by competition + athlete + PowerTable discipline + PowerTable division
  * - attempts are keyed by nomination + component + attempt number
+ * - records are keyed in notes by federation + discipline + division + weight class
  * - cities are inserted only when no city with the same country/name exists
  *
  * Usage:
@@ -98,6 +99,32 @@ interface Counters {
   skipped: number;
 }
 
+interface PowerTableRecordCandidate {
+  key: string;
+  nominationId: string;
+  athleteId: string;
+  competitionId: string;
+  competitionCode: string;
+  competitionName: string;
+  achievedOn: Date;
+  disciplineId: string;
+  disciplineCode: string;
+  disciplineName: string;
+  divisionId: string;
+  divisionCode: string;
+  divisionName: string;
+  weightClassId: string;
+  weightClassCode: string;
+  weightClassName: string;
+  result: number;
+}
+
+interface ExistingRecordRef {
+  id: string;
+  notes: string | null;
+  competition: { code: string } | null;
+}
+
 type Gender = 'M' | 'F';
 type VeteranTier = 'youth' | 'junior' | 'open' | 'm1' | 'm2' | 'm3' | 'm4' | 'm5';
 
@@ -132,6 +159,9 @@ const COUNTRY_EN: Record<string, string> = {
   MD: 'Moldova',
   RU: 'Russia',
 };
+
+const POWERTABLE_RECORD_NOTE_PREFIX = 'Imported from PowerTable open data current-best nomination.';
+const POWERTABLE_RECORD_KEY_PREFIX = 'PowerTable record key: ';
 
 function hasFlag(name: string): boolean {
   return process.argv.includes(name);
@@ -829,6 +859,61 @@ function bestSuccessfulAttemptKgForRow(row: AthleteMentionRow): number | null {
   return successfulAttemptWeights.reduce((sum, value) => sum + value, 0);
 }
 
+function powerTableRecordKey(params: {
+  federationId: string;
+  disciplineCode: string;
+  divisionCode: string;
+  weightClassCode: string;
+}): string {
+  return [
+    params.federationId,
+    cleanText(params.disciplineCode),
+    cleanText(params.divisionCode),
+    cleanText(params.weightClassCode),
+  ].join('|');
+}
+
+function recordKeyFromNotes(notes: string | null | undefined): string | null {
+  const line = (notes ?? '')
+    .split('\n')
+    .find((item) => item.startsWith(POWERTABLE_RECORD_KEY_PREFIX));
+  if (!line) return null;
+  return cleanText(line.slice(POWERTABLE_RECORD_KEY_PREFIX.length)) || null;
+}
+
+function isImportedPowerTableRecord(record: ExistingRecordRef): boolean {
+  return (
+    (record.notes ?? '').startsWith(POWERTABLE_RECORD_NOTE_PREFIX) ||
+    Boolean(record.competition?.code.startsWith('PT-'))
+  );
+}
+
+function isBetterRecordCandidate(
+  candidate: PowerTableRecordCandidate,
+  current: PowerTableRecordCandidate,
+): boolean {
+  if (candidate.result !== current.result) return candidate.result > current.result;
+  if (candidate.achievedOn.getTime() !== current.achievedOn.getTime()) {
+    return candidate.achievedOn.getTime() < current.achievedOn.getTime();
+  }
+  return candidate.competitionCode.localeCompare(current.competitionCode) < 0;
+}
+
+function powerTableRecordNotes(candidate: PowerTableRecordCandidate): string {
+  return truncate(
+    [
+      POWERTABLE_RECORD_NOTE_PREFIX,
+      `${POWERTABLE_RECORD_KEY_PREFIX}${candidate.key}`,
+      `Source nomination: ${candidate.nominationId}`,
+      `Competition: ${candidate.competitionCode} ${candidate.competitionName}`,
+      `Discipline: ${candidate.disciplineCode} ${candidate.disciplineName}`,
+      `Division: ${candidate.divisionCode} ${candidate.divisionName}`,
+      `Weight class: ${candidate.weightClassCode} ${candidate.weightClassName}`,
+    ].join('\n'),
+    2000,
+  )!;
+}
+
 function attemptsForImport(row: AthleteMentionRow): PowerTableAttemptRow[] {
   if (resultValueForRow(row) === null) return [];
   return row.attempts ?? [];
@@ -1174,6 +1259,163 @@ async function importNominations(
   return { divisions, weightClasses, nominations, attempts };
 }
 
+async function importPowerTableRecords(
+  federationId: string | null,
+  dryRun: boolean,
+): Promise<Counters> {
+  const counters: Counters = { created: 0, updated: 0, skipped: 0 };
+  if (!federationId) return counters;
+
+  const nominations = await prisma.nomination.findMany({
+    where: {
+      finalScore: { not: null },
+      competition: { federationId, code: { startsWith: 'PT-' } },
+    },
+    select: {
+      id: true,
+      athleteId: true,
+      disciplineId: true,
+      divisionId: true,
+      weightClassId: true,
+      finalScore: true,
+      competition: { select: { id: true, code: true, nameRu: true, startDate: true } },
+      discipline: { select: { code: true, nameRu: true } },
+      division: { select: { code: true, nameRu: true } },
+      weightClass: { select: { code: true, nameRu: true } },
+    },
+  });
+
+  const winners = new Map<string, PowerTableRecordCandidate>();
+  for (const nomination of nominations) {
+    const result = nomination.finalScore;
+    if (result === null || !Number.isFinite(result) || result <= 0) {
+      counters.skipped++;
+      continue;
+    }
+
+    const key = powerTableRecordKey({
+      federationId,
+      disciplineCode: nomination.discipline.code,
+      divisionCode: nomination.division.code,
+      weightClassCode: nomination.weightClass.code,
+    });
+    const candidate: PowerTableRecordCandidate = {
+      key,
+      nominationId: nomination.id,
+      athleteId: nomination.athleteId,
+      competitionId: nomination.competition.id,
+      competitionCode: nomination.competition.code,
+      competitionName: nomination.competition.nameRu,
+      achievedOn: nomination.competition.startDate,
+      disciplineId: nomination.disciplineId,
+      disciplineCode: nomination.discipline.code,
+      disciplineName: nomination.discipline.nameRu,
+      divisionId: nomination.divisionId,
+      divisionCode: nomination.division.code,
+      divisionName: nomination.division.nameRu,
+      weightClassId: nomination.weightClassId,
+      weightClassCode: nomination.weightClass.code,
+      weightClassName: nomination.weightClass.nameRu,
+      result,
+    };
+
+    const current = winners.get(key);
+    if (!current || isBetterRecordCandidate(candidate, current)) {
+      winners.set(key, candidate);
+    }
+  }
+
+  const importedRecords = await prisma.record.findMany({
+    where: {
+      scope: 'federation',
+      federationId,
+      notes: { contains: POWERTABLE_RECORD_KEY_PREFIX },
+    },
+    select: {
+      id: true,
+      notes: true,
+      competition: { select: { code: true } },
+    },
+  });
+  const importedByKey = new Map<string, ExistingRecordRef>();
+  for (const record of importedRecords) {
+    const key = recordKeyFromNotes(record.notes);
+    if (!key || importedByKey.has(key)) {
+      counters.skipped++;
+      continue;
+    }
+    importedByKey.set(key, record);
+  }
+
+  for (const candidate of winners.values()) {
+    const recordData = {
+      scope: 'federation' as const,
+      federationId,
+      disciplineId: candidate.disciplineId,
+      divisionId: candidate.divisionId,
+      weightClassId: candidate.weightClassId,
+      athleteId: candidate.athleteId,
+      competitionId: candidate.competitionId,
+      attemptId: null,
+      result: candidate.result,
+      pointsScore: null,
+      achievedOn: candidate.achievedOn,
+      ratifiedAt: null,
+      ratifiedByUserId: null,
+      notes: powerTableRecordNotes(candidate),
+    };
+
+    const imported = importedByKey.get(candidate.key);
+    if (dryRun) {
+      if (imported) counters.updated++;
+      else counters.created++;
+      continue;
+    }
+
+    if (imported) {
+      await prisma.record.update({
+        where: { id: imported.id },
+        data: recordData,
+      });
+      counters.updated++;
+      continue;
+    }
+
+    const conflicting = await prisma.record.findFirst({
+      where: {
+        scope: 'federation',
+        federationId,
+        disciplineId: candidate.disciplineId,
+        divisionId: candidate.divisionId,
+        weightClassId: candidate.weightClassId,
+      },
+      select: {
+        id: true,
+        notes: true,
+        competition: { select: { code: true } },
+      },
+    });
+    if (conflicting && !isImportedPowerTableRecord(conflicting)) {
+      counters.skipped++;
+      continue;
+    }
+
+    if (conflicting) {
+      await prisma.record.update({
+        where: { id: conflicting.id },
+        data: recordData,
+      });
+      counters.updated++;
+      continue;
+    }
+
+    await prisma.record.create({ data: recordData });
+    counters.created++;
+  }
+
+  return counters;
+}
+
 async function ensurePowerTableRegion(countryCode: string, countryName: string, dryRun: boolean) {
   const country = await prisma.country.findUnique({ where: { codeIso2: countryCode } });
   if (!country) {
@@ -1362,6 +1604,7 @@ const competitionCounters = await importCompetitions(snapshot, federationResult.
 const cityCounters = await importCities(snapshot, dryRun);
 const athleteCounters = await importAthletes(snapshot, dryRun);
 const nominationCounters = await importNominations(snapshot, federationResult.id, dryRun);
+const recordCounters = await importPowerTableRecords(federationResult.id, dryRun);
 
 logCounters('federation', federationResult.counters);
 logCounters('powertable_federations', federationLikeCounters.federations);
@@ -1373,6 +1616,7 @@ logCounters('competition_divisions', nominationCounters.divisions);
 logCounters('competition_weight_classes', nominationCounters.weightClasses);
 logCounters('nominations', nominationCounters.nominations);
 logCounters('attempts', nominationCounters.attempts);
+logCounters('records', recordCounters);
 logCounters('cities', cityCounters);
 logCounters('athletes', athleteCounters);
 console.log('judges: skipped=all, reason=PowerTable public snapshot does not expose judge catalog');
