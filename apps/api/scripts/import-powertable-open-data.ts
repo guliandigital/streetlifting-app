@@ -7,7 +7,8 @@
  * - chapters are keyed by federation + PowerTable region id
  * - competitions are keyed by federation + PT-<meetId>
  * - athletes are keyed by federationCardNumber = PT:<sportsmanId>
- * - nominations are keyed by competition + athlete + classic_total + PowerTable division
+ * - nominations are keyed by competition + athlete + PowerTable discipline + PowerTable division
+ * - attempts are keyed by nomination + component + attempt number
  * - cities are inserted only when no city with the same country/name exists
  *
  * Usage:
@@ -54,11 +55,28 @@ interface AthleteMentionRow {
   name: string;
   birthYear: string;
   team: string;
+  className?: string;
   division: string;
   gender: string;
   category: string;
   href: string;
+  dsp?: string;
+  disciplineCode?: string;
+  disciplineLabel?: string;
   bodyWeightKg?: number;
+  bestPullUpKg?: number;
+  bestDipKg?: number;
+  bestMuscleUpKg?: number;
+  resultValue?: number;
+  attempts?: PowerTableAttemptRow[];
+}
+
+interface PowerTableAttemptRow {
+  componentCode: string;
+  attemptNumber: number;
+  weightKg: number;
+  result: 'good_lift' | 'no_lift' | 'withdrawn' | 'pending';
+  repsCount?: number;
 }
 
 interface PowerTableOpenData {
@@ -82,6 +100,16 @@ interface Counters {
 
 type Gender = 'M' | 'F';
 type VeteranTier = 'youth' | 'junior' | 'open' | 'm1' | 'm2' | 'm3' | 'm4' | 'm5';
+
+interface DisciplineWithComponents {
+  id: string;
+  code: string;
+  components: Array<{
+    id: string;
+    code: string;
+    fixedWeightKg: number | null;
+  }>;
+}
 
 const ISO3_TO_ISO2: Record<string, string> = {
   BLR: 'BY',
@@ -728,7 +756,7 @@ async function ensurePowerTableWeightClass(
   cache: Map<string, string>,
 ): Promise<string | null> {
   const spec = weightClassSpec(row);
-  const cacheKey = `${divisionId}:${disciplineId}:${spec.code}`;
+  const cacheKey = `${divisionId}:${spec.code}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
@@ -777,6 +805,119 @@ async function ensurePowerTableWeightClass(
   counters.created++;
   cache.set(cacheKey, weightClass.id);
   return weightClass.id;
+}
+
+function disciplineCodeForRow(row: AthleteMentionRow): string {
+  return cleanText(row.disciplineCode) || 'classic_total';
+}
+
+function resultValueForRow(row: AthleteMentionRow): number | null {
+  return parseNumber(row.resultValue);
+}
+
+function bestSuccessfulAttemptKgForRow(row: AthleteMentionRow): number | null {
+  const bestValues = [row.bestPullUpKg, row.bestDipKg, row.bestMuscleUpKg]
+    .map((value) => parseNumber(value))
+    .filter((value): value is number => value !== null);
+  if (bestValues.length > 0) return bestValues.reduce((sum, value) => sum + value, 0);
+
+  const successfulAttemptWeights = (row.attempts ?? [])
+    .filter((attempt) => attempt.result === 'good_lift')
+    .map((attempt) => parseNumber(attempt.weightKg))
+    .filter((value): value is number => value !== null);
+  if (successfulAttemptWeights.length === 0) return null;
+  return successfulAttemptWeights.reduce((sum, value) => sum + value, 0);
+}
+
+function attemptsForImport(row: AthleteMentionRow): PowerTableAttemptRow[] {
+  if (resultValueForRow(row) === null) return [];
+  return row.attempts ?? [];
+}
+
+function sourceAttemptNotes(row: AthleteMentionRow, attempt: PowerTableAttemptRow): string {
+  return truncate(
+    [
+      'Imported from PowerTable public wt protocol.',
+      cleanText(row.dsp) ? `dsp=${cleanText(row.dsp)}` : undefined,
+      cleanText(row.disciplineLabel) ? `discipline=${cleanText(row.disciplineLabel)}` : undefined,
+      cleanText(attempt.componentCode)
+        ? `component=${cleanText(attempt.componentCode)}`
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    2000,
+  )!;
+}
+
+async function importPowerTableAttempts(
+  row: AthleteMentionRow,
+  nominationId: string,
+  discipline: DisciplineWithComponents,
+  dryRun: boolean,
+  counters: Counters,
+): Promise<void> {
+  const componentsByCode = new Map(
+    discipline.components.map((component) => [component.code, component]),
+  );
+  const sourceAttempts = attemptsForImport(row);
+  for (const sourceAttempt of sourceAttempts) {
+    const component = componentsByCode.get(cleanText(sourceAttempt.componentCode));
+    const attemptNumber = parseNumber(sourceAttempt.attemptNumber);
+    const weightKg = parseNumber(sourceAttempt.weightKg);
+    if (
+      !component ||
+      attemptNumber === null ||
+      attemptNumber < 1 ||
+      attemptNumber > 5 ||
+      weightKg === null
+    ) {
+      counters.skipped++;
+      continue;
+    }
+
+    const existing = nominationId.startsWith('dry-nomination:')
+      ? null
+      : await prisma.attempt.findFirst({
+          where: { nominationId, componentId: component.id, attemptNumber },
+          select: { id: true },
+        });
+
+    if (dryRun) {
+      if (existing) counters.updated++;
+      else counters.created++;
+      continue;
+    }
+
+    const attemptData = {
+      componentId: component.id,
+      attemptNumber,
+      weightKg,
+      result: sourceAttempt.result,
+      judgeDecisions: [],
+      repsCount: parseNumber(sourceAttempt.repsCount),
+      timeoutSeconds: null,
+      startedAt: null,
+      decidedAt: null,
+      notes: sourceAttemptNotes(row, sourceAttempt),
+    };
+
+    if (existing) {
+      await prisma.attempt.update({
+        where: { id: existing.id },
+        data: attemptData,
+      });
+      counters.updated++;
+    } else {
+      await prisma.attempt.create({
+        data: {
+          nominationId,
+          ...attemptData,
+        },
+      });
+      counters.created++;
+    }
+  }
 }
 
 async function importCompetitions(
@@ -864,20 +1005,29 @@ async function importNominations(
   divisions: Counters;
   weightClasses: Counters;
   nominations: Counters;
+  attempts: Counters;
 }> {
   const divisions: Counters = { created: 0, updated: 0, skipped: 0 };
   const weightClasses: Counters = { created: 0, updated: 0, skipped: 0 };
   const nominations: Counters = { created: 0, updated: 0, skipped: 0 };
+  const attempts: Counters = { created: 0, updated: 0, skipped: 0 };
 
   if (!federationId) {
     nominations.skipped = data.athleteMentions.length;
-    return { divisions, weightClasses, nominations };
+    return { divisions, weightClasses, nominations, attempts };
   }
 
-  const discipline = await prisma.discipline.findUnique({ where: { code: 'classic_total' } });
-  if (!discipline) {
+  const disciplines = await prisma.discipline.findMany({
+    select: {
+      id: true,
+      code: true,
+      components: { select: { id: true, code: true, fixedWeightKg: true } },
+    },
+  });
+  const disciplinesByCode = new Map(disciplines.map((discipline) => [discipline.code, discipline]));
+  if (!disciplinesByCode.has('classic_total')) {
     nominations.skipped = data.athleteMentions.length;
-    return { divisions, weightClasses, nominations };
+    return { divisions, weightClasses, nominations, attempts };
   }
 
   const competitions = await prisma.competition.findMany({
@@ -895,7 +1045,8 @@ async function importNominations(
     const sportsmanId = cleanText(row.sportsmanId);
     const competitionId = competitionsByMeetId.get(cleanText(row.meetId));
     const gender = genderFromPowerTable(row.gender);
-    if (!sportsmanId || !competitionId || !gender) {
+    const discipline = disciplinesByCode.get(disciplineCodeForRow(row));
+    if (!sportsmanId || !competitionId || !gender || !discipline) {
       nominations.skipped++;
       continue;
     }
@@ -945,20 +1096,36 @@ async function importNominations(
               disciplineId: discipline.id,
               divisionId,
             },
+            select: { id: true },
           });
 
     if (dryRun) {
       if (existing) nominations.updated++;
       else nominations.created++;
+      await importPowerTableAttempts(
+        row,
+        existing?.id ??
+          `dry-nomination:${competitionId}:${athlete.id}:${discipline.id}:${divisionId}`,
+        discipline,
+        dryRun,
+        attempts,
+      );
       continue;
     }
 
     const bodyWeightAtWeighIn = parseNumber(row.bodyWeightKg);
+    const resultValue = resultValueForRow(row);
+    const hasHistoricalResult = resultValue !== null;
     const notes = truncate(
       [
-        'Imported from PowerTable public snapshot as classic_total nomination.',
+        `Imported from PowerTable public snapshot as ${discipline.code} nomination.`,
         powerTableHrefUrl(row.href) ? `Source: ${powerTableHrefUrl(row.href)}` : undefined,
+        cleanText(row.dsp) ? `PowerTable dsp: ${cleanText(row.dsp)}` : undefined,
+        cleanText(row.disciplineLabel)
+          ? `PowerTable discipline: ${cleanText(row.disciplineLabel)}`
+          : undefined,
         cleanText(row.category) ? `PowerTable category: ${cleanText(row.category)}` : undefined,
+        cleanText(row.className) ? `PowerTable class: ${cleanText(row.className)}` : undefined,
       ]
         .filter(Boolean)
         .join('\n'),
@@ -969,22 +1136,26 @@ async function importNominations(
       weightClassId,
       declaredWeightClassId: weightClassId,
       bodyWeightAtWeighIn,
-      status: 'draft' as const,
+      status: hasHistoricalResult ? ('finished' as const) : ('draft' as const),
       isEntryFeePaid: false,
       paymentStatus: 'unpaid' as const,
       paidAmountKopecks: 0n,
-      isMandatePassed: false,
+      isMandatePassed: hasHistoricalResult,
+      bestSuccessfulAttemptKg: hasHistoricalResult ? bestSuccessfulAttemptKgForRow(row) : null,
+      finalScore: resultValue,
       notes,
     };
 
+    let nominationId: string;
     if (existing) {
       await prisma.nomination.update({
         where: { id: existing.id },
         data: nominationData,
       });
       nominations.updated++;
+      nominationId = existing.id;
     } else {
-      await prisma.nomination.create({
+      const created = await prisma.nomination.create({
         data: {
           competitionId,
           athleteId: athlete.id,
@@ -994,10 +1165,13 @@ async function importNominations(
         },
       });
       nominations.created++;
+      nominationId = created.id;
     }
+
+    await importPowerTableAttempts(row, nominationId, discipline, dryRun, attempts);
   }
 
-  return { divisions, weightClasses, nominations };
+  return { divisions, weightClasses, nominations, attempts };
 }
 
 async function ensurePowerTableRegion(countryCode: string, countryName: string, dryRun: boolean) {
@@ -1198,6 +1372,7 @@ logCounters('competitions', competitionCounters);
 logCounters('competition_divisions', nominationCounters.divisions);
 logCounters('competition_weight_classes', nominationCounters.weightClasses);
 logCounters('nominations', nominationCounters.nominations);
+logCounters('attempts', nominationCounters.attempts);
 logCounters('cities', cityCounters);
 logCounters('athletes', athleteCounters);
 console.log('judges: skipped=all, reason=PowerTable public snapshot does not expose judge catalog');

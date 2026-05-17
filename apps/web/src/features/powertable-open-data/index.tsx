@@ -37,11 +37,25 @@ interface AthleteMentionRow {
   name: string;
   birthYear: string;
   team: string;
+  className?: string;
   division: string;
   gender: string;
   category: string;
   href: string;
+  dsp?: string;
+  disciplineCode?: string;
+  disciplineLabel?: string;
   bodyWeightKg?: number;
+  resultValue?: number;
+  attempts?: PowerTableAttemptRow[];
+}
+
+interface PowerTableAttemptRow {
+  componentCode: string;
+  attemptNumber: number;
+  weightKg: number;
+  result: string;
+  repsCount?: number;
 }
 
 interface PowerTableOpenData {
@@ -61,6 +75,10 @@ interface PowerTableOpenData {
     athleteMentions: number;
     uniquePublicAthletes: number;
     judges: number;
+    resultRows?: number;
+    attempts?: number;
+    disciplines?: number;
+    disciplinePages?: number;
   };
   notes: string[];
   federations: FederationRow[];
@@ -70,10 +88,11 @@ interface PowerTableOpenData {
   athleteMentions: AthleteMentionRow[];
 }
 
-type Tab = 'athletes' | 'competitions' | 'federations' | 'cities' | 'clubs' | 'judges';
+type Tab = 'athletes' | 'results' | 'competitions' | 'federations' | 'cities' | 'clubs' | 'judges';
 
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: 'athletes', label: 'Спортсмены' },
+  { id: 'results', label: 'Результаты' },
   { id: 'competitions', label: 'Соревнования ISF' },
   { id: 'federations', label: 'Федерации' },
   { id: 'cities', label: 'Города' },
@@ -127,7 +146,17 @@ export default function PowerTableOpenDataFeature() {
     () =>
       (data?.athleteMentions ?? []).filter((row) =>
         includesQuery(
-          [row.name, row.sportsmanId, row.meetId, row.team, row.division, row.gender, row.category],
+          [
+            row.name,
+            row.sportsmanId,
+            row.meetId,
+            row.team,
+            row.division,
+            row.gender,
+            row.category,
+            row.disciplineCode,
+            row.disciplineLabel,
+          ],
           normalizedQuery,
         ),
       ),
@@ -177,7 +206,7 @@ export default function PowerTableOpenDataFeature() {
           <h1 className="text-3xl font-semibold tracking-tight">Открытые данные стритлифтинга</h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
             Публичная read-only выгрузка PowerTable по ISF: федерации, клубы, города, соревнования и
-            строки спортсменов из открытых рабочих протоколов.
+            строки спортсменов из открытых рабочих протоколов по всем доступным дисциплинам.
           </p>
         </div>
         <Link to="/login" className="text-sm font-semibold text-primary hover:underline">
@@ -205,6 +234,9 @@ export default function PowerTableOpenDataFeature() {
             <Metric label="Соревнования ISF" value={data.counts.competitions} />
             <Metric label="Строки спортсменов" value={data.counts.athleteMentions} />
             <Metric label="Уникальные спортсмены" value={data.counts.uniquePublicAthletes} />
+            <Metric label="Дисциплины" value={data.counts.disciplines ?? 0} />
+            <Metric label="Результаты" value={data.counts.resultRows ?? 0} />
+            <Metric label="Попытки" value={data.counts.attempts ?? 0} />
           </section>
 
           <Card>
@@ -215,7 +247,7 @@ export default function PowerTableOpenDataFeature() {
                   className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="ФИО, город, федерация, id соревнования"
+                  placeholder="ФИО, город, дисциплина, федерация, id соревнования"
                 />
               </label>
               <div className="flex flex-wrap items-end gap-2">
@@ -238,6 +270,7 @@ export default function PowerTableOpenDataFeature() {
           </Card>
 
           {activeTab === 'athletes' ? <AthletesTable rows={athletes} /> : null}
+          {activeTab === 'results' ? <ResultsTable rows={athletes} /> : null}
           {activeTab === 'competitions' ? <CompetitionsTable rows={competitions} /> : null}
           {activeTab === 'federations' ? (
             <FederationLikeTable rows={federations} title="Федерации PowerTable" />
@@ -284,7 +317,9 @@ function AthletesTable(props: { rows: AthleteMentionRow[] }) {
             <th className="px-3 py-2 text-left">Спортсмен</th>
             <th className="px-3 py-2 text-left">Год</th>
             <th className="px-3 py-2 text-left">Пол</th>
+            <th className="px-3 py-2 text-left">Дисциплина</th>
             <th className="px-3 py-2 text-left">Вес</th>
+            <th className="px-3 py-2 text-left">Результат</th>
             <th className="px-3 py-2 text-left">Дивизион</th>
             <th className="px-3 py-2 text-left">Категория</th>
             <th className="px-3 py-2 text-left">Команда</th>
@@ -301,7 +336,9 @@ function AthletesTable(props: { rows: AthleteMentionRow[] }) {
               <td className="px-3 py-2 font-medium">{row.name}</td>
               <td className="px-3 py-2 tabular-nums">{row.birthYear || '-'}</td>
               <td className="px-3 py-2">{row.gender || '-'}</td>
+              <td className="px-3 py-2">{row.disciplineLabel || row.disciplineCode || '-'}</td>
               <td className="px-3 py-2 tabular-nums">{row.bodyWeightKg ?? '-'}</td>
+              <td className="px-3 py-2 tabular-nums">{row.resultValue ?? '-'}</td>
               <td className="px-3 py-2">{row.division || '-'}</td>
               <td className="px-3 py-2">{row.category || '-'}</td>
               <td className="px-3 py-2">{row.team || '-'}</td>
@@ -320,6 +357,68 @@ function AthletesTable(props: { rows: AthleteMentionRow[] }) {
         </tbody>
       </table>
       {props.rows.length > 500 ? (
+        <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+          Показаны первые 500 строк. Уточните поиск, чтобы сузить список.
+        </div>
+      ) : null}
+    </DataCard>
+  );
+}
+
+function attemptLabel(attempt: PowerTableAttemptRow): string {
+  const result = attempt.result === 'good_lift' ? 'ok' : attempt.result;
+  const value =
+    attempt.repsCount !== undefined
+      ? `${attempt.repsCount} reps @ ${attempt.weightKg}`
+      : `${attempt.weightKg}`;
+  return `${attempt.componentCode}${attempt.attemptNumber}: ${value} ${result}`;
+}
+
+function ResultsTable(props: { rows: AthleteMentionRow[] }) {
+  const rows = props.rows.filter((row) => row.resultValue !== undefined);
+  return (
+    <DataCard title={`Результаты · ${numberLabel(rows.length)}`}>
+      <table className="min-w-full text-sm">
+        <thead className="border-b border-border bg-muted/50">
+          <tr>
+            <th className="px-3 py-2 text-left">Соревнование</th>
+            <th className="px-3 py-2 text-left">Спортсмен</th>
+            <th className="px-3 py-2 text-left">Дисциплина</th>
+            <th className="px-3 py-2 text-left">Дивизион</th>
+            <th className="px-3 py-2 text-left">Вес</th>
+            <th className="px-3 py-2 text-left">Итог</th>
+            <th className="px-3 py-2 text-left">Попытки</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 500).map((row, index) => (
+            <tr
+              key={`${row.meetId}-${row.sportsmanId}-${row.disciplineCode}-${index}`}
+              className="border-b border-border/60"
+            >
+              <td className="px-3 py-2 font-mono text-xs">
+                <a
+                  className="text-primary hover:underline"
+                  href={eventUrl(row.href)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {row.meetId}
+                </a>
+              </td>
+              <td className="px-3 py-2 font-medium">{row.name}</td>
+              <td className="px-3 py-2">{row.disciplineLabel || row.disciplineCode || '-'}</td>
+              <td className="px-3 py-2">{row.division || '-'}</td>
+              <td className="px-3 py-2 tabular-nums">{row.bodyWeightKg ?? '-'}</td>
+              <td className="px-3 py-2 tabular-nums">{row.resultValue ?? '-'}</td>
+              <td className="max-w-xl px-3 py-2 text-xs text-muted-foreground">
+                {(row.attempts ?? []).map(attemptLabel).join('; ') || '-'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length > 500 ? (
         <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
           Показаны первые 500 строк. Уточните поиск, чтобы сузить список.
         </div>
