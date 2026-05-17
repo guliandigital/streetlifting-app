@@ -881,6 +881,118 @@ function disciplineCodeForRow(row: AthleteMentionRow): string {
   return cleanText(row.disciplineCode) || 'classic_total';
 }
 
+function powerTableDisciplineLabel(row: AthleteMentionRow): string {
+  return (
+    truncate(cleanText(row.disciplineLabel), 180) ??
+    truncate(cleanText(row.dsp), 180) ??
+    disciplineCodeForRow(row)
+  );
+}
+
+function inferPowerTableEquipment(
+  label: string,
+): 'pull_up_bar' | 'dip_bars' | 'rings' | 'squat_rack' {
+  const normalized = label.toLowerCase();
+  if (/dip|брусь|отжим/i.test(normalized)) return 'dip_bars';
+  if (/squat|присед/i.test(normalized)) return 'squat_rack';
+  if (/ring|кольц/i.test(normalized)) return 'rings';
+  return 'pull_up_bar';
+}
+
+function powerTableDisciplineSpecs(data: PowerTableOpenData): Array<{
+  code: string;
+  label: string;
+  equipment: 'pull_up_bar' | 'dip_bars' | 'rings' | 'squat_rack';
+}> {
+  const specs = new Map<
+    string,
+    { code: string; label: string; equipment: 'pull_up_bar' | 'dip_bars' | 'rings' | 'squat_rack' }
+  >();
+
+  for (const row of data.athleteMentions) {
+    const code = disciplineCodeForRow(row);
+    if (!code.startsWith('powertable_') || specs.has(code)) continue;
+    const label = powerTableDisciplineLabel(row);
+    specs.set(code, {
+      code,
+      label,
+      equipment: inferPowerTableEquipment(label),
+    });
+  }
+
+  return Array.from(specs.values());
+}
+
+async function ensurePowerTableDisciplines(
+  data: PowerTableOpenData,
+  dryRun: boolean,
+): Promise<Counters> {
+  const counters = emptyCounters();
+  const specs = powerTableDisciplineSpecs(data);
+  if (specs.length === 0) return counters;
+
+  const existing = await prisma.discipline.findMany({
+    where: { code: { in: specs.map((spec) => spec.code) } },
+    select: {
+      id: true,
+      code: true,
+      components: { select: { id: true, code: true } },
+    },
+  });
+  const existingByCode = new Map(existing.map((discipline) => [discipline.code, discipline]));
+
+  for (const spec of specs) {
+    const current = existingByCode.get(spec.code);
+    if (dryRun) {
+      if (current) counters.updated++;
+      else counters.created++;
+      continue;
+    }
+
+    const dataRow = {
+      nameRu: spec.label,
+      nameEn: spec.label,
+      family: 'weighted_calisthenics' as const,
+      format: 'reps_to_failure' as const,
+      equipment: spec.equipment,
+      attemptCount: 1,
+      fixedWeightKg: null,
+      applyVeteranCoefficient: true,
+    };
+
+    const discipline = current
+      ? await prisma.discipline.update({
+          where: { id: current.id },
+          data: dataRow,
+          select: { id: true, components: { select: { code: true } } },
+        })
+      : await prisma.discipline.create({
+          data: { code: spec.code, ...dataRow },
+          select: { id: true, components: { select: { code: true } } },
+        });
+
+    if (current) counters.updated++;
+    else counters.created++;
+
+    if (!discipline.components.some((component) => component.code === 'result')) {
+      await prisma.disciplineComponent.create({
+        data: {
+          disciplineId: discipline.id,
+          code: 'result',
+          nameRu: 'Результат PowerTable',
+          nameEn: 'PowerTable result',
+          equipment: spec.equipment,
+          order: 1,
+          attemptCount: 1,
+          fixedWeightKg: null,
+        },
+      });
+    }
+  }
+
+  return counters;
+}
+
 function resultValueForRow(row: AthleteMentionRow): number | null {
   return parseNumber(row.resultValue);
 }
@@ -1150,6 +1262,16 @@ async function importNominations(
     },
   });
   const disciplinesByCode = new Map(disciplines.map((discipline) => [discipline.code, discipline]));
+  if (dryRun) {
+    for (const spec of powerTableDisciplineSpecs(data)) {
+      if (disciplinesByCode.has(spec.code)) continue;
+      disciplinesByCode.set(spec.code, {
+        id: `dry-discipline:${spec.code}`,
+        code: spec.code,
+        components: [],
+      });
+    }
+  }
   if (!disciplinesByCode.has('classic_total')) {
     nominations.skipped = data.athleteMentions.length;
     return { divisions, weightClasses, nominations, attempts };
@@ -1640,6 +1762,7 @@ if (dryRun) console.log('Mode: dry-run, no database writes');
 const federationCounters = emptyCounters();
 const federationLikeCounters = await importFederationLikeReferences(snapshot, dryRun);
 const federationTagCounters = await ensureFederationTags(dryRun);
+const disciplineCounters = await ensurePowerTableDisciplines(snapshot, dryRun);
 const chapterCounters = emptyCounters();
 const competitionCounters = emptyCounters();
 const nominationCounters = {
@@ -1680,6 +1803,7 @@ logCounters('federation', federationCounters);
 logCounters('powertable_federations', federationLikeCounters.federations);
 logCounters('powertable_clubs', federationLikeCounters.clubs);
 logCounters('federation_tags', federationTagCounters);
+logCounters('powertable_disciplines', disciplineCounters);
 logCounters('federation_chapters', chapterCounters);
 logCounters('competitions', competitionCounters);
 logCounters('competition_divisions', nominationCounters.divisions);

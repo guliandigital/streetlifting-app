@@ -209,6 +209,74 @@ function countDisciplines(rows) {
   return new Set(rows.map((row) => row.disciplineCode).filter(Boolean)).size;
 }
 
+function uniqueStrings(values) {
+  return Array.from(new Set(values.map(nonEmptyString).filter(Boolean)));
+}
+
+function competitionKey(row) {
+  const fed = nonEmptyString(row.fed);
+  const meetId = nonEmptyString(String(row.meetId ?? ''));
+  return fed && meetId ? `${fed}:${meetId}` : null;
+}
+
+function isoDate(year, month, day) {
+  const yyyy = Number(year);
+  const mm = Number(month);
+  const dd = Number(day);
+  if (yyyy < 2000 || yyyy > 2100 || mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  return `${String(yyyy).padStart(4, '0')}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
+function inferDateRange(text) {
+  const source = String(text ?? '');
+  const fullRange = source.match(
+    /(\d{1,2})[.-](\d{1,2})\s*[-–—]\s*(\d{1,2})[.-](\d{1,2})[.-](\d{4})/,
+  );
+  if (fullRange) {
+    return {
+      startDate: isoDate(fullRange[5], fullRange[2], fullRange[1]),
+      endDate: isoDate(fullRange[5], fullRange[4], fullRange[3]),
+      index: fullRange.index ?? -1,
+    };
+  }
+
+  const sameMonthRange = source.match(/(\d{1,2})\s*[-–—]\s*(\d{1,2})[.-](\d{1,2})[.-](\d{4})/);
+  if (sameMonthRange) {
+    return {
+      startDate: isoDate(sameMonthRange[4], sameMonthRange[3], sameMonthRange[1]),
+      endDate: isoDate(sameMonthRange[4], sameMonthRange[3], sameMonthRange[2]),
+      index: sameMonthRange.index ?? -1,
+    };
+  }
+
+  const singleDate = source.match(/(\d{1,2})[.-](\d{1,2})[.-](\d{4})/);
+  if (singleDate) {
+    const date = isoDate(singleDate[3], singleDate[2], singleDate[1]);
+    return { startDate: date, endDate: date, index: singleDate.index ?? -1 };
+  }
+
+  return { startDate: null, endDate: null, index: -1 };
+}
+
+function inferCityBeforeDate(text, dateIndex) {
+  if (dateIndex <= 0) return null;
+  const beforeDate = String(text ?? '')
+    .slice(0, dateIndex)
+    .replace(/\s+/g, ' ')
+    .replace(/[,/\s]+$/g, '')
+    .trim();
+  const parts = beforeDate
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const city = parts
+    .at(-1)
+    ?.replace(/^.*\/\s*/, '')
+    .trim();
+  if (!city || /\b(россия|республика|область|край|округ)\b/i.test(city)) return null;
+  return city;
+}
+
 async function readCompetitionRows(inputDir, federationCodes, fallbackRows) {
   const explicitRows = await readJsonIfExists(
     path.join(inputDir, 'powertable-public-competitions.json'),
@@ -227,15 +295,40 @@ async function readCompetitionRows(inputDir, federationCodes, fallbackRows) {
         ).flat();
   if (rows.length === 0) return fallbackRows;
 
-  const fallbackByKey = new Map(fallbackRows.map((row) => [`${row.fed}:${row.meetId}`, row]));
-  return rows.map((row) => ({
-    ...row,
-    ...cleanObject({
-      city: row.city || fallbackByKey.get(`${row.fed}:${row.meetId}`)?.city,
-      startDate: row.startDate || fallbackByKey.get(`${row.fed}:${row.meetId}`)?.startDate,
-      endDate: row.endDate || fallbackByKey.get(`${row.fed}:${row.meetId}`)?.endDate,
-    }),
-  }));
+  const fallbackByKey = new Map(fallbackRows.map((row) => [competitionKey(row), row]));
+  const fallbackByMeetId = new Map(
+    fallbackRows.map((row) => [String(row.meetId ?? ''), row]).filter(([meetId]) => meetId),
+  );
+  const mergedByKey = new Map(
+    fallbackRows.map((row) => [competitionKey(row), row]).filter(([key]) => key),
+  );
+
+  for (const row of rows) {
+    const meetId = String(row.meetId ?? '');
+    const fallback = fallbackByMeetId.get(meetId);
+    const fed = nonEmptyString(row.fed) ?? fallback?.fed ?? federationCodes[0];
+    const name = row.name || row.title || fallback?.name;
+    const inferredDateRange = inferDateRange(name);
+    const normalized = cleanObject({
+      ...fallback,
+      ...row,
+      fed,
+      meetId,
+      name,
+      href: row.href || fallback?.href || `sorev?nom=${meetId}`,
+      city: row.city || fallback?.city || inferCityBeforeDate(name, inferredDateRange.index ?? -1),
+      startDate: row.startDate || fallback?.startDate || inferredDateRange.startDate,
+      endDate: row.endDate || fallback?.endDate || inferredDateRange.endDate,
+    });
+    const key = competitionKey(normalized);
+    if (!key) continue;
+    mergedByKey.set(key, {
+      ...(fallbackByKey.get(key) ?? {}),
+      ...normalized,
+    });
+  }
+
+  return Array.from(mergedByKey.values());
 }
 
 function referenceEndpoint(endpoint) {
@@ -261,14 +354,27 @@ const basePath = path.resolve(readArg('--base') ?? outputPath);
 
 const baseSnapshot = await readJson(basePath);
 const manifest = await readJson(path.join(inputDir, 'manifest.json'));
-const federationCodes =
-  Array.isArray(manifest.feds) && manifest.feds.length > 0 ? manifest.feds : ['0010'];
+const federationCodes = uniqueStrings([
+  ...(baseSnapshot.source?.federationCodes ?? []),
+  baseSnapshot.source?.federationCode,
+  ...(Array.isArray(manifest.feds) && manifest.feds.length > 0 ? manifest.feds : ['0010']),
+]);
 const loadedPublicResults = await readJsonIfExists(
   path.join(inputDir, 'powertable-public-results.json'),
   null,
 );
+const loadedResultMeetIds = new Set(
+  (loadedPublicResults ?? []).map((entry) => String(entry.meetId ?? '')).filter(Boolean),
+);
 const publicResults =
-  loadedPublicResults?.length > 0 ? loadedPublicResults : (baseSnapshot.athleteMentions ?? []);
+  loadedPublicResults?.length > 0
+    ? [
+        ...(baseSnapshot.athleteMentions ?? []).filter(
+          (row) => !loadedResultMeetIds.has(String(row.meetId ?? '')),
+        ),
+        ...loadedPublicResults,
+      ]
+    : (baseSnapshot.athleteMentions ?? []);
 const competitions = await readCompetitionRows(
   inputDir,
   federationCodes,
@@ -370,8 +476,10 @@ const snapshot = {
     resultRows: athleteMentions.filter((row) => row.resultValue !== undefined).length,
     attempts: athleteMentions.reduce((total, row) => total + (row.attempts?.length ?? 0), 0),
     disciplines: countDisciplines(athleteMentions),
-    disciplinePages:
-      manifest.summary.publicDisciplinePageCount || baseSnapshot.counts?.disciplinePages || 0,
+    disciplinePages: Math.max(
+      manifest.summary.publicDisciplinePageCount || 0,
+      baseSnapshot.counts?.disciplinePages || 0,
+    ),
     normRows: publicReferences.normRows.length,
     recordRows: publicReferences.recordRows.length,
     athleteRatingRows: publicReferences.athleteRatingRows.length,
