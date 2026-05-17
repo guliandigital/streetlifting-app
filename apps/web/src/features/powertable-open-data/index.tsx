@@ -58,6 +58,39 @@ interface PowerTableAttemptRow {
   repsCount?: number;
 }
 
+interface PowerTableReferenceRow {
+  dsp?: string;
+  disciplineCode?: string;
+  disciplineLabel?: string;
+  levelCode?: string;
+  levelLabel?: string;
+  countryCode?: string;
+  countryLabel?: string;
+  year?: string;
+  federationFilter?: string;
+  dataDate?: string | null;
+  cells: string[];
+}
+
+interface PowerTablePublicReferences {
+  generatedAt: string;
+  federationCode: string;
+  disciplines: Array<{
+    dsp: string;
+    disciplineCode: string;
+    disciplineLabel: string;
+  }>;
+  endpoints: Array<{
+    key: string;
+    url: string;
+    status: number;
+  }>;
+  normRows: PowerTableReferenceRow[];
+  recordRows: PowerTableReferenceRow[];
+  athleteRatingRows: PowerTableReferenceRow[];
+  coachRatingRows: PowerTableReferenceRow[];
+}
+
 interface PowerTableOpenData {
   generatedAt: string;
   source: {
@@ -79,6 +112,11 @@ interface PowerTableOpenData {
     attempts?: number;
     disciplines?: number;
     disciplinePages?: number;
+    normRows?: number;
+    recordRows?: number;
+    athleteRatingRows?: number;
+    coachRatingRows?: number;
+    publicReferenceEndpoints?: number;
   };
   notes: string[];
   federations: FederationRow[];
@@ -86,14 +124,30 @@ interface PowerTableOpenData {
   cities: CityRow[];
   competitions: CompetitionRow[];
   athleteMentions: AthleteMentionRow[];
+  publicReferences?: PowerTablePublicReferences;
 }
 
-type Tab = 'athletes' | 'results' | 'competitions' | 'federations' | 'cities' | 'clubs' | 'judges';
+type Tab =
+  | 'athletes'
+  | 'results'
+  | 'competitions'
+  | 'norms'
+  | 'records'
+  | 'athleteRatings'
+  | 'coachRatings'
+  | 'federations'
+  | 'cities'
+  | 'clubs'
+  | 'judges';
 
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: 'athletes', label: 'Спортсмены' },
   { id: 'results', label: 'Результаты' },
   { id: 'competitions', label: 'Соревнования ISF' },
+  { id: 'norms', label: 'Нормативы' },
+  { id: 'records', label: 'Рекорды' },
+  { id: 'athleteRatings', label: 'Рейтинг спортсменов' },
+  { id: 'coachRatings', label: 'Рейтинг тренеров' },
   { id: 'federations', label: 'Федерации' },
   { id: 'cities', label: 'Города' },
   { id: 'clubs', label: 'Клубы' },
@@ -108,6 +162,23 @@ function includesQuery(values: Array<string | number | null | undefined>, query:
   if (!query) return true;
   const haystack = values.filter(Boolean).join(' ').toLowerCase();
   return haystack.includes(query);
+}
+
+function referenceIncludesQuery(row: PowerTableReferenceRow, query: string): boolean {
+  return includesQuery(
+    [
+      row.dsp,
+      row.disciplineCode,
+      row.disciplineLabel,
+      row.levelLabel,
+      row.countryCode,
+      row.countryLabel,
+      row.year,
+      row.dataDate,
+      ...row.cells,
+    ],
+    query,
+  );
 }
 
 function eventUrl(href: string): string {
@@ -198,6 +269,38 @@ export default function PowerTableOpenDataFeature() {
     [data?.clubs, normalizedQuery],
   );
 
+  const normRows = useMemo(
+    () =>
+      (data?.publicReferences?.normRows ?? []).filter((row) =>
+        referenceIncludesQuery(row, normalizedQuery),
+      ),
+    [data?.publicReferences?.normRows, normalizedQuery],
+  );
+
+  const recordRows = useMemo(
+    () =>
+      (data?.publicReferences?.recordRows ?? []).filter((row) =>
+        referenceIncludesQuery(row, normalizedQuery),
+      ),
+    [data?.publicReferences?.recordRows, normalizedQuery],
+  );
+
+  const athleteRatingRows = useMemo(
+    () =>
+      (data?.publicReferences?.athleteRatingRows ?? []).filter((row) =>
+        referenceIncludesQuery(row, normalizedQuery),
+      ),
+    [data?.publicReferences?.athleteRatingRows, normalizedQuery],
+  );
+
+  const coachRatingRows = useMemo(
+    () =>
+      (data?.publicReferences?.coachRatingRows ?? []).filter((row) =>
+        referenceIncludesQuery(row, normalizedQuery),
+      ),
+    [data?.publicReferences?.coachRatingRows, normalizedQuery],
+  );
+
   return (
     <div data-testid="powertable-open-data" className="mx-auto max-w-7xl px-6 py-8 space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -206,7 +309,8 @@ export default function PowerTableOpenDataFeature() {
           <h1 className="text-3xl font-semibold tracking-tight">Открытые данные стритлифтинга</h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
             Публичная read-only выгрузка PowerTable по ISF: федерации, клубы, города, соревнования и
-            строки спортсменов из открытых рабочих протоколов по всем доступным дисциплинам.
+            строки спортсменов из открытых рабочих протоколов по всем доступным дисциплинам. Также
+            добавлены публичные нормативы, рекорды и рейтинги PowerTable.
           </p>
         </div>
         <Link to="/login" className="text-sm font-semibold text-primary hover:underline">
@@ -237,6 +341,10 @@ export default function PowerTableOpenDataFeature() {
             <Metric label="Дисциплины" value={data.counts.disciplines ?? 0} />
             <Metric label="Результаты" value={data.counts.resultRows ?? 0} />
             <Metric label="Попытки" value={data.counts.attempts ?? 0} />
+            <Metric label="Нормативы" value={data.counts.normRows ?? 0} />
+            <Metric label="Рекорды" value={data.counts.recordRows ?? 0} />
+            <Metric label="Рейтинг спортсменов" value={data.counts.athleteRatingRows ?? 0} />
+            <Metric label="Рейтинг тренеров" value={data.counts.coachRatingRows ?? 0} />
           </section>
 
           <Card>
@@ -247,7 +355,7 @@ export default function PowerTableOpenDataFeature() {
                   className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="ФИО, город, дисциплина, федерация, id соревнования"
+                  placeholder="ФИО, город, дисциплина, федерация, рекорд, норматив, id соревнования"
                 />
               </label>
               <div className="flex flex-wrap items-end gap-2">
@@ -272,6 +380,27 @@ export default function PowerTableOpenDataFeature() {
           {activeTab === 'athletes' ? <AthletesTable rows={athletes} /> : null}
           {activeTab === 'results' ? <ResultsTable rows={athletes} /> : null}
           {activeTab === 'competitions' ? <CompetitionsTable rows={competitions} /> : null}
+          {activeTab === 'norms' ? (
+            <ReferenceTable rows={normRows} title="Нормативы PowerTable" showDiscipline />
+          ) : null}
+          {activeTab === 'records' ? (
+            <ReferenceTable rows={recordRows} title="Рекорды PowerTable" showDiscipline showLevel />
+          ) : null}
+          {activeTab === 'athleteRatings' ? (
+            <ReferenceTable
+              rows={athleteRatingRows}
+              title="Рейтинг спортсменов PowerTable · за все время"
+              showDiscipline
+              showYear
+            />
+          ) : null}
+          {activeTab === 'coachRatings' ? (
+            <ReferenceTable
+              rows={coachRatingRows}
+              title="Рейтинг тренеров PowerTable · за все время"
+              showYear
+            />
+          ) : null}
           {activeTab === 'federations' ? (
             <FederationLikeTable rows={federations} title="Федерации PowerTable" />
           ) : null}
@@ -419,6 +548,76 @@ function ResultsTable(props: { rows: AthleteMentionRow[] }) {
         </tbody>
       </table>
       {rows.length > 500 ? (
+        <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+          Показаны первые 500 строк. Уточните поиск, чтобы сузить список.
+        </div>
+      ) : null}
+    </DataCard>
+  );
+}
+
+function ReferenceTable(props: {
+  rows: PowerTableReferenceRow[];
+  title: string;
+  showDiscipline?: boolean;
+  showLevel?: boolean;
+  showYear?: boolean;
+}) {
+  const visibleRows = props.rows.slice(0, 500);
+  const maxCells = Math.min(12, Math.max(1, ...visibleRows.map((row) => row.cells.length)));
+
+  return (
+    <DataCard title={`${props.title} · ${numberLabel(props.rows.length)}`}>
+      <table className="min-w-full text-sm">
+        <thead className="border-b border-border bg-muted/50">
+          <tr>
+            {props.showDiscipline ? <th className="px-3 py-2 text-left">Дисциплина</th> : null}
+            {props.showLevel ? <th className="px-3 py-2 text-left">Уровень</th> : null}
+            {props.showYear ? <th className="px-3 py-2 text-left">Период</th> : null}
+            <th className="px-3 py-2 text-left">Дата данных</th>
+            {Array.from({ length: maxCells }, (_, index) => (
+              <th key={index} className="px-3 py-2 text-left">
+                {index + 1}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {visibleRows.map((row, index) => (
+            <tr
+              key={`${row.dsp ?? 'coach'}-${row.levelLabel ?? row.year ?? 'row'}-${index}`}
+              className="border-b border-border/60"
+            >
+              {props.showDiscipline ? (
+                <td className="px-3 py-2">
+                  <div className="font-medium">{row.disciplineLabel || '-'}</div>
+                  <div className="font-mono text-xs text-muted-foreground">
+                    {row.disciplineCode || row.dsp || '-'}
+                  </div>
+                </td>
+              ) : null}
+              {props.showLevel ? (
+                <td className="px-3 py-2">
+                  {row.levelLabel || '-'}
+                  {row.countryLabel ? (
+                    <span className="block text-xs text-muted-foreground">{row.countryLabel}</span>
+                  ) : null}
+                </td>
+              ) : null}
+              {props.showYear ? (
+                <td className="px-3 py-2">{row.year === 'all' ? 'За все время' : row.year}</td>
+              ) : null}
+              <td className="px-3 py-2 text-xs text-muted-foreground">{row.dataDate || '-'}</td>
+              {Array.from({ length: maxCells }, (_, cellIndex) => (
+                <td key={cellIndex} className="px-3 py-2">
+                  {row.cells[cellIndex] || '-'}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {props.rows.length > 500 ? (
         <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
           Показаны первые 500 строк. Уточните поиск, чтобы сузить список.
         </div>
