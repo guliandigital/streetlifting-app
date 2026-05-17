@@ -26,6 +26,9 @@ interface CompetitionRow {
   name: string;
   leadingDate: string;
   href: string;
+  city?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 interface AthleteMentionRow {
@@ -328,8 +331,9 @@ function CompetitionsTable(props: { rows: CompetitionRow[] }) {
           <tr>
             <th className="px-3 py-2 text-left">ID</th>
             <th className="px-3 py-2 text-left">Регион</th>
+            <th className="px-3 py-2 text-left">Город</th>
+            <th className="px-3 py-2 text-left">Дата</th>
             <th className="px-3 py-2 text-left">Название</th>
-            <th className="px-3 py-2 text-left">Дата в названии</th>
           </tr>
         </thead>
         <tbody>
@@ -346,8 +350,9 @@ function CompetitionsTable(props: { rows: CompetitionRow[] }) {
                 </a>
               </td>
               <td className="px-3 py-2">{row.regionName || '-'}</td>
+              <td className="px-3 py-2">{row.city || '-'}</td>
+              <td className="px-3 py-2 tabular-nums">{row.startDate || row.leadingDate || '-'}</td>
               <td className="px-3 py-2 font-medium">{row.name}</td>
-              <td className="px-3 py-2">{row.leadingDate || '-'}</td>
             </tr>
           ))}
         </tbody>

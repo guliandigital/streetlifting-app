@@ -5,6 +5,7 @@
  * - federation is keyed by PowerTable federation code
  * - public PowerTable federation-like references are keyed by PTF:<code> / PTC:<code>
  * - chapters are keyed by federation + PowerTable region id
+ * - competitions are keyed by federation + PT-<meetId>
  * - athletes are keyed by federationCardNumber = PT:<sportsmanId>
  * - cities are inserted only when no city with the same country/name exists
  *
@@ -34,9 +35,16 @@ interface CityRow {
 }
 
 interface CompetitionRow {
+  fed: string;
   regionId: string;
   regionName: string;
   meetId: string;
+  name: string;
+  leadingDate: string;
+  href: string;
+  city?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 interface AthleteMentionRow {
@@ -108,6 +116,15 @@ function truncate(value: string | undefined, max: number): string | undefined {
   return value.length > max ? value.slice(0, max) : value;
 }
 
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function parseIsoDate(value: string | null | undefined): string | null {
+  const trimmed = cleanText(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
 function parseBirthYear(value: string): string | null {
   const trimmed = cleanText(value);
   if (/^\d{4}$/.test(trimmed)) return `${trimmed}-01-01`;
@@ -159,12 +176,18 @@ function countryCodeForCompetition(row: CompetitionRow | undefined): string {
   return 'RU';
 }
 
+function powerTableHrefUrl(href: string | null | undefined): string | undefined {
+  const cleanHref = cleanText(href);
+  if (!cleanHref) return undefined;
+  if (cleanHref.startsWith('http://') || cleanHref.startsWith('https://')) {
+    return truncate(cleanHref, 2048);
+  }
+  if (cleanHref.startsWith('/')) return truncate(`https://powertable.ru${cleanHref}`, 2048);
+  return truncate(`https://powertable.ru/api/hs/p/${cleanHref}`, 2048);
+}
+
 function powerTableUrl(row: FederationRow): string | undefined {
-  const href = cleanText(row.href);
-  if (!href) return undefined;
-  if (href.startsWith('http://') || href.startsWith('https://')) return truncate(href, 2048);
-  if (href.startsWith('/')) return truncate(`https://powertable.ru${href}`, 2048);
-  return truncate(`https://powertable.ru/api/hs/p/${href}`, 2048);
+  return powerTableHrefUrl(row.href);
 }
 
 function federationDisplayName(row: FederationRow): string {
@@ -447,6 +470,101 @@ async function importChapters(
   return counters;
 }
 
+function competitionCode(row: CompetitionRow): string {
+  return `PT-${cleanText(row.meetId)}`.slice(0, 64);
+}
+
+function competitionStatus(startDate: string): 'draft' | 'archived' {
+  return startDate < todayIsoDate() ? 'archived' : 'draft';
+}
+
+function competitionDescription(row: CompetitionRow): string {
+  const sourceUrl = powerTableHrefUrl(row.href);
+  const parts = [
+    'Imported from PowerTable public snapshot.',
+    sourceUrl ? `Source: ${sourceUrl}` : undefined,
+    cleanText(row.regionName) ? `Region: ${cleanText(row.regionName)}` : undefined,
+  ].filter(Boolean);
+  return parts.join('\n');
+}
+
+async function importCompetitions(
+  data: PowerTableOpenData,
+  federationId: string | null,
+  dryRun: boolean,
+): Promise<Counters> {
+  const counters: Counters = { created: 0, updated: 0, skipped: 0 };
+  const rows = new Map<string, CompetitionRow>();
+  for (const row of data.competitions) {
+    const meetId = cleanText(row.meetId);
+    const startDate = parseIsoDate(row.startDate);
+    const endDate = parseIsoDate(row.endDate) ?? startDate;
+    if (!meetId || !startDate || !endDate || endDate < startDate) {
+      counters.skipped++;
+      continue;
+    }
+    rows.set(meetId, row);
+  }
+
+  if (!federationId) {
+    counters.skipped += rows.size;
+    return counters;
+  }
+
+  for (const row of rows.values()) {
+    const code = competitionCode(row);
+    const startDate = parseIsoDate(row.startDate);
+    const endDate = parseIsoDate(row.endDate) ?? startDate;
+    if (!startDate || !endDate) {
+      counters.skipped++;
+      continue;
+    }
+
+    const existing = await prisma.competition.findUnique({
+      where: { federationId_code: { federationId, code } },
+    });
+
+    if (dryRun) {
+      if (existing) counters.updated++;
+      else counters.created++;
+      continue;
+    }
+
+    const competitionData = {
+      nameRu: truncate(cleanText(row.name), 200) ?? `PowerTable ${cleanText(row.meetId)}`,
+      nameEn: truncate(cleanText(row.name), 200) ?? `PowerTable ${cleanText(row.meetId)}`,
+      description: truncate(competitionDescription(row), 4000),
+      rulebook: 'ISF v5.1',
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      city: truncate(cleanText(row.city), 120),
+      timezone: 'Europe/Moscow',
+      status: competitionStatus(startDate),
+      entryFeeKopecks: 0n,
+      isOnlineRegistrationOpen: false,
+    };
+
+    if (existing) {
+      await prisma.competition.update({
+        where: { id: existing.id },
+        data: competitionData,
+      });
+      counters.updated++;
+    } else {
+      await prisma.competition.create({
+        data: {
+          federationId,
+          code,
+          ...competitionData,
+        },
+      });
+      counters.created++;
+    }
+  }
+
+  return counters;
+}
+
 async function ensurePowerTableRegion(countryCode: string, countryName: string, dryRun: boolean) {
   const country = await prisma.country.findUnique({ where: { codeIso2: countryCode } });
   if (!country) {
@@ -631,6 +749,7 @@ const federationResult = await ensureSourceFederation(snapshot, dryRun);
 const federationLikeCounters = await importFederationLikeReferences(snapshot, dryRun);
 const federationTagCounters = await ensureFederationTags(dryRun);
 const chapterCounters = await importChapters(snapshot, federationResult.id, dryRun);
+const competitionCounters = await importCompetitions(snapshot, federationResult.id, dryRun);
 const cityCounters = await importCities(snapshot, dryRun);
 const athleteCounters = await importAthletes(snapshot, dryRun);
 
@@ -639,6 +758,7 @@ logCounters('powertable_federations', federationLikeCounters.federations);
 logCounters('powertable_clubs', federationLikeCounters.clubs);
 logCounters('federation_tags', federationTagCounters);
 logCounters('federation_chapters', chapterCounters);
+logCounters('competitions', competitionCounters);
 logCounters('cities', cityCounters);
 logCounters('athletes', athleteCounters);
 console.log('judges: skipped=all, reason=PowerTable public snapshot does not expose judge catalog');
