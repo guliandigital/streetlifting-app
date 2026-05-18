@@ -488,7 +488,7 @@ const snapshot = {
   },
   notes: [
     'Это публичная read-only выгрузка PowerTable. Закрытые персональные поля и каталог судей без federation sk не доступны.',
-    'Собраны все открытые wt-вкладки PowerTable по ISF: classic total, single-lift, multirep и доступные WC/weighted-calisthenics строки.',
+    'Собраны открытые wt-вкладки PowerTable по streetlifting-федерациям: classic total, single-lift, multirep и доступные WC/weighted-calisthenics строки.',
     'Исторические попытки импортируются из открытого протокола; явные no-lift берутся из разметки PowerTable, итоговые места и суммы сохраняются как справочные значения.',
     'PowerTable norm_in/rec_in/rating_in/rating_coach_in собраны как read-only публичные справочные строки; рейтинги и рекорды показываются отдельно и не записываются в операционную БД без ручной ратификации.',
   ],

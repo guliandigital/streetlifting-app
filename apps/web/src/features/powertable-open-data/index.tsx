@@ -146,7 +146,7 @@ type Tab =
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: 'athletes', label: 'Спортсмены' },
   { id: 'results', label: 'Результаты' },
-  { id: 'competitions', label: 'Соревнования ISF' },
+  { id: 'competitions', label: 'Соревнования' },
   { id: 'norms', label: 'Нормативы' },
   { id: 'records', label: 'Рекорды' },
   { id: 'athleteRatings', label: 'Рейтинг спортсменов' },
@@ -317,9 +317,10 @@ export default function PowerTableOpenDataFeature() {
           <div className="text-sm font-semibold text-primary">PowerTable public import</div>
           <h1 className="text-3xl font-semibold tracking-tight">Открытые данные стритлифтинга</h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
-            Публичная read-only выгрузка PowerTable по ISF: федерации, клубы, города, соревнования и
-            строки спортсменов из открытых рабочих протоколов по всем доступным дисциплинам. Также
-            добавлены публичные нормативы, рекорды и рейтинги PowerTable.
+            Публичная read-only выгрузка PowerTable по streetlifting-федерациям: федерации, клубы,
+            города, соревнования и строки спортсменов из открытых рабочих протоколов по всем
+            доступным дисциплинам. Также добавлены публичные нормативы, рекорды и рейтинги
+            PowerTable.
           </p>
         </div>
         <Link to="/login" className="text-sm font-semibold text-primary hover:underline">
