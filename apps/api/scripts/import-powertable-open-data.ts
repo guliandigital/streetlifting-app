@@ -237,6 +237,26 @@ function splitName(fullName: string): { lastName: string; firstName: string; mid
   };
 }
 
+function powerTableAthleteIdentity(row: AthleteMentionRow): {
+  lastName: string;
+  firstName: string;
+  middleName: string | null;
+  dateOfBirth: Date;
+  gender: Gender;
+} | null {
+  const dateOfBirth = parseBirthYear(row.birthYear);
+  const gender = genderFromPowerTable(row.gender);
+  if (!dateOfBirth || !gender) return null;
+  const { lastName, firstName, middleName } = splitName(row.name);
+  return {
+    lastName,
+    firstName,
+    middleName: middleName ?? null,
+    dateOfBirth: new Date(dateOfBirth),
+    gender,
+  };
+}
+
 function isSelfTeam(team: string): boolean {
   const normalized = cleanText(team).toLowerCase();
   return !normalized || normalized === '-' || normalized === 'self' || normalized === 'личник';
@@ -881,6 +901,29 @@ function disciplineCodeForRow(row: AthleteMentionRow): string {
   return cleanText(row.disciplineCode) || 'classic_total';
 }
 
+async function findPowerTableAthlete(
+  row: AthleteMentionRow,
+  sportsmanId: string,
+): Promise<{
+  id: string;
+} | null> {
+  const cardNumber = `PT:${sportsmanId}`;
+  const duplicateByCard = await prisma.athlete.findMany({
+    where: { federationCardNumber: cardNumber },
+    select: { id: true },
+    take: 2,
+  });
+  if (duplicateByCard.length > 1) return null;
+  if (duplicateByCard[0]) return duplicateByCard[0];
+
+  const identity = powerTableAthleteIdentity(row);
+  if (!identity) return null;
+  return prisma.athlete.findFirst({
+    where: identity,
+    select: { id: true },
+  });
+}
+
 function powerTableDisciplineLabel(row: AthleteMentionRow): string {
   return (
     truncate(cleanText(row.disciplineLabel), 180) ??
@@ -1298,10 +1341,7 @@ async function importNominations(
       continue;
     }
 
-    const athlete = await prisma.athlete.findFirst({
-      where: { federationCardNumber: `PT:${sportsmanId}` },
-      select: { id: true },
-    });
+    const athlete = await findPowerTableAthlete(row, sportsmanId);
     if (!athlete) {
       nominations.skipped++;
       continue;
@@ -1676,15 +1716,13 @@ async function importAthletes(data: PowerTableOpenData, dryRun: boolean): Promis
   }
 
   for (const [sportsmanId, rows] of grouped) {
-    const row = rows[0]!;
-    const dateOfBirth = parseBirthYear(row.birthYear);
-    const gender = genderFromPowerTable(row.gender);
-    if (!dateOfBirth || !gender) {
+    const row = rows.find(powerTableAthleteIdentity) ?? rows[0]!;
+    const identity = powerTableAthleteIdentity(row);
+    if (!identity) {
       counters.skipped++;
       continue;
     }
 
-    const { lastName, firstName, middleName } = splitName(row.name);
     const cardNumber = `PT:${sportsmanId}`;
     const duplicateByCard = await prisma.athlete.findMany({
       where: { federationCardNumber: cardNumber },
@@ -1696,29 +1734,23 @@ async function importAthletes(data: PowerTableOpenData, dryRun: boolean): Promis
       continue;
     }
 
-    const existing =
-      duplicateByCard[0] ??
-      (await prisma.athlete.findFirst({
-        where: {
-          lastName,
-          firstName,
-          middleName: middleName ?? null,
-          dateOfBirth: new Date(dateOfBirth),
-          gender,
-        },
-      }));
+    const existing = duplicateByCard[0] ?? (await prisma.athlete.findFirst({ where: identity }));
 
     const countryCode = countryCodeForCompetition(competitionsByMeetId.get(row.meetId));
     const clubName = athleteClubName(rows);
+    const federationCardNumber =
+      existing?.federationCardNumber && existing.federationCardNumber !== cardNumber
+        ? existing.federationCardNumber
+        : cardNumber;
     const athleteData = {
-      lastName,
-      firstName,
-      ...(middleName ? { middleName } : {}),
-      dateOfBirth: new Date(dateOfBirth),
-      gender,
+      lastName: identity.lastName,
+      firstName: identity.firstName,
+      ...(identity.middleName ? { middleName: identity.middleName } : {}),
+      dateOfBirth: identity.dateOfBirth,
+      gender: identity.gender,
       countryCode,
       ...(clubName ? { clubName } : {}),
-      federationCardNumber: cardNumber,
+      federationCardNumber,
     };
 
     if (dryRun) {
