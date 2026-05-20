@@ -5,6 +5,7 @@ import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
 import { validateUuidParams } from '../lib/params.js';
+import { createSyncOutboxEvent, outboxPayload } from '../lib/sync-outbox.js';
 
 const log = moduleLogger('competitions');
 
@@ -64,6 +65,24 @@ function assertSupportedTimezone(timezone: string): boolean {
   const supportedValuesOf = Intl.supportedValuesOf?.bind(Intl);
   if (!supportedValuesOf) return true;
   return supportedValuesOf('timeZone').includes(timezone);
+}
+
+function tenantForOutbox(federation: {
+  isfTenantCode: string | null;
+  countryCode: string;
+}): string {
+  return federation.isfTenantCode ?? federation.countryCode.toLowerCase();
+}
+
+function competitionEventType(
+  beforeStatus: string,
+  nextStatus: string,
+): 'competition.updated' | 'competition.finalized' | 'competition.protocol.corrected' {
+  if (beforeStatus !== 'finalized' && nextStatus === 'finalized') return 'competition.finalized';
+  if (beforeStatus === 'finalized' || beforeStatus === 'archived') {
+    return 'competition.protocol.corrected';
+  }
+  return 'competition.updated';
 }
 
 function toCreateData(data: CompetitionCreate): Prisma.CompetitionUncheckedCreateInput {
@@ -258,7 +277,26 @@ export const competitionsPlugin: FeaturePlugin = {
             before: null,
             after: { code: data.code, nameRu: data.nameRu, startDate: data.startDate },
           },
-          (tx) => tx.competition.create({ data: toCreateData(data), include: competitionInclude }),
+          async (tx) => {
+            const created = await tx.competition.create({
+              data: toCreateData(data),
+              include: competitionInclude,
+            });
+            await createSyncOutboxEvent(tx, {
+              eventType: 'competition.created',
+              aggregateType: 'competition',
+              aggregateId: created.id,
+              tenant: tenantForOutbox(federation),
+              payload: outboxPayload({
+                competitionId: created.id,
+                federationId: created.federationId,
+                code: created.code,
+                status: created.status,
+                updatedAt: created.updatedAt.toISOString(),
+              }),
+            });
+            return created;
+          },
         );
         log.info(
           { competitionId: competition.id, federationId: data.federationId },
@@ -283,7 +321,12 @@ export const competitionsPlugin: FeaturePlugin = {
       '/competitions/:id',
       { preHandler: requireAuth() },
       async (req, reply) => {
-        const before = await prisma.competition.findUnique({ where: { id: req.params.id } });
+        const before = await prisma.competition.findUnique({
+          where: { id: req.params.id },
+          include: {
+            federation: { select: { isfTenantCode: true, countryCode: true } },
+          },
+        });
         if (!before) {
           return reply.code(404).send({
             error: {
@@ -323,6 +366,7 @@ export const competitionsPlugin: FeaturePlugin = {
           });
         }
 
+        const eventType = competitionEventType(before.status, parsed.data.status ?? before.status);
         const updated = await audit.withAudit(
           {
             ...audit.fromRequest(req),
@@ -341,12 +385,29 @@ export const competitionsPlugin: FeaturePlugin = {
             },
             after: parsed.data,
           },
-          (tx) =>
-            tx.competition.update({
+          async (tx) => {
+            const result = await tx.competition.update({
               where: { id: req.params.id },
               data: toUpdateData(parsed.data),
               include: competitionInclude,
-            }),
+            });
+            await createSyncOutboxEvent(tx, {
+              eventType,
+              aggregateType: 'competition',
+              aggregateId: result.id,
+              tenant: tenantForOutbox(before.federation),
+              payload: outboxPayload({
+                competitionId: result.id,
+                federationId: result.federationId,
+                code: result.code,
+                beforeStatus: before.status,
+                status: result.status,
+                changedFields: Object.keys(parsed.data).sort(),
+                updatedAt: result.updatedAt.toISOString(),
+              }),
+            });
+            return result;
+          },
         );
 
         return { competition: updated };

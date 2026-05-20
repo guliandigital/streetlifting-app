@@ -4,6 +4,7 @@ import { FederationId } from './ids.js';
 export const Federation = z.object({
   id: FederationId,
   code: z.string().min(2).max(16),
+  isfTenantCode: z.string().optional().nullable(),
   nameRu: z.string().min(1),
   nameEn: z.string().min(1),
   countryCode: z.string().length(2),

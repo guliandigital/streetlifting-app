@@ -187,6 +187,7 @@ model User {
   phone           String?
   telegramHandle  String?
   displayName     String
+  isfPersonId     String?
   passwordHash    String?
   isEmailVerified Boolean  @default(false)
   createdAt       DateTime @default(now()) @db.Timestamptz(6)
@@ -251,6 +252,7 @@ model RefreshToken {
 model Federation {
   id                                String    @id @default(uuid()) @db.Uuid
   code                              String    @unique
+  isfTenantCode                     String?   @unique
   nameRu                            String
   nameEn                            String
   countryCode                       String    @db.Char(2)
@@ -515,6 +517,9 @@ model Athlete {
   lastName             String
   firstName            String
   middleName           String?
+  isfPersonId          String?
+  publicProfileSlug    String?
+  privacyMode          String       @default("public_results")
   dateOfBirth          DateTime     @db.Date
   gender               Gender
   countryCode          String       @db.Char(2)
@@ -676,6 +681,8 @@ model Attempt {
   startedAt       DateTime?     @db.Timestamptz(6)
   decidedAt       DateTime?     @db.Timestamptz(6)
   notes           String?
+  createdAt       DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(6)
 
   nomination      Nomination    @relation(fields: [nominationId], references: [id], onDelete: Cascade)
   component       DisciplineComponent? @relation(fields: [componentId], references: [id], onDelete: Restrict)
@@ -737,6 +744,8 @@ model Record {
   achievedOn      DateTime     @db.Date
   ratifiedAt      DateTime?    @db.Timestamptz(6)
   ratifiedByUserId String?     @db.Uuid
+  revokedAt       DateTime?    @db.Timestamptz(6)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(6)
   notes           String?
 
   federation      Federation?  @relation(fields: [federationId], references: [id], onDelete: SetNull)
@@ -750,6 +759,59 @@ model Record {
   @@unique([scope, federationId, disciplineId, divisionId, weightClassId])
   @@index([scope, achievedOn])
   @@map("record")
+}
+
+model ExternalIdentityLink {
+  id              String    @id @default(uuid()) @db.Uuid
+  system          String
+  entityType      String
+  localEntityId   String    @db.Uuid
+  externalId      String
+  confidence      Float     @default(1)
+  status          String
+  verifiedAt      DateTime? @db.Timestamptz(6)
+  rejectedAt      DateTime? @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@unique([system, entityType, externalId])
+  @@index([entityType, localEntityId])
+  @@map("external_identity_link")
+}
+
+model ApiServiceClient {
+  id            String    @id @default(uuid()) @db.Uuid
+  code          String    @unique
+  name          String
+  tokenHash     String
+  scopes        String[]
+  isActive      Boolean   @default(true)
+  rateLimitRpm  Int       @default(60)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  revokedAt     DateTime? @db.Timestamptz(6)
+
+  @@index([tokenHash])
+  @@map("api_service_client")
+}
+
+model SyncOutbox {
+  id             String    @id @default(uuid()) @db.Uuid
+  eventType      String
+  aggregateType  String
+  aggregateId    String    @db.Uuid
+  tenant         String?
+  schemaVersion  String
+  payload        Json
+  payloadHash    String
+  occurredAt     DateTime  @default(now()) @db.Timestamptz(6)
+  publishedAt    DateTime? @db.Timestamptz(6)
+  attempts        Int       @default(0)
+  nextAttemptAt   DateTime? @db.Timestamptz(6)
+  lastError       String?
+
+  @@index([publishedAt, nextAttemptAt])
+  @@index([eventType, aggregateId])
+  @@map("sync_outbox")
 }
 
 model Attachment {
