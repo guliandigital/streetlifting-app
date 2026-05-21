@@ -36,6 +36,7 @@ export * from './plate-input.js';
 export * from './veteran-coefficient.js';
 export * from './consent.js';
 export * from './attachment.js';
+export * from './isf-export.js';
 
 export * as presets from './presets/index.js';
 export * as calculations from './calculations/index.js';

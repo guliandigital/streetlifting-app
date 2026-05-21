@@ -8,6 +8,7 @@ export const User = z.object({
   phone: z.string().optional(),
   telegramHandle: z.string().optional(),
   displayName: z.string().min(1),
+  isfPersonId: z.string().optional().nullable(),
   isEmailVerified: z.boolean().default(false),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
