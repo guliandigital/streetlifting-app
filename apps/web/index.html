@@ -4,7 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#99CD14" />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (function () {
+        try {
+          var theme =
+            window.localStorage.getItem('streetlifting.theme.v1') === 'dark' ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-streetlifting-theme', theme);
+        } catch (_) {
+          document.documentElement.setAttribute('data-streetlifting-theme', 'light');
+        }
+      })();
+    </script>
 
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
@@ -15,7 +26,6 @@
     <title>Streetlifting App</title>
     <!-- VITE_SENTRY_DSN: optional. When set at build time, the SPA reports
          errors via Sentry; otherwise Sentry is disabled at runtime. -->
-
   </head>
   <body>
     <div id="root"></div>
