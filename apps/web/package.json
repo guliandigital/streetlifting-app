@@ -12,7 +12,7 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run --passWithNoTests",
     "e2e": "playwright test",
-    "e2e:auth": "playwright test --project=setup",
+    "e2e:auth": "node scripts/save-manual-auth-state.mjs",
     "e2e:auth:manual": "node scripts/save-manual-auth-state.mjs",
     "e2e:ui": "playwright test --ui",
     "clean": "rimraf dist .turbo"

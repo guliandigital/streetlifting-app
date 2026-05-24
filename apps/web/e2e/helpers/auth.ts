@@ -4,9 +4,17 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REFRESH_KEY = 'streetlifting.refresh.v1';
+const E2E_SESSION_KEY = 'streetlifting.e2e.session.v1';
 const webDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const apiDir = resolve(webDir, '../api');
 const apiBaseUrl = process.env.E2E_API_URL ?? 'http://127.0.0.1:3000';
+
+interface E2EAuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+  roles: Array<{ role: string; federationId: string | null; competitionId: string | null }>;
+}
 
 function loadEnvFile(path: string): void {
   if (!existsSync(path)) return;
@@ -30,7 +38,7 @@ loadEnvFile(resolve(apiDir, '.env'));
 export async function loginViaApi(request: APIRequestContext): Promise<{
   accessToken: string;
   refreshToken: string;
-  user: { id: string; email: string; displayName: string };
+  user: E2EAuthUser;
 }> {
   const credentials = {
     email: process.env.E2E_EMAIL ?? requireEnv('ROOT_EMAIL'),
@@ -41,11 +49,17 @@ export async function loginViaApi(request: APIRequestContext): Promise<{
     const response = await request.post(`${apiBaseUrl}/auth/login`, { data: credentials });
     const text = await response.text();
     if (response.ok()) {
-      return JSON.parse(text) as {
+      const login = JSON.parse(text) as {
         accessToken: string;
         refreshToken: string;
         user: { id: string; email: string; displayName: string };
       };
+      const me = await request.get(`${apiBaseUrl}/auth/me`, {
+        headers: authHeaders(login.accessToken),
+      });
+      const meText = await me.text();
+      expect(me.ok(), meText).toBe(true);
+      return { ...login, user: (JSON.parse(meText) as { user: E2EAuthUser }).user };
     }
     if (response.status() === 429 && attempt < 5) {
       const retrySeconds = Number(/retry in (\d+) seconds/i.exec(text)?.[1] ?? 2);
@@ -68,16 +82,24 @@ export function apiUrl(path: string): string {
 export async function installFreshAuth(page: Page): Promise<void> {
   const auth = await loginViaApi(page.request);
   await page.addInitScript(
-    ({ refreshKey, refreshToken }) => {
+    ({ e2eSessionKey, refreshKey, authSession }) => {
       window.localStorage.removeItem(refreshKey);
-      if (!window.sessionStorage.getItem(refreshKey)) {
-        window.sessionStorage.setItem(refreshKey, refreshToken);
-      }
+      window.localStorage.removeItem('streetlifting.e2e.user.v1');
+      window.sessionStorage.setItem(refreshKey, authSession.refreshToken);
+      window.sessionStorage.setItem(e2eSessionKey, JSON.stringify(authSession));
       window.localStorage.setItem('i18nextLng', 'ru');
     },
-    { refreshKey: REFRESH_KEY, refreshToken: auth.refreshToken },
+    {
+      e2eSessionKey: E2E_SESSION_KEY,
+      refreshKey: REFRESH_KEY,
+      authSession: {
+        user: auth.user,
+        accessToken: auth.accessToken,
+        refreshToken: auth.refreshToken,
+      },
+    },
   );
   await page.goto('/federations');
   await expect(page).toHaveURL(/\/federations(?:[/?#]|$)/);
-  await expect(page.getByText(auth.user.displayName, { exact: true })).toBeVisible();
+  await expect(page.locator('a[href="/login"]')).toHaveCount(0);
 }

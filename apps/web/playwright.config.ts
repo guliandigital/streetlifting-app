@@ -7,7 +7,6 @@ const repoRoot = resolve(webDir, '../..');
 const apiDir = resolve(repoRoot, 'apps/api');
 const webBaseUrl = process.env.E2E_WEB_URL ?? 'http://127.0.0.1:1420';
 const apiBaseUrl = process.env.E2E_API_URL ?? 'http://127.0.0.1:3000';
-const authStateFile = resolve(webDir, 'e2e/.auth/secretary.json');
 const webPort = new URL(webBaseUrl).port || '1420';
 const apiPort = new URL(apiBaseUrl).port || '3000';
 const startServers = process.env.E2E_SKIP_WEB_SERVER !== '1';
@@ -51,16 +50,21 @@ export default defineConfig({
   ...(startServers ? { webServer } : {}),
   projects: [
     {
-      name: 'setup',
-      testMatch: /auth\.setup\.ts/,
-    },
-    {
       name: 'chromium',
-      dependencies: ['setup'],
-      testIgnore: /auth\.setup\.ts/,
+      testIgnore: [/auth\.setup\.ts/, /mobile-launch-smoke\.spec\.ts/],
       use: {
         ...devices['Desktop Chrome'],
-        storageState: authStateFile,
+      },
+    },
+    {
+      name: 'mobile-tablet',
+      testMatch: /mobile-launch-smoke\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 2,
+        isMobile: true,
+        hasTouch: true,
       },
     },
   ],

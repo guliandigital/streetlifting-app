@@ -103,13 +103,19 @@ interface RequestOptions {
 }
 
 let inflightRefresh: Promise<string | null> | null = null;
+let clearInflightRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
   if (inflightRefresh) return inflightRefresh;
   const refresh = useAuthStore.getState().refreshToken;
   if (!refresh) return null;
 
-  inflightRefresh = (async (): Promise<string | null> => {
+  if (clearInflightRefreshTimer) {
+    clearTimeout(clearInflightRefreshTimer);
+    clearInflightRefreshTimer = null;
+  }
+
+  const refreshPromise = (async (): Promise<string | null> => {
     try {
       const res = await fetch(`${BASE}/auth/refresh`, {
         method: 'POST',
@@ -127,9 +133,13 @@ async function refreshAccessToken(): Promise<string | null> {
       store.setRefreshToken(json.refreshToken);
       return json.accessToken;
     } finally {
-      inflightRefresh = null;
+      clearInflightRefreshTimer = setTimeout(() => {
+        if (inflightRefresh === refreshPromise) inflightRefresh = null;
+        clearInflightRefreshTimer = null;
+      }, 10_000);
     }
   })();
+  inflightRefresh = refreshPromise;
 
   return inflightRefresh;
 }
