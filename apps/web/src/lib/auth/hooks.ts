@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api, ApiClientError } from '../api-client.js';
 import { moduleLogger } from '../logger.js';
 import { useAuthStore } from './store.js';
@@ -15,10 +15,15 @@ export function useHydrateAuth(): { hydrating: boolean } {
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
   const clear = useAuthStore((s) => s.clear);
+  const [hydrating, setHydrating] = useState(false);
 
   useEffect(() => {
-    if (!refreshToken || user) return;
+    if (!refreshToken || user) {
+      setHydrating(false);
+      return;
+    }
     let cancelled = false;
+    setHydrating(true);
     void (async () => {
       try {
         const me = await api.me();
@@ -29,6 +34,8 @@ export function useHydrateAuth(): { hydrating: boolean } {
         } else {
           log.warn('hydrate failed', { name: err instanceof Error ? err.name : 'unknown' });
         }
+      } finally {
+        if (!cancelled) setHydrating(false);
       }
     })();
     return () => {
@@ -36,7 +43,7 @@ export function useHydrateAuth(): { hydrating: boolean } {
     };
   }, [refreshToken, user, setUser, clear]);
 
-  return { hydrating: Boolean(refreshToken) && !user };
+  return { hydrating };
 }
 
 export function useAuth(): {
@@ -61,7 +68,9 @@ export function useAuth(): {
         const me = await api.me();
         useAuthStore.setState({ user: me.user });
       } catch (err) {
-        log.warn('me-fetch after login failed', { name: err instanceof Error ? err.name : 'unknown' });
+        log.warn('me-fetch after login failed', {
+          name: err instanceof Error ? err.name : 'unknown',
+        });
       }
     },
     logout: async () => {

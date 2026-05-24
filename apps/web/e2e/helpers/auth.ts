@@ -30,15 +30,31 @@ loadEnvFile(resolve(apiDir, '.env'));
 export async function loginViaApi(request: APIRequestContext): Promise<{
   accessToken: string;
   refreshToken: string;
+  user: { id: string; email: string; displayName: string };
 }> {
-  const response = await request.post(`${apiBaseUrl}/auth/login`, {
-    data: {
-      email: process.env.E2E_EMAIL ?? requireEnv('ROOT_EMAIL'),
-      password: process.env.E2E_PASSWORD ?? requireEnv('ROOT_PASSWORD'),
-    },
-  });
-  expect(response.ok(), await response.text()).toBe(true);
-  return (await response.json()) as { accessToken: string; refreshToken: string };
+  const credentials = {
+    email: process.env.E2E_EMAIL ?? requireEnv('ROOT_EMAIL'),
+    password: process.env.E2E_PASSWORD ?? requireEnv('ROOT_PASSWORD'),
+  };
+
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const response = await request.post(`${apiBaseUrl}/auth/login`, { data: credentials });
+    const text = await response.text();
+    if (response.ok()) {
+      return JSON.parse(text) as {
+        accessToken: string;
+        refreshToken: string;
+        user: { id: string; email: string; displayName: string };
+      };
+    }
+    if (response.status() === 429 && attempt < 5) {
+      const retrySeconds = Number(/retry in (\d+) seconds/i.exec(text)?.[1] ?? 2);
+      await new Promise((resolve) => setTimeout(resolve, (retrySeconds + 1) * 1000));
+      continue;
+    }
+    expect(response.ok(), text).toBe(true);
+  }
+  throw new Error('unreachable login retry state');
 }
 
 export function authHeaders(accessToken: string): { Authorization: string } {
@@ -49,20 +65,19 @@ export function apiUrl(path: string): string {
   return `${apiBaseUrl}${path}`;
 }
 
-export async function installFreshAuth(
-  page: Page,
-): Promise<void> {
-  await page.goto('/login');
-  await page.evaluate(
-    (refreshKey) => {
-      window.sessionStorage.removeItem(refreshKey);
+export async function installFreshAuth(page: Page): Promise<void> {
+  const auth = await loginViaApi(page.request);
+  await page.addInitScript(
+    ({ refreshKey, refreshToken }) => {
       window.localStorage.removeItem(refreshKey);
+      if (!window.sessionStorage.getItem(refreshKey)) {
+        window.sessionStorage.setItem(refreshKey, refreshToken);
+      }
       window.localStorage.setItem('i18nextLng', 'ru');
     },
-    REFRESH_KEY,
+    { refreshKey: REFRESH_KEY, refreshToken: auth.refreshToken },
   );
-  await page.locator('#email').fill(process.env.E2E_EMAIL ?? requireEnv('ROOT_EMAIL'));
-  await page.locator('#password').fill(process.env.E2E_PASSWORD ?? requireEnv('ROOT_PASSWORD'));
-  await page.locator('button[type="submit"]').click();
-  await expect(page).toHaveURL(/\/me$/);
+  await page.goto('/federations');
+  await expect(page).toHaveURL(/\/federations(?:[/?#]|$)/);
+  await expect(page.getByText(auth.user.displayName, { exact: true })).toBeVisible();
 }

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { PublicCompetitionRegistrationCreate } from '@streetlifting/domain';
 import type { CompetitionStatus } from '@prisma/client';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
@@ -88,6 +89,15 @@ function validateWeightClass(
     weightClass.divisionId === divisionId &&
     (!weightClass.disciplineId || weightClass.disciplineId === disciplineId),
   );
+}
+
+function registrationLockKey(parts: readonly string[]): bigint {
+  const digest = createHash('sha256').update(parts.join('\x1f')).digest();
+  let value = 0n;
+  for (const byte of digest.subarray(0, 8)) {
+    value = (value << 8n) + BigInt(byte);
+  }
+  return BigInt.asIntN(64, value);
 }
 
 export const publicRegistrationPlugin: FeaturePlugin = {
@@ -339,29 +349,30 @@ export const publicRegistrationPlugin: FeaturePlugin = {
               federationCardNumber: optionalText(data.athlete.federationCardNumber) ?? null,
             } satisfies Prisma.AthleteUncheckedCreateInput;
 
-            const existingAthlete = await tx.athlete.findFirst({
-              where: {
-                lastName: { equals: athleteData.lastName, mode: 'insensitive' },
-                firstName: { equals: athleteData.firstName, mode: 'insensitive' },
-                dateOfBirth: athleteData.dateOfBirth,
-                countryCode: athleteData.countryCode,
-              },
-              select: { id: true },
-            });
+            const athleteIdentityWhere = {
+              lastName: { equals: athleteData.lastName, mode: 'insensitive' },
+              firstName: { equals: athleteData.firstName, mode: 'insensitive' },
+              dateOfBirth: athleteData.dateOfBirth,
+              countryCode: athleteData.countryCode,
+            } satisfies Prisma.AthleteWhereInput;
 
-            const athlete =
-              existingAthlete ??
-              (await tx.athlete.create({
-                data: athleteData,
-                select: { id: true },
-              }));
+            const lockKey = registrationLockKey([
+              competition.id,
+              discipline.id,
+              division.id,
+              athleteData.lastName.toLocaleLowerCase('ru-RU'),
+              athleteData.firstName.toLocaleLowerCase('ru-RU'),
+              athleteData.dateOfBirth.toISOString().slice(0, 10),
+              athleteData.countryCode,
+            ]);
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
 
             const duplicate = await tx.nomination.findFirst({
               where: {
                 competitionId: competition.id,
-                athleteId: athlete.id,
                 disciplineId: discipline.id,
                 divisionId: division.id,
+                athlete: athleteIdentityWhere,
               },
               select: { id: true },
             });
@@ -372,6 +383,18 @@ export const publicRegistrationPlugin: FeaturePlugin = {
                 'This athlete is already registered for this discipline and division',
               );
             }
+
+            const existingAthlete = await tx.athlete.findFirst({
+              where: athleteIdentityWhere,
+              select: { id: true },
+            });
+
+            const athlete =
+              existingAthlete ??
+              (await tx.athlete.create({
+                data: athleteData,
+                select: { id: true },
+              }));
 
             const nomination = await tx.nomination.create({
               data: {

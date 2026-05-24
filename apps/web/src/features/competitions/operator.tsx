@@ -11,8 +11,8 @@ import {
   WorkspaceToolbar,
   type WorkspaceIconName,
 } from '../../components/workspace.js';
-import type { CompetitionOpsResponse, NominationDto } from './operations-api.js';
-import { useCompetitionOps, useUpdateNomination, useUpsertAttempt } from './operations-api.js';
+import type { CompetitionLiveOpsResponse, LiveNominationDto } from './operations-api.js';
+import { useCompetitionLiveOps, useUpdateNomination, useUpsertAttempt } from './operations-api.js';
 import {
   attemptSummary,
   componentOptions,
@@ -64,7 +64,7 @@ const COLUMN_OPTIONS: { key: string; label: string; defaultOn: boolean }[] = [
   { key: 'sum-attempts', label: 'СуммаПопыток', defaultOn: false },
 ];
 
-function selectableNominations(nominations: NominationDto[]): NominationDto[] {
+function selectableNominations(nominations: LiveNominationDto[]): LiveNominationDto[] {
   return nominations
     .filter((nomination) => !['finished', 'disqualified', 'withdrawn'].includes(nomination.status))
     .sort(sortForPlatform);
@@ -172,7 +172,7 @@ function ParamsTab({
   );
 }
 
-function HeightsTab({ data }: { data: CompetitionOpsResponse }) {
+function HeightsTab({ data }: { data: CompetitionLiveOpsResponse }) {
   const rows = data.nominations.slice().sort(sortForPlatform);
   return (
     <WorkspacePanel className="p-3">
@@ -330,7 +330,7 @@ function SoundTab({
 export default function CompetitionOperatorFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/competitions/$id/operator' });
-  const { data, isLoading, error } = useCompetitionOps(id);
+  const { data, isLoading, error } = useCompetitionLiveOps(id);
   const updateNomination = useUpdateNomination(id);
   const upsertAttempt = useUpsertAttempt(id);
   const [selectedNominationId, setSelectedNominationId] = useState('');
@@ -393,7 +393,7 @@ export default function CompetitionOperatorFeature() {
     return () => window.clearInterval(interval);
   }, [timerRunning]);
 
-  async function setStatus(status: NominationDto['status']) {
+  async function setStatus(status: LiveNominationDto['status']) {
     if (!selected) return;
     try {
       await updateNomination.mutateAsync({ nominationId: selected.id, data: { status } });

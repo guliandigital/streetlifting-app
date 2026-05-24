@@ -101,7 +101,7 @@ export default function CompetitionScoreboardFeature() {
         {rows.length === 0 ? (
           <p className="text-sm italic text-[var(--pt-muted)]">{t('scoreboard.empty')}</p>
         ) : (
-          <table className="pt-grid">
+          <table className="pt-grid" data-testid="scoreboard-table">
             <thead>
               <tr>
                 <th>{t('competitionOps.fields.entryNumber')}</th>

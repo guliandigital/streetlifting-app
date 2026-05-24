@@ -85,6 +85,12 @@ function competitionEventType(
   return 'competition.updated';
 }
 
+function isStatusDowngradeFromLocked(beforeStatus: string, nextStatus: string): boolean {
+  if (beforeStatus === 'finalized') return nextStatus !== 'finalized' && nextStatus !== 'archived';
+  if (beforeStatus === 'archived') return nextStatus !== 'archived';
+  return false;
+}
+
 function toCreateData(data: CompetitionCreate): Prisma.CompetitionUncheckedCreateInput {
   return stripUndefined({
     federationId: data.federationId,
@@ -366,7 +372,35 @@ export const competitionsPlugin: FeaturePlugin = {
           });
         }
 
-        const eventType = competitionEventType(before.status, parsed.data.status ?? before.status);
+        const nextStatus = parsed.data.status ?? before.status;
+        if (isStatusDowngradeFromLocked(before.status, nextStatus)) {
+          return reply.code(409).send({
+            error: {
+              code: 'competition_status_locked',
+              message: 'Finalized or archived competition status cannot be reopened',
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (before.status !== 'finalized' && nextStatus === 'finalized') {
+          const unfinishedNominations = await prisma.nomination.count({
+            where: {
+              competitionId: before.id,
+              status: { notIn: ['finished', 'disqualified', 'withdrawn'] },
+            },
+          });
+          if (unfinishedNominations > 0) {
+            return reply.code(409).send({
+              error: {
+                code: 'competition_has_unfinished_nominations',
+                message: 'Cannot finalize competition while active nominations are unfinished',
+                requestId: req.requestId,
+              },
+            });
+          }
+        }
+
+        const eventType = competitionEventType(before.status, nextStatus);
         const updated = await audit.withAudit(
           {
             ...audit.fromRequest(req),
