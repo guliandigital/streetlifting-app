@@ -59,7 +59,19 @@ jobs:
           ssh -p "$DEPLOY_PORT" -i ~/.ssh/reg_ru "$DEPLOY_USER@$DEPLOY_HOST" \
             "chmod +x /tmp/streetlifting-remote-deploy.sh && STREETLIFTING_BRANCH='$DEPLOY_BRANCH' STREETLIFTING_SKIP_MIGRATIONS='$SKIP_MIGRATIONS' bash /tmp/streetlifting-remote-deploy.sh && rm -f /tmp/streetlifting-remote-deploy.sh"
       - name: Smoke production
+        env:
+          ISF_SMOKE_API_URL: https://streetlifting.app/api
+          ISF_SMOKE_SERVICE_TOKEN: ${{ secrets.ISF_SMOKE_SERVICE_TOKEN }}
+          ISF_SMOKE_TENANT: ru
         run: |
           curl -fsS https://streetlifting.app/api/health
+          curl -fsS https://streetlifting.app/api/health/competitions
+          curl -fsS https://streetlifting.app/api/health/competition-ops
           curl -fsSI https://streetlifting.app/sw.js | grep -Ei 'content-type|cache-control'
-          test "$(curl -sS -o /dev/null -w '%{http_code}' https://streetlifting.app/api/isf/v1/meta)" = "401"
+          if [ -n "$ISF_SMOKE_SERVICE_TOKEN" ]; then
+            echo "Running authenticated ISF smoke"
+            pnpm release:smoke:isf
+          else
+            echo "ISF_SMOKE_SERVICE_TOKEN is not configured; running anonymous ISF guard smoke only"
+            ISF_SMOKE_ALLOW_MISSING_TOKEN=1 pnpm release:smoke:isf
+          fi

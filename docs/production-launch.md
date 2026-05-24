@@ -177,6 +177,11 @@ This validates the anonymous guard, browser-origin rejection, `/isf/v1/meta`,
 `/isf/v1/standards`, paginated competitions, and paginated records. Do not write the service token to
 repo files or long-lived shell history.
 
+For production, prefer the GitHub Actions `ISF production smoke` workflow. It reads
+`ISF_SMOKE_SERVICE_TOKEN` from the `production` environment secret, fails before the API smoke if the
+secret is missing, and keeps the token out of operator shells and logs. Use `allow_anonymous_only`
+only when the goal is to validate the public `401` guard without an issued service-client token.
+
 Manual web flow:
 
 1. Log in as the seeded root user.
