@@ -39,6 +39,7 @@ lerna-debug.log*
 # Test coverage
 coverage/
 .nyc_output/
+output/
 output/playwright/
 apps/web/e2e/.auth/
 
@@ -56,3 +57,5 @@ apps/web/e2e/.auth/
 # Source assets too big to track here (curated subset is in apps/web/public/brand/)
 Streetlifting_app_logo_pack.zip
 _logo_pack_unpack/
+city-master.zip
+reference screenshots/
