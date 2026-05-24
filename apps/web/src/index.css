@@ -25,33 +25,33 @@
   --color-brand-lime: #99cd14;
   --color-brand-white: #ffffff;
 
-  /* shadcn/ui semantic tokens (dark theme) */
-  --color-background: #10151d;
-  --color-foreground: #fafafa;
+  /* shadcn/ui semantic tokens (light theme) */
+  --color-background: #f5f8f1;
+  --color-foreground: #10151d;
 
-  --color-card: #0d1219;
-  --color-card-foreground: #fafafa;
+  --color-card: #ffffff;
+  --color-card-foreground: #10151d;
 
-  --color-popover: #0d1219;
-  --color-popover-foreground: #fafafa;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #10151d;
 
   --color-primary: #99cd14;
   --color-primary-foreground: #10151d;
 
-  --color-secondary: #1a1f29;
-  --color-secondary-foreground: #fafafa;
+  --color-secondary: #eef3e8;
+  --color-secondary-foreground: #10151d;
 
-  --color-muted: #1a1f29;
-  --color-muted-foreground: #a1a1aa;
+  --color-muted: #eef3e8;
+  --color-muted-foreground: #5f6b59;
 
-  --color-accent: #1a1f29;
-  --color-accent-foreground: #fafafa;
+  --color-accent: #e8f0dd;
+  --color-accent-foreground: #10151d;
 
   --color-destructive: #ef4444;
   --color-destructive-foreground: #fafafa;
 
-  --color-border: #262d3a;
-  --color-input: #262d3a;
+  --color-border: #dbe4d2;
+  --color-input: #dbe4d2;
   --color-ring: #99cd14;
 }
 
@@ -62,25 +62,25 @@ body,
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
-html[data-streetlifting-theme='light'] {
-  color-scheme: light;
-  --color-background: #f5f8f1;
-  --color-foreground: #10151d;
-  --color-card: #ffffff;
-  --color-card-foreground: #10151d;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #10151d;
-  --color-secondary: #eef3e8;
-  --color-secondary-foreground: #10151d;
-  --color-muted: #eef3e8;
-  --color-muted-foreground: #5f6b59;
-  --color-accent: #e8f0dd;
-  --color-accent-foreground: #10151d;
-  --color-border: #dbe4d2;
-  --color-input: #dbe4d2;
+html[data-streetlifting-theme='dark'] {
+  color-scheme: dark;
+  --color-background: #10151d;
+  --color-foreground: #fafafa;
+  --color-card: #0d1219;
+  --color-card-foreground: #fafafa;
+  --color-popover: #0d1219;
+  --color-popover-foreground: #fafafa;
+  --color-secondary: #1a1f29;
+  --color-secondary-foreground: #fafafa;
+  --color-muted: #1a1f29;
+  --color-muted-foreground: #a1a1aa;
+  --color-accent: #1a1f29;
+  --color-accent-foreground: #fafafa;
+  --color-border: #262d3a;
+  --color-input: #262d3a;
 }
 
 body {
