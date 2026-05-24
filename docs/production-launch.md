@@ -160,6 +160,8 @@ curl -fsS https://<web-domain>/api/health/competitions
 curl -fsS https://<web-domain>/api/health/competition-ops
 curl -fsSI https://<web-domain>/sw.js | grep -Ei 'content-type|cache-control'
 curl -fsSI https://<web-domain>/service-worker.js | grep -Ei 'content-type|cache-control'
+ISF_META_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' https://<web-domain>/api/isf/v1/meta)
+test "$ISF_META_STATUS" = "401"
 ```
 
 Manual web flow:
