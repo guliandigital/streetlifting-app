@@ -12,8 +12,8 @@ import {
   toast,
 } from '@streetlifting/ui';
 import { WorkspacePage, WorkspaceState } from '../../components/workspace.js';
-import type { NominationDto } from './operations-api.js';
-import { useCompetitionOps, useUpsertAttempt } from './operations-api.js';
+import type { LiveNominationDto } from './operations-api.js';
+import { useCompetitionLiveOps, useUpsertAttempt } from './operations-api.js';
 import {
   attemptSummary,
   componentOptions,
@@ -25,7 +25,7 @@ import {
 const controlClass =
   'flex h-12 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
-function judgeQueue(nominations: NominationDto[]): NominationDto[] {
+function judgeQueue(nominations: LiveNominationDto[]): LiveNominationDto[] {
   const active = nominations
     .filter((nomination) => nomination.status === 'on_platform')
     .sort(sortForPlatform);
@@ -38,7 +38,7 @@ function judgeQueue(nominations: NominationDto[]): NominationDto[] {
 export default function CompetitionJudgeFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/competitions/$id/judge' });
-  const { data, isLoading, error } = useCompetitionOps(id);
+  const { data, isLoading, error } = useCompetitionLiveOps(id);
   const upsertAttempt = useUpsertAttempt(id);
   const [selectedNominationId, setSelectedNominationId] = useState('');
   const [componentId, setComponentId] = useState<string | null>(null);

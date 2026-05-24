@@ -1,14 +1,18 @@
 import type { NominationDto } from './operations-api.js';
 
+type NominationGenderLike = {
+  division: { gender: NominationDto['division']['gender'] };
+};
+
 export interface GenderStats {
   total: number;
   women: number;
   men: number;
 }
 
-export function nominationGenderStats(
-  nominations: readonly NominationDto[],
-  predicate?: (nomination: NominationDto) => boolean,
+export function nominationGenderStats<T extends NominationGenderLike>(
+  nominations: readonly T[],
+  predicate?: (nomination: T) => boolean,
 ): GenderStats {
   const selected = predicate ? nominations.filter(predicate) : nominations;
   return selected.reduce<GenderStats>(

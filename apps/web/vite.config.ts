@@ -28,5 +28,18 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
+            return 'vendor-react';
+          }
+          if (id.includes('@tanstack')) return 'vendor-tanstack';
+          if (id.includes('i18next') || id.includes('react-i18next')) return 'vendor-i18n';
+          return 'vendor';
+        },
+      },
+    },
   },
 });

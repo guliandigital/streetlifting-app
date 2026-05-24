@@ -1,4 +1,6 @@
-import type { DisciplineComponentDto, NominationDto } from './operations-api.js';
+import type { DisciplineComponentDto, LiveNominationDto, NominationDto } from './operations-api.js';
+
+type TournamentNominationDto = NominationDto | LiveNominationDto;
 
 export interface ComponentOption {
   id: string | null;
@@ -7,7 +9,11 @@ export interface ComponentOption {
   fixedWeightKg: number | null;
 }
 
-export function fullName(person: { lastName: string; firstName: string; middleName?: string | null }): string {
+export function fullName(person: {
+  lastName: string;
+  firstName: string;
+  middleName?: string | null;
+}): string {
   return [person.lastName, person.firstName, person.middleName].filter(Boolean).join(' ');
 }
 
@@ -17,7 +23,7 @@ export function componentLabel(component: DisciplineComponentDto): string {
     : `${component.nameRu} · ${component.fixedWeightKg} kg`;
 }
 
-export function componentOptions(nomination: NominationDto): ComponentOption[] {
+export function componentOptions(nomination: TournamentNominationDto): ComponentOption[] {
   if (nomination.discipline.components.length > 0) {
     return nomination.discipline.components.map((component) => ({
       id: component.id,
@@ -37,13 +43,18 @@ export function componentOptions(nomination: NominationDto): ComponentOption[] {
   ];
 }
 
-export function nextAttemptNumber(nomination: NominationDto, componentId: string | null): number {
+export function nextAttemptNumber(
+  nomination: TournamentNominationDto,
+  componentId: string | null,
+): number {
   const options = componentOptions(nomination);
   const component = options.find((item) => item.id === componentId) ?? options[0];
   if (!component) return 1;
   const used = new Set(
     nomination.attempts
-      .filter((attempt) => (componentId ? attempt.componentId === componentId : attempt.componentId === null))
+      .filter((attempt) =>
+        componentId ? attempt.componentId === componentId : attempt.componentId === null,
+      )
       .map((attempt) => attempt.attemptNumber),
   );
 
@@ -53,7 +64,7 @@ export function nextAttemptNumber(nomination: NominationDto, componentId: string
   return component.attemptCount;
 }
 
-export function attemptSummary(nomination: NominationDto): string {
+export function attemptSummary(nomination: TournamentNominationDto): string {
   if (nomination.attempts.length === 0) return '—';
   return nomination.attempts
     .map((attempt) => {
@@ -64,11 +75,11 @@ export function attemptSummary(nomination: NominationDto): string {
     .join(' | ');
 }
 
-export function sortForPlatform(a: NominationDto, b: NominationDto): number {
+export function sortForPlatform(a: TournamentNominationDto, b: TournamentNominationDto): number {
   return (
     (a.flight?.code ?? '').localeCompare(b.flight?.code ?? '') ||
     (a.group?.name ?? '').localeCompare(b.group?.name ?? '') ||
-    ((a.entryNumber ?? Number.POSITIVE_INFINITY) - (b.entryNumber ?? Number.POSITIVE_INFINITY)) ||
+    (a.entryNumber ?? Number.POSITIVE_INFINITY) - (b.entryNumber ?? Number.POSITIVE_INFINITY) ||
     fullName(a.athlete).localeCompare(fullName(b.athlete))
   );
 }

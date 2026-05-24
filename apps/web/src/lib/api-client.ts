@@ -55,10 +55,13 @@ import type { DisciplineDto } from '../features/disciplines/api.js';
 import type { JudgeDto, JudgeListResponse } from '../features/judges/api.js';
 import type { CompetitionDto, CompetitionListResponse } from '../features/competitions/api.js';
 import type {
+  CompetitionLiveOpsResponse,
   CompetitionOpsResponse,
+  MutationAttemptDto,
+  MutationNominationDto,
+  PublicScoreboardResponse,
   ScoreboardResponse,
   NominationDto,
-  AttemptDto,
 } from '../features/competitions/operations-api.js';
 import type {
   CityDto,
@@ -410,6 +413,8 @@ export const api = {
     update: (id: string, data: CompetitionUpdate): Promise<{ competition: CompetitionDto }> =>
       request(`/competitions/${id}`, { method: 'PATCH', body: data }),
     ops: (id: string): Promise<CompetitionOpsResponse> => request(`/competitions/${id}/ops`),
+    liveOps: (id: string): Promise<CompetitionLiveOpsResponse> =>
+      request(`/competitions/${id}/live-ops`),
     applyDefaultSetup: (
       id: string,
       data: Partial<CompetitionDefaultSetup> = {},
@@ -445,13 +450,13 @@ export const api = {
     updateNomination: (
       id: string,
       data: NominationUpdate,
-    ): Promise<{ nomination: NominationDto }> =>
+    ): Promise<{ nomination: MutationNominationDto }> =>
       request(`/nominations/${id}`, { method: 'PATCH', body: data }),
     upsertAttempt: (
       nominationId: string,
       attemptNumber: number,
       data: Omit<AttemptUpsert, 'attemptNumber'>,
-    ): Promise<{ attempt: AttemptDto; nomination: NominationDto | null }> =>
+    ): Promise<{ attempt: MutationAttemptDto | null; nomination: MutationNominationDto | null }> =>
       request(`/nominations/${nominationId}/attempts/${attemptNumber}`, {
         method: 'PUT',
         body: data,
@@ -461,7 +466,7 @@ export const api = {
       componentId: string,
       attemptNumber: number,
       data: Omit<AttemptUpsert, 'attemptNumber'>,
-    ): Promise<{ attempt: AttemptDto; nomination: NominationDto | null }> =>
+    ): Promise<{ attempt: MutationAttemptDto | null; nomination: MutationNominationDto | null }> =>
       request(`/nominations/${nominationId}/attempts/${componentId}/${attemptNumber}`, {
         method: 'PUT',
         body: data,
@@ -475,7 +480,7 @@ export const api = {
       request(`/judge-assignments/${assignmentId}`, { method: 'DELETE' }),
     scoreboard: (id: string): Promise<ScoreboardResponse> =>
       request(`/competitions/${id}/scoreboard`),
-    publicScoreboard: (id: string): Promise<ScoreboardResponse> =>
+    publicScoreboard: (id: string): Promise<PublicScoreboardResponse> =>
       request(`/public/competitions/${id}/scoreboard`, { unauthenticated: true }),
     protocolCsv: (id: string): Promise<string> => requestText(`/competitions/${id}/protocol.csv`),
     protocolXlsx: (id: string): Promise<Blob> => requestBlob(`/competitions/${id}/protocol.xlsx`),

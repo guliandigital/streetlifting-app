@@ -2,7 +2,17 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, toast } from '@streetlifting/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  toast,
+} from '@streetlifting/ui';
 import type { PublicCompetitionRegistrationCreate } from '@streetlifting/domain';
 import { formatRub } from '../../lib/money.js';
 import { ApiClientError } from '../../lib/api-client.js';
@@ -28,7 +38,9 @@ function weightClassesForSelection(
   return (
     divisions
       .find((division) => division.id === divisionId)
-      ?.weightClasses.filter((weightClass) => !weightClass.disciplineId || weightClass.disciplineId === disciplineId) ?? []
+      ?.weightClasses.filter(
+        (weightClass) => !weightClass.disciplineId || weightClass.disciplineId === disciplineId,
+      ) ?? []
   );
 }
 
@@ -140,7 +152,11 @@ export default function PublicCompetitionRegistrationFeature() {
   }
 
   if (isLoading) {
-    return <div className="mx-auto max-w-5xl px-6 py-10 text-sm text-muted-foreground">{t('common.loading')}</div>;
+    return (
+      <div className="mx-auto max-w-5xl px-6 py-10 text-sm text-muted-foreground">
+        {t('common.loading')}
+      </div>
+    );
   }
 
   if (error || !data) {
@@ -165,7 +181,8 @@ export default function PublicCompetitionRegistrationFeature() {
         <div className="text-sm text-muted-foreground">{data.competition.federation.nameRu}</div>
         <h1 className="text-2xl font-semibold">{data.competition.nameRu}</h1>
         <div className="text-sm text-muted-foreground">
-          {data.competition.city ?? '—'} · {data.competition.venue ?? '—'} · {formatRub(data.competition.entryFeeKopecks)}
+          {data.competition.city ?? '—'} · {data.competition.venue ?? '—'} ·{' '}
+          {formatRub(data.competition.entryFeeKopecks)}
         </div>
       </div>
 
@@ -187,7 +204,7 @@ export default function PublicCompetitionRegistrationFeature() {
             {t('publicRegistration.nominationNumber', { value: createdNominationId.slice(0, 8) })}
           </CardContent>
         </Card>
-      ) : (
+      ) : isAvailable ? (
         <Card>
           <CardHeader>
             <CardTitle>{t('publicRegistration.formTitle')}</CardTitle>
@@ -198,34 +215,74 @@ export default function PublicCompetitionRegistrationFeature() {
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="lastName">{t('publicRegistration.fields.lastName')}</Label>
-                  <Input id="lastName" data-testid="public-reg-last-name" value={lastName} onChange={(event) => setLastName(event.target.value)} required />
+                  <Input
+                    id="lastName"
+                    data-testid="public-reg-last-name"
+                    value={lastName}
+                    onChange={(event) => setLastName(event.target.value)}
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="firstName">{t('publicRegistration.fields.firstName')}</Label>
-                  <Input id="firstName" data-testid="public-reg-first-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} required />
+                  <Input
+                    id="firstName"
+                    data-testid="public-reg-first-name"
+                    value={firstName}
+                    onChange={(event) => setFirstName(event.target.value)}
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="middleName">{t('publicRegistration.fields.middleName')}</Label>
-                  <Input id="middleName" value={middleName} onChange={(event) => setMiddleName(event.target.value)} />
+                  <Input
+                    id="middleName"
+                    value={middleName}
+                    onChange={(event) => setMiddleName(event.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="dateOfBirth">{t('publicRegistration.fields.dateOfBirth')}</Label>
-                  <Input id="dateOfBirth" data-testid="public-reg-dob" type="date" value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} required />
+                  <Input
+                    id="dateOfBirth"
+                    data-testid="public-reg-dob"
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(event) => setDateOfBirth(event.target.value)}
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="gender">{t('publicRegistration.fields.gender')}</Label>
-                  <select id="gender" data-testid="public-reg-gender" value={gender} onChange={(event) => setGender(event.target.value as 'M' | 'F')} className={controlClass}>
+                  <select
+                    id="gender"
+                    data-testid="public-reg-gender"
+                    value={gender}
+                    onChange={(event) => setGender(event.target.value as 'M' | 'F')}
+                    className={controlClass}
+                  >
                     <option value="M">{t('publicRegistration.gender.M')}</option>
                     <option value="F">{t('publicRegistration.gender.F')}</option>
                   </select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="countryCode">{t('publicRegistration.fields.country')}</Label>
-                  <Input id="countryCode" data-testid="public-reg-country" value={countryCode} onChange={(event) => setCountryCode(event.target.value.toUpperCase())} required maxLength={2} />
+                  <Input
+                    id="countryCode"
+                    data-testid="public-reg-country"
+                    value={countryCode}
+                    onChange={(event) => setCountryCode(event.target.value.toUpperCase())}
+                    required
+                    maxLength={2}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="regionCode">{t('publicRegistration.fields.region')}</Label>
-                  <Input id="regionCode" value={regionCode} onChange={(event) => setRegionCode(event.target.value)} />
+                  <Input
+                    id="regionCode"
+                    value={regionCode}
+                    onChange={(event) => setRegionCode(event.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="city">{t('publicRegistration.fields.city')}</Label>
@@ -233,14 +290,25 @@ export default function PublicCompetitionRegistrationFeature() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="clubName">{t('publicRegistration.fields.club')}</Label>
-                  <Input id="clubName" value={clubName} onChange={(event) => setClubName(event.target.value)} />
+                  <Input
+                    id="clubName"
+                    value={clubName}
+                    onChange={(event) => setClubName(event.target.value)}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="discipline">{t('publicRegistration.fields.discipline')}</Label>
-                  <select id="discipline" data-testid="public-reg-discipline" value={disciplineId} onChange={(event) => setDisciplineId(event.target.value)} className={controlClass} required>
+                  <select
+                    id="discipline"
+                    data-testid="public-reg-discipline"
+                    value={disciplineId}
+                    onChange={(event) => setDisciplineId(event.target.value)}
+                    className={controlClass}
+                    required
+                  >
                     {data.disciplines.map((discipline) => (
                       <option key={discipline.id} value={discipline.id}>
                         {discipline.nameRu}
@@ -250,7 +318,14 @@ export default function PublicCompetitionRegistrationFeature() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="division">{t('publicRegistration.fields.division')}</Label>
-                  <select id="division" data-testid="public-reg-division" value={divisionId} onChange={(event) => setDivisionId(event.target.value)} className={controlClass} required>
+                  <select
+                    id="division"
+                    data-testid="public-reg-division"
+                    value={divisionId}
+                    onChange={(event) => setDivisionId(event.target.value)}
+                    className={controlClass}
+                    required
+                  >
                     {divisions.map((division) => (
                       <option key={division.id} value={division.id}>
                         {division.nameRu}
@@ -260,7 +335,14 @@ export default function PublicCompetitionRegistrationFeature() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="weightClass">{t('publicRegistration.fields.weightClass')}</Label>
-                  <select id="weightClass" data-testid="public-reg-weight-class" value={weightClassId} onChange={(event) => setWeightClassId(event.target.value)} className={controlClass} required>
+                  <select
+                    id="weightClass"
+                    data-testid="public-reg-weight-class"
+                    value={weightClassId}
+                    onChange={(event) => setWeightClassId(event.target.value)}
+                    className={controlClass}
+                    required
+                  >
                     {weightClasses.map((weightClass) => (
                       <option key={weightClass.id} value={weightClass.id}>
                         {weightClass.nameRu}
@@ -273,48 +355,87 @@ export default function PublicCompetitionRegistrationFeature() {
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="coachName">{t('publicRegistration.fields.coach')}</Label>
-                  <Input id="coachName" value={coachName} onChange={(event) => setCoachName(event.target.value)} />
+                  <Input
+                    id="coachName"
+                    value={coachName}
+                    onChange={(event) => setCoachName(event.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="contactPhone">{t('publicRegistration.fields.phone')}</Label>
-                  <Input id="contactPhone" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} />
+                  <Input
+                    id="contactPhone"
+                    value={contactPhone}
+                    onChange={(event) => setContactPhone(event.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="contactEmail">{t('publicRegistration.fields.email')}</Label>
-                  <Input id="contactEmail" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} />
+                  <Input
+                    id="contactEmail"
+                    type="email"
+                    value={contactEmail}
+                    onChange={(event) => setContactEmail(event.target.value)}
+                  />
                 </div>
               </div>
 
               <div className="space-y-2 rounded-md border border-border p-3">
                 <label className="flex items-start gap-2 text-sm">
-                  <input data-testid="public-reg-consent-data" type="checkbox" className="mt-1 h-4 w-4" checked={consentDataProcessing} onChange={(event) => setConsentDataProcessing(event.target.checked)} />
+                  <input
+                    data-testid="public-reg-consent-data"
+                    type="checkbox"
+                    className="mt-1 h-4 w-4"
+                    checked={consentDataProcessing}
+                    onChange={(event) => setConsentDataProcessing(event.target.checked)}
+                  />
                   <span>{t('publicRegistration.consents.dataProcessing')}</span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" className="mt-1 h-4 w-4" checked={consentPublicResults} onChange={(event) => setConsentPublicResults(event.target.checked)} />
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4"
+                    checked={consentPublicResults}
+                    onChange={(event) => setConsentPublicResults(event.target.checked)}
+                  />
                   <span>{t('publicRegistration.consents.publicResults')}</span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" className="mt-1 h-4 w-4" checked={consentPhotoPublication} onChange={(event) => setConsentPhotoPublication(event.target.checked)} />
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4"
+                    checked={consentPhotoPublication}
+                    onChange={(event) => setConsentPhotoPublication(event.target.checked)}
+                  />
                   <span>{t('publicRegistration.consents.photoPublication')}</span>
                 </label>
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-muted-foreground">
-                  {t('publicRegistration.paymentHint', { value: formatRub(data.competition.entryFeeKopecks) })}
+                  {t('publicRegistration.paymentHint', {
+                    value: formatRub(data.competition.entryFeeKopecks),
+                  })}
                 </div>
-                <Button data-testid="public-reg-submit" type="submit" disabled={!canSubmit || isSubmitting}>
+                <Button
+                  data-testid="public-reg-submit"
+                  type="submit"
+                  disabled={!canSubmit || isSubmitting}
+                >
                   {isSubmitting ? t('common.saving') : t('publicRegistration.submit')}
                 </Button>
               </div>
             </form>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       <div className="text-sm">
-        <Link to="/federations/$code/register" params={{ code: data.competition.federation.code }} className="text-primary underline-offset-4 hover:underline">
+        <Link
+          to="/federations/$code/register"
+          params={{ code: data.competition.federation.code }}
+          className="text-primary underline-offset-4 hover:underline"
+        >
           {t('publicRegistration.backToFederation')}
         </Link>
       </div>

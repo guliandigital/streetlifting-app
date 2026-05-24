@@ -10,14 +10,35 @@ import {
   calculateNominationScore,
   presets,
 } from '@streetlifting/domain';
+import type { FastifyReply } from 'fastify';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
 import { validateUuidParams } from '../lib/params.js';
+import { assertNoForbiddenExportKeys } from '../lib/privacy-allowlist.js';
 
 const log = moduleLogger('competition-ops');
+
+const FULL_OPS_READ_ROLES = ['federation_admin', 'secretary'] as const;
+
+const LIVE_OPS_READ_ROLES = [
+  'federation_admin',
+  'secretary',
+  'head_judge',
+  'judge',
+  'scoreboard_operator',
+] as const;
+
+const HEAD_JUDGE_NOMINATION_UPDATE_FIELDS = new Set<keyof NominationUpdate>([
+  'bodyWeightAtWeighIn',
+  'weightClassId',
+  'flightId',
+  'groupId',
+  'status',
+  'isMandatePassed',
+]);
 
 type UserWithRoles = {
   id: string;
@@ -43,17 +64,7 @@ function stripUndefined<T extends object>(obj: T): Partial<T> {
   return out as Partial<T>;
 }
 
-function canRead(user: UserWithRoles, competition: { id: string; federationId: string }): boolean {
-  if (!user) return false;
-  return user.roles.some(
-    (r) =>
-      r.role === 'platform_admin' ||
-      r.federationId === competition.federationId ||
-      r.competitionId === competition.id,
-  );
-}
-
-function hasScopedRole(
+function hasAnyScopedRole(
   user: UserWithRoles,
   competition: { id: string; federationId: string },
   roles: readonly string[],
@@ -67,6 +78,54 @@ function hasScopedRole(
   );
 }
 
+function canReadFullOps(
+  user: UserWithRoles,
+  competition: { id: string; federationId: string },
+): boolean {
+  return hasAnyScopedRole(user, competition, FULL_OPS_READ_ROLES);
+}
+
+function canReadLiveOps(
+  user: UserWithRoles,
+  competition: { id: string; federationId: string },
+): boolean {
+  return hasAnyScopedRole(user, competition, LIVE_OPS_READ_ROLES);
+}
+
+function hasScopedRole(
+  user: UserWithRoles,
+  competition: { id: string; federationId: string },
+  roles: readonly string[],
+): boolean {
+  return hasAnyScopedRole(user, competition, roles);
+}
+
+function forbiddenNominationUpdateKeysForUser(
+  user: UserWithRoles,
+  competition: { id: string; federationId: string },
+  data: NominationUpdate,
+): string[] {
+  if (hasScopedRole(user, competition, ['federation_admin', 'secretary'])) return [];
+  return Object.entries(data)
+    .filter(([, value]) => value !== undefined)
+    .map(([key]) => key)
+    .filter((key) => !HEAD_JUDGE_NOMINATION_UPDATE_FIELDS.has(key as keyof NominationUpdate));
+}
+
+function isCompetitionLocked(competition: { status: string }): boolean {
+  return competition.status === 'finalized' || competition.status === 'archived';
+}
+
+function sendCompetitionLocked(reply: FastifyReply, requestId: string) {
+  return reply.code(409).send({
+    error: {
+      code: 'competition_locked',
+      message: 'Competition is finalized or archived',
+      requestId,
+    },
+  });
+}
+
 async function loadCompetition(competitionId: string) {
   return prisma.competition.findUnique({
     where: { id: competitionId },
@@ -76,6 +135,7 @@ async function loadCompetition(competitionId: string) {
       code: true,
       nameRu: true,
       nameEn: true,
+      status: true,
       startDate: true,
       endDate: true,
       entryFeeKopecks: true,
@@ -784,6 +844,210 @@ async function getOpsPayload(competitionId: string) {
 
 type OpsPayload = NonNullable<Awaited<ReturnType<typeof getOpsPayload>>>;
 
+function birthYear(
+  value: Date | null | undefined,
+  privacyMode: string | null | undefined,
+): number | null {
+  if (!value || privacyMode === 'hidden') return null;
+  const year = value.getUTCFullYear();
+  return Number.isFinite(year) ? year : null;
+}
+
+function publicComponent(
+  component: OpsPayload['nominations'][number]['discipline']['components'][number],
+) {
+  return {
+    id: component.id,
+    disciplineId: component.disciplineId,
+    code: component.code,
+    nameRu: component.nameRu,
+    nameEn: component.nameEn,
+    equipment: component.equipment,
+    order: component.order,
+    attemptCount: component.attemptCount,
+    fixedWeightKg: component.fixedWeightKg,
+  };
+}
+
+function publicDiscipline(nomination: OpsPayload['nominations'][number]) {
+  return {
+    id: nomination.discipline.id,
+    code: nomination.discipline.code,
+    nameRu: nomination.discipline.nameRu,
+    nameEn: nomination.discipline.nameEn,
+    attemptCount: nomination.discipline.attemptCount,
+    fixedWeightKg: nomination.discipline.fixedWeightKg,
+    format: nomination.discipline.format,
+    components: nomination.discipline.components.map(publicComponent),
+  };
+}
+
+function publicWeightClass(weightClass: OpsPayload['nominations'][number]['weightClass']) {
+  return {
+    id: weightClass.id,
+    divisionId: weightClass.divisionId,
+    disciplineId: weightClass.disciplineId,
+    code: weightClass.code,
+    nameRu: weightClass.nameRu,
+    nameEn: weightClass.nameEn,
+    weightMin: weightClass.weightMin,
+    weightMax: weightClass.weightMax,
+    order: weightClass.order,
+  };
+}
+
+function publicAttempt(attempt: OpsPayload['nominations'][number]['attempts'][number]) {
+  return {
+    id: attempt.id,
+    nominationId: attempt.nominationId,
+    componentId: attempt.componentId,
+    attemptNumber: attempt.attemptNumber,
+    weightKg: attempt.weightKg,
+    result: attempt.result,
+    repsCount: attempt.repsCount,
+    timeoutSeconds: attempt.timeoutSeconds,
+    component: attempt.component ? publicComponent(attempt.component) : null,
+  };
+}
+
+function publicNomination(nomination: OpsPayload['nominations'][number]) {
+  return {
+    id: nomination.id,
+    entryNumber: nomination.entryNumber,
+    bodyWeightAtWeighIn: nomination.bodyWeightAtWeighIn,
+    status: nomination.status,
+    bestSuccessfulAttemptKg: nomination.bestSuccessfulAttemptKg,
+    finalScore: nomination.finalScore,
+    placeInClass: nomination.placeInClass,
+    placeInDivision: nomination.placeInDivision,
+    placeOverall: nomination.placeOverall,
+    athlete: {
+      id: nomination.athlete.id,
+      lastName: nomination.athlete.lastName,
+      firstName: nomination.athlete.firstName,
+      middleName: nomination.athlete.middleName,
+      birthYear: birthYear(nomination.athlete.dateOfBirth, nomination.athlete.privacyMode),
+      clubName: nomination.athlete.clubName,
+      photoUrl: nomination.athlete.privacyMode === 'hidden' ? null : nomination.athlete.photoUrl,
+    },
+    discipline: publicDiscipline(nomination),
+    division: {
+      id: nomination.division.id,
+      code: nomination.division.code,
+      nameRu: nomination.division.nameRu,
+      nameEn: nomination.division.nameEn,
+      gender: nomination.division.gender,
+    },
+    declaredWeightClass: nomination.declaredWeightClass
+      ? publicWeightClass(nomination.declaredWeightClass)
+      : null,
+    weightClass: publicWeightClass(nomination.weightClass),
+    flight: nomination.flight
+      ? { id: nomination.flight.id, code: nomination.flight.code, name: nomination.flight.name }
+      : null,
+    group: nomination.group ? { id: nomination.group.id, name: nomination.group.name } : null,
+    attempts: nomination.attempts.map(publicAttempt),
+  };
+}
+
+function liveAttempt(attempt: OpsPayload['nominations'][number]['attempts'][number]) {
+  return {
+    ...publicAttempt(attempt),
+    judgeDecisions: attempt.judgeDecisions,
+    startedAt: attempt.startedAt,
+    decidedAt: attempt.decidedAt,
+  };
+}
+
+function liveNomination(nomination: OpsPayload['nominations'][number]) {
+  return {
+    ...publicNomination(nomination),
+    competitionId: nomination.competitionId,
+    athleteId: nomination.athleteId,
+    disciplineId: nomination.disciplineId,
+    divisionId: nomination.divisionId,
+    declaredWeightClassId: nomination.declaredWeightClassId,
+    weightClassId: nomination.weightClassId,
+    flightId: nomination.flightId,
+    groupId: nomination.groupId,
+    isMandatePassed: nomination.isMandatePassed,
+    attempts: nomination.attempts.map(liveAttempt),
+  };
+}
+
+function publicScoreboardPayload(payload: OpsPayload) {
+  const publicPayload = {
+    competition: {
+      id: payload.competition.id,
+      federationId: payload.competition.federationId,
+      code: payload.competition.code,
+      nameRu: payload.competition.nameRu,
+      nameEn: payload.competition.nameEn,
+      startDate: payload.competition.startDate,
+      endDate: payload.competition.endDate,
+      federation: {
+        id: payload.competition.federation.id,
+        code: payload.competition.federation.code,
+        nameRu: payload.competition.federation.nameRu,
+      },
+    },
+    nominations: payload.nominations.map(publicNomination),
+    rows: payload.scoreboardRows,
+    generatedAt: new Date().toISOString(),
+  };
+  assertNoForbiddenExportKeys(publicPayload);
+  return publicPayload;
+}
+
+function liveOpsPayload(payload: OpsPayload) {
+  const livePayload = {
+    competition: {
+      id: payload.competition.id,
+      federationId: payload.competition.federationId,
+      code: payload.competition.code,
+      nameRu: payload.competition.nameRu,
+      nameEn: payload.competition.nameEn,
+      startDate: payload.competition.startDate,
+      endDate: payload.competition.endDate,
+      federation: {
+        id: payload.competition.federation.id,
+        code: payload.competition.federation.code,
+        nameRu: payload.competition.federation.nameRu,
+      },
+    },
+    divisions: payload.divisions,
+    platforms: payload.platforms,
+    nominations: payload.nominations.map(liveNomination),
+    scoreboardRows: payload.scoreboardRows,
+  };
+  assertNoForbiddenExportKeys(livePayload);
+  return livePayload;
+}
+
+function scoreboardPayloadForUser(user: UserWithRoles, payload: OpsPayload) {
+  const isFull = canReadFullOps(user, payload.competition);
+  const scoreboardPayload = {
+    competition: isFull ? payload.competition : liveOpsPayload(payload).competition,
+    nominations: isFull ? payload.nominations : payload.nominations.map(liveNomination),
+    rows: payload.scoreboardRows,
+    generatedAt: new Date().toISOString(),
+  };
+  if (!isFull) assertNoForbiddenExportKeys(scoreboardPayload);
+  return scoreboardPayload;
+}
+
+function nominationPayloadForUser(
+  user: UserWithRoles,
+  competition: { id: string; federationId: string },
+  nomination: OpsPayload['nominations'][number],
+) {
+  const nominationPayload = canReadFullOps(user, competition)
+    ? nomination
+    : liveNomination(nomination);
+  if (!canReadFullOps(user, competition)) assertNoForbiddenExportKeys(nominationPayload);
+  return nominationPayload;
+}
+
 function athleteName(nomination: OpsPayload['nominations'][number]): string {
   return [nomination.athlete.lastName, nomination.athlete.firstName, nomination.athlete.middleName]
     .filter(Boolean)
@@ -920,12 +1184,35 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
-        if (!canRead(req.user, payload.competition)) {
+        if (!canReadFullOps(req.user, payload.competition)) {
           return reply.code(403).send({
             error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
           });
         }
         return payload;
+      },
+    );
+
+    app.get<{ Params: { id: string } }>(
+      '/competitions/:id/live-ops',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const payload = await getOpsPayload(req.params.id);
+        if (!payload) {
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (!canReadLiveOps(req.user, payload.competition)) {
+          return reply.code(403).send({
+            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+          });
+        }
+        return liveOpsPayload(payload);
       },
     );
 
@@ -951,6 +1238,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
+        }
+        if (isCompetitionLocked(competition)) {
+          return sendCompetitionLocked(reply, req.requestId);
         }
 
         const parsed = CompetitionDefaultSetup.safeParse(req.body ?? {});
@@ -1081,6 +1371,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
+        if (isCompetitionLocked(competition)) {
+          return sendCompetitionLocked(reply, req.requestId);
+        }
 
         const parsed = JudgeAssignmentCreate.safeParse(req.body);
         if (!parsed.success) {
@@ -1191,7 +1484,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
       async (req, reply) => {
         const before = await prisma.judgeAssignment.findUnique({
           where: { id: req.params.assignmentId },
-          include: { competition: { select: { id: true, federationId: true } } },
+          include: { competition: { select: { id: true, federationId: true, status: true } } },
         });
         if (!before) {
           return reply.code(404).send({
@@ -1210,6 +1503,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
+        }
+        if (isCompetitionLocked(before.competition)) {
+          return sendCompetitionLocked(reply, req.requestId);
         }
 
         await prisma.$transaction(async (tx) => {
@@ -1263,6 +1559,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
+        }
+        if (isCompetitionLocked(competition)) {
+          return sendCompetitionLocked(reply, req.requestId);
         }
 
         const parsed = NominationCreate.safeParse(req.body);
@@ -1339,6 +1638,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
+        }
+        if (isCompetitionLocked(competition)) {
+          return sendCompetitionLocked(reply, req.requestId);
         }
 
         const parsed = NominationDraw.safeParse(req.body ?? {});
@@ -1434,6 +1736,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
+        }
+        if (isCompetitionLocked(competition)) {
+          return sendCompetitionLocked(reply, req.requestId);
         }
 
         const parsed = FlightAutoPlan.safeParse(req.body ?? {});
@@ -1596,7 +1901,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
       async (req, reply) => {
         const before = await prisma.nomination.findUnique({
           where: { id: req.params.nominationId },
-          include: { competition: { select: { id: true, federationId: true } } },
+          include: { competition: { select: { id: true, federationId: true, status: true } } },
         });
         if (!before) {
           return reply.code(404).send({
@@ -1618,6 +1923,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
+        if (isCompetitionLocked(before.competition)) {
+          return sendCompetitionLocked(reply, req.requestId);
+        }
 
         const parsed = NominationUpdate.safeParse(req.body);
         if (!parsed.success) {
@@ -1630,6 +1938,20 @@ export const competitionOpsPlugin: FeaturePlugin = {
           });
         }
         const data: NominationUpdate = { ...parsed.data };
+        const forbiddenUpdateKeys = forbiddenNominationUpdateKeysForUser(
+          req.user,
+          before.competition,
+          data,
+        );
+        if (forbiddenUpdateKeys.length > 0) {
+          return reply.code(403).send({
+            error: {
+              code: 'nomination_update_field_forbidden',
+              message: `Nomination fields are not allowed for this role: ${forbiddenUpdateKeys.join(', ')}`,
+              requestId: req.requestId,
+            },
+          });
+        }
         if (
           data.bodyWeightAtWeighIn !== undefined &&
           data.bodyWeightAtWeighIn !== null &&
@@ -1695,7 +2017,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
             return result;
           },
         );
-        return { nomination: updated };
+        return { nomination: nominationPayloadForUser(req.user, before.competition, updated) };
       },
     );
 
@@ -1706,7 +2028,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const nomination = await prisma.nomination.findUnique({
           where: { id: req.params.nominationId },
           include: {
-            competition: { select: { id: true, federationId: true } },
+            competition: { select: { id: true, federationId: true, status: true } },
             discipline: { select: { components: { orderBy: { order: 'asc' } } } },
           },
         });
@@ -1732,6 +2054,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
+        if (isCompetitionLocked(nomination.competition)) {
+          return sendCompetitionLocked(reply, req.requestId);
+        }
 
         const attemptNumber = Number(req.params.attemptNumber);
         const parsed = AttemptUpsert.safeParse({ ...(req.body as object), attemptNumber });
@@ -1746,6 +2071,18 @@ export const competitionOpsPlugin: FeaturePlugin = {
         }
         const componentId =
           parsed.data.componentId ?? nomination.discipline.components[0]?.id ?? null;
+        if (
+          parsed.data.notes !== undefined &&
+          !hasScopedRole(req.user, nomination.competition, ['federation_admin', 'secretary'])
+        ) {
+          return reply.code(403).send({
+            error: {
+              code: 'attempt_notes_forbidden',
+              message: 'Attempt notes are restricted to federation administrators and secretaries',
+              requestId: req.requestId,
+            },
+          });
+        }
         if (
           componentId &&
           !nomination.discipline.components.some((component) => component.id === componentId)
@@ -1806,7 +2143,20 @@ export const competitionOpsPlugin: FeaturePlugin = {
           where: { id: nomination.id },
           include: nominationInclude,
         });
-        return { attempt, nomination: updatedNomination };
+        if (!updatedNomination) return { attempt, nomination: null };
+        if (canReadFullOps(req.user, nomination.competition)) {
+          return { attempt, nomination: updatedNomination };
+        }
+
+        const safeNomination = liveNomination(updatedNomination);
+        const safeAttempt =
+          safeNomination.attempts.find((item) => item.id === attempt.id) ??
+          safeNomination.attempts.find(
+            (item) => item.componentId === componentId && item.attemptNumber === attemptNumber,
+          );
+        const response = { attempt: safeAttempt ?? null, nomination: safeNomination };
+        assertNoForbiddenExportKeys(response);
+        return response;
       },
     );
 
@@ -1851,17 +2201,12 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
-        if (!canRead(req.user, payload.competition)) {
+        if (!canReadLiveOps(req.user, payload.competition)) {
           return reply.code(403).send({
             error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
           });
         }
-        return {
-          competition: payload.competition,
-          nominations: payload.nominations,
-          rows: payload.scoreboardRows,
-          generatedAt: new Date().toISOString(),
-        };
+        return scoreboardPayloadForUser(req.user, payload);
       },
     );
 
@@ -1887,12 +2232,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
-        return {
-          competition: payload.competition,
-          nominations: payload.nominations,
-          rows: payload.scoreboardRows,
-          generatedAt: new Date().toISOString(),
-        };
+        return publicScoreboardPayload(payload);
       },
     );
 
@@ -1910,7 +2250,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
-        if (!canRead(req.user, payload.competition)) {
+        if (!canReadLiveOps(req.user, payload.competition)) {
           return reply.code(403).send({
             error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
           });
@@ -1934,7 +2274,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
-        if (!canRead(req.user, payload.competition)) {
+        if (!canReadLiveOps(req.user, payload.competition)) {
           return reply.code(403).send({
             error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
           });

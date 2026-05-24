@@ -11,7 +11,7 @@ import {
 import { nominationGenderStats } from './gender-stats.js';
 import {
   usePublicScoreboard,
-  type NominationDto,
+  type PublicNominationDto,
   type ScoreboardRowDto,
 } from './operations-api.js';
 
@@ -66,14 +66,12 @@ function isCompetitionInBroadcastWindow(startDate: string, endDate: string): boo
   return end >= today && start <= windowEnd;
 }
 
-function fullName(person: NominationDto['athlete']): string {
+function fullName(person: PublicNominationDto['athlete']): string {
   return [person.lastName, person.firstName, person.middleName].filter(Boolean).join(' ');
 }
 
-function birthYear(value: string | null | undefined): string {
-  if (!value) return '-';
-  const year = new Date(value).getFullYear();
-  return Number.isFinite(year) ? String(year) : '-';
+function formatBirthYear(value: number | null | undefined): string {
+  return value ? String(value) : '-';
 }
 
 function initials(name: string): string {
@@ -87,7 +85,7 @@ function initials(name: string): string {
 
 function sortBroadcastRows(
   rows: ScoreboardRowDto[],
-  nominationsById: Map<string, NominationDto>,
+  nominationsById: Map<string, PublicNominationDto>,
   mode: BroadcastSortMode,
 ): ScoreboardRowDto[] {
   return [...rows].sort((a, b) => {
@@ -116,9 +114,8 @@ function sortBroadcastRows(
         firstName: a.athleteName,
         lastName: '',
         middleName: null,
-        dateOfBirth: '',
         clubName: null,
-        federationCardNumber: null,
+        birthYear: null,
         photoUrl: null,
       },
     ).localeCompare(
@@ -128,9 +125,8 @@ function sortBroadcastRows(
           firstName: b.athleteName,
           lastName: '',
           middleName: null,
-          dateOfBirth: '',
           clubName: null,
-          federationCardNumber: null,
+          birthYear: null,
           photoUrl: null,
         },
       ),
@@ -239,12 +235,11 @@ export default function CompetitionBroadcastFeature() {
           {nomination?.bodyWeightAtWeighIn ?? '-'}
         </td>
       );
-    if (key === 'rankTitle')
-      return <td key={key}>{nomination?.athlete.federationCardNumber ?? '-'}</td>;
+    if (key === 'rankTitle') return <td key={key}>-</td>;
     if (key === 'birthYear')
       return (
         <td key={key} className="text-right">
-          {birthYear(nomination?.athlete.dateOfBirth)}
+          {formatBirthYear(nomination?.athlete.birthYear)}
         </td>
       );
     if (key === 'coefficient')

@@ -12,17 +12,27 @@ describe('ISF privacy allowlist guard', () => {
     ).not.toThrow();
   });
 
-  it('detects payment, contacts, consent, auth and private notes', () => {
+  it('detects payment, contacts, consent, auth, exact birth date and private notes', () => {
     const findings = findForbiddenExportKeys({
+      entryFeeKopecks: '150000',
       paymentStatus: 'paid',
-      athlete: { email: 'athlete@example.test' },
+      federation: { billingTariffKopecksPerNomination: '5000' },
+      athlete: {
+        dateOfBirth: '1998-01-02',
+        federationCardNumber: 'CARD-1',
+        email: 'athlete@example.test',
+      },
       consent: { textShown: 'private' },
       notes: 'internal',
       auth: { refreshToken: 'secret' },
     });
 
     expect(findings).toEqual([
+      '$.entryFeeKopecks',
       '$.paymentStatus',
+      '$.federation.billingTariffKopecksPerNomination',
+      '$.athlete.dateOfBirth',
+      '$.athlete.federationCardNumber',
       '$.athlete.email',
       '$.consent',
       '$.consent.textShown',
