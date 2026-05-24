@@ -25,6 +25,7 @@
     "seed:references": "pnpm seed:countries && pnpm seed:rf-regions && pnpm seed:rf-cities && pnpm seed:lookup-values",
     "seed:launch": "pnpm seed:disciplines && pnpm seed:references && pnpm seed:root",
     "seed:federation-user": "tsx scripts/seed-federation-user.ts",
+    "smoke:isf": "tsx scripts/smoke-isf-integration.ts",
     "smoke:pilot": "tsx scripts/smoke-pilot-flow.ts",
     "clean": "rimraf dist .turbo"
   },
