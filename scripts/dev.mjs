@@ -21,6 +21,8 @@ const skipDocker = flags.has('--skip-docker') || process.env.STREETLIFTING_SKIP_
 const skipPrepare = flags.has('--skip-prepare') || process.env.STREETLIFTING_SKIP_PREPARE === '1';
 const skipSeed = flags.has('--skip-seed') || process.env.STREETLIFTING_SKIP_SEED === '1';
 const exitAfterReady = flags.has('--once') || flags.has('--check');
+const apiPortOverride = process.env.STREETLIFTING_API_PORT ?? process.env.PORT;
+const webPort = process.env.STREETLIFTING_WEB_PORT ?? '1420';
 const postgresPort = process.env.STREETLIFTING_POSTGRES_PORT ?? '55432';
 const redisPort = process.env.STREETLIFTING_REDIS_PORT ?? '56379';
 
@@ -153,7 +155,9 @@ function ensureApiEnv() {
     info('updated apps/api/.env with local development defaults');
   }
 
-  return { ...process.env, ...readEnvFile(apiEnvPath) };
+  const apiEnv = { ...readEnvFile(apiEnvPath), ...process.env };
+  if (apiPortOverride) apiEnv.PORT = apiPortOverride;
+  return apiEnv;
 }
 
 function startDockerDesktop() {
@@ -317,7 +321,7 @@ async function main() {
 
   const apiEnv = ensureApiEnv();
   await ensurePortFree(Number(apiEnv.PORT ?? 3000), 'API');
-  await ensurePortFree(1420, 'Web');
+  await ensurePortFree(Number(webPort), 'Web');
   await ensureDocker();
   await prepare(apiEnv);
 
@@ -334,13 +338,13 @@ async function main() {
     ...process.env,
     VITE_API_PROXY_TARGET: `http://127.0.0.1:${apiEnv.PORT ?? 3000}`,
   };
-  const web = startService('Web', commands.vite, ['--host', '127.0.0.1', '--port', '1420'], {
+  const web = startService('Web', commands.vite, ['--host', '127.0.0.1', '--port', webPort], {
     cwd: webDir,
     env: webEnv,
   });
   children.push(web);
 
-  await waitUntil('Web app', () => httpOk('http://127.0.0.1:1420/login'), 60_000);
+  await waitUntil('Web app', () => httpOk(`http://127.0.0.1:${webPort}/login`), 60_000);
 
   const shutdown = () => {
     for (const child of children) {
@@ -351,7 +355,7 @@ async function main() {
   info('');
   info('ready');
   info(`API: http://127.0.0.1:${apiEnv.PORT ?? 3000}/health`);
-  info('Web: http://127.0.0.1:1420/login');
+  info(`Web: http://127.0.0.1:${webPort}/login`);
   info(`Local root email: ${apiEnv.ROOT_EMAIL}`);
   info('Local root password is stored in apps/api/.env');
 
