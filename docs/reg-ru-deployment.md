@@ -161,6 +161,8 @@ curl -fsS https://streetlifting.app/api/health/competitions
 curl -fsS https://streetlifting.app/api/health/competition-ops
 curl -fsSI https://streetlifting.app/sw.js | grep -Ei 'content-type|cache-control'
 curl -fsSI https://streetlifting.app/service-worker.js | grep -Ei 'content-type|cache-control'
+ISF_META_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' https://streetlifting.app/api/isf/v1/meta)
+test "$ISF_META_STATUS" = "401"
 ```
 
 Manual:

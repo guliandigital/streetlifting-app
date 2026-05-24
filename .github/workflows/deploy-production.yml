@@ -62,3 +62,4 @@ jobs:
         run: |
           curl -fsS https://streetlifting.app/api/health
           curl -fsSI https://streetlifting.app/sw.js | grep -Ei 'content-type|cache-control'
+          test "$(curl -sS -o /dev/null -w '%{http_code}' https://streetlifting.app/api/isf/v1/meta)" = "401"
