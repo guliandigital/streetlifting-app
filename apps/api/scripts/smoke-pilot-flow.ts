@@ -76,6 +76,33 @@ interface NominationResponse {
   };
 }
 
+interface ReceiptResponse {
+  receipt: {
+    id: string;
+    number: string;
+    nominationsCount: number;
+    amountKopecks: string;
+  };
+}
+
+interface WriteoffResponse {
+  writeoff: {
+    id: string;
+    number: string;
+    nominationsCount: number;
+    competitionId: string | null;
+    linkedReceiptId: string | null;
+  };
+}
+
+interface FederationAuditResponse {
+  audit: Array<{
+    action: string;
+    targetType: string;
+    targetId: string;
+  }>;
+}
+
 class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -441,6 +468,107 @@ const accountantProtocolStatus = await requestStatus(
   accountantAuth,
 );
 assert(accountantProtocolStatus === 403, 'accountant can export competition protocol');
+
+const viewerReceiptStatus = await requestStatus(
+  'POST',
+  `/federations/${federation.id}/receipts`,
+  {
+    number: `R-VIEWER-${suffix}`,
+    date: '2026-05-24',
+    nominationsCount: 1,
+    amountKopecks: 5000,
+    paymentMethod: 'cash',
+    expiresAt: '2026-12-31',
+  },
+  viewerAuth,
+);
+assert(viewerReceiptStatus === 403, 'viewer can create federation receipts');
+const receipt = (
+  await requestJson<ReceiptResponse>(
+    'POST',
+    `/federations/${federation.id}/receipts`,
+    {
+      number: `R-${suffix}`,
+      date: '2026-05-24',
+      nominationsCount: 5,
+      amountKopecks: 25000,
+      paymentMethod: 'bank_transfer',
+      expiresAt: '2026-12-31',
+      externalReference: `smoke-${suffix}`,
+    },
+    accountantAuth,
+  )
+).receipt;
+assert(receipt.nominationsCount === 5, 'receipt nominations count mismatch');
+assert(receipt.amountKopecks === '25000', 'receipt amount mismatch');
+const duplicateReceiptStatus = await requestStatus(
+  'POST',
+  `/federations/${federation.id}/receipts`,
+  {
+    number: receipt.number,
+    date: '2026-05-24',
+    nominationsCount: 5,
+    amountKopecks: 25000,
+    paymentMethod: 'bank_transfer',
+    expiresAt: '2026-12-31',
+  },
+  accountantAuth,
+);
+assert(duplicateReceiptStatus === 409, 'duplicate receipt number was accepted');
+const writeoff = (
+  await requestJson<WriteoffResponse>(
+    'POST',
+    `/federations/${federation.id}/writeoffs`,
+    {
+      number: `W-${suffix}`,
+      date: '2026-05-24',
+      nominationsCount: 2,
+      competitionId: competition.id,
+      linkedReceiptId: receipt.id,
+    },
+    accountantAuth,
+  )
+).writeoff;
+assert(writeoff.nominationsCount === 2, 'writeoff nominations count mismatch');
+assert(writeoff.competitionId === competition.id, 'writeoff competition scope mismatch');
+assert(writeoff.linkedReceiptId === receipt.id, 'writeoff linked receipt mismatch');
+const duplicateWriteoffStatus = await requestStatus(
+  'POST',
+  `/federations/${federation.id}/writeoffs`,
+  {
+    number: writeoff.number,
+    date: '2026-05-24',
+    nominationsCount: 1,
+    competitionId: competition.id,
+    linkedReceiptId: receipt.id,
+  },
+  accountantAuth,
+);
+assert(duplicateWriteoffStatus === 409, 'duplicate writeoff number was accepted');
+const accountingAudit = await requestJson<FederationAuditResponse>(
+  'GET',
+  `/federations/${federation.id}/audit`,
+  undefined,
+  auth,
+);
+assert(
+  accountingAudit.audit.some(
+    (row) =>
+      row.action === 'federation.receipt.created' &&
+      row.targetType === 'receipt' &&
+      row.targetId === receipt.id,
+  ),
+  'receipt creation audit row was not recorded',
+);
+assert(
+  accountingAudit.audit.some(
+    (row) =>
+      row.action === 'federation.writeoff.created' &&
+      row.targetType === 'writeoff' &&
+      row.targetId === writeoff.id,
+  ),
+  'writeoff creation audit row was not recorded',
+);
 
 const judge = (
   await requestJson<EntityResponse>(
@@ -967,6 +1095,7 @@ console.log(
       judgeLiveOpsAccess: 'sanitized',
       headJudgePaymentMutation: 'blocked',
       judgeAttemptNotesMutation: 'blocked',
+      accountingLedgerAudit: 'ok',
       passwordChange: 'ok',
       protocolBytes: protocol.length,
       accountingBytes: accounting.length,
