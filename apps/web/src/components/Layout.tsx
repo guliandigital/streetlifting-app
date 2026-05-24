@@ -117,7 +117,11 @@ interface WorkspaceRootTab {
 
 function readInitialTheme(): StreetliftingTheme {
   if (typeof window === 'undefined') return 'light';
-  return window.localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+  try {
+    return window.localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
 }
 
 function readFavoritePaths(): string[] {
@@ -207,7 +211,11 @@ export function RootLayout() {
 
   useEffect(() => {
     document.documentElement.dataset.streetliftingTheme = theme;
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // The theme still applies for the current document when storage is unavailable.
+    }
   }, [theme]);
 
   useEffect(() => {
