@@ -1,0 +1,57 @@
+name: ISF production smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Git branch to run the smoke script from
+        required: true
+        default: main
+      api_url:
+        description: ISF API base URL
+        required: true
+        default: https://streetlifting.app/api
+      tenant:
+        description: Tenant code to verify
+        required: true
+        default: ru
+      allow_anonymous_only:
+        description: Allow running only anonymous guard checks when the service token secret is missing
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: isf-production-smoke-${{ inputs.tenant }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  smoke:
+    name: authenticated isf smoke
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ISF_SMOKE_API_URL: ${{ inputs.api_url }}
+      ISF_SMOKE_SERVICE_TOKEN: ${{ secrets.ISF_SMOKE_SERVICE_TOKEN }}
+      ISF_SMOKE_TENANT: ${{ inputs.tenant }}
+      ISF_SMOKE_ALLOW_MISSING_TOKEN: ${{ inputs.allow_anonymous_only && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run ISF smoke
+        run: |
+          if [ "$ISF_SMOKE_ALLOW_MISSING_TOKEN" != "1" ] && [ -z "$ISF_SMOKE_SERVICE_TOKEN" ]; then
+            echo "ISF_SMOKE_SERVICE_TOKEN is not configured in the production environment" >&2
+            exit 1
+          fi
+          pnpm release:smoke:isf

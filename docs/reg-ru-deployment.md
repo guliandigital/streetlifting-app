@@ -178,6 +178,11 @@ The script checks that anonymous access is rejected, browser-origin requests are
 readonly ISF export endpoints respond with valid payload structure. Keep the token out of committed
 files and long-lived shell history.
 
+For the normal production path, add `ISF_SMOKE_SERVICE_TOKEN` as a GitHub `production` environment
+secret and run the `ISF production smoke` workflow. The production deploy workflow also uses this
+secret when present; if it is absent, deploy smoke still validates the anonymous `401` guard and the
+separate smoke workflow can be run with `allow_anonymous_only=true`.
+
 Manual:
 
 1. Log in as root/platform admin.
