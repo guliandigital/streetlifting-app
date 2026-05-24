@@ -164,6 +164,19 @@ ISF_META_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' https://<web-domain>/a
 test "$ISF_META_STATUS" = "401"
 ```
 
+Authenticated ISF smoke, when a service-client token is available through a secure channel:
+
+```bash
+ISF_SMOKE_API_URL=https://<web-domain>/api \
+ISF_SMOKE_SERVICE_TOKEN=<service-client-token> \
+ISF_SMOKE_TENANT=ru \
+pnpm release:smoke:isf
+```
+
+This validates the anonymous guard, browser-origin rejection, `/isf/v1/meta`,
+`/isf/v1/standards`, paginated competitions, and paginated records. Do not write the service token to
+repo files or long-lived shell history.
+
 Manual web flow:
 
 1. Log in as the seeded root user.

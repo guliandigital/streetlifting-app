@@ -165,6 +165,19 @@ ISF_META_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' https://streetlifting.
 test "$ISF_META_STATUS" = "401"
 ```
 
+Authenticated ISF smoke, after issuing a service-client token:
+
+```bash
+ISF_SMOKE_API_URL=https://streetlifting.app/api \
+ISF_SMOKE_SERVICE_TOKEN=<service-client-token> \
+ISF_SMOKE_TENANT=ru \
+pnpm release:smoke:isf
+```
+
+The script checks that anonymous access is rejected, browser-origin requests are rejected, and the
+readonly ISF export endpoints respond with valid payload structure. Keep the token out of committed
+files and long-lived shell history.
+
 Manual:
 
 1. Log in as root/platform admin.
