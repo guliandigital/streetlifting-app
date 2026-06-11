@@ -14,6 +14,17 @@ import { api } from '../../lib/api-client.js';
 import { formatRub } from '../../lib/money.js';
 import { nominationGenderStats } from './gender-stats.js';
 import { useCompetitionOps } from './operations-api.js';
+import {
+  REPORT_ACTIONS,
+  type ReportAction,
+  type ReportExportFormat,
+  type ReportExportKind,
+} from './report-actions.js';
+import {
+  PrintableCompetitionReport,
+  PRINTABLE_REPORT_TITLES,
+  type PrintableReportKind,
+} from './report-printables.js';
 
 type ReportsTab =
   | 'protocols'
@@ -64,6 +75,79 @@ function StubSection({
   );
 }
 
+const PENDING_REPORT_ACTION_TITLE = 'Форма еще не подключена к генерации';
+
+function PendingReportButton({ icon, children }: { icon: WorkspaceIconName; children: ReactNode }) {
+  return (
+    <WorkspaceButton
+      type="button"
+      icon={icon}
+      disabled
+      title={PENDING_REPORT_ACTION_TITLE}
+      data-report-action-state="pending"
+    >
+      {children}
+    </WorkspaceButton>
+  );
+}
+
+function ReportActionButton({
+  action,
+  onExport,
+  onPrintable,
+}: {
+  action: ReportAction;
+  onExport: (kind: ReportExportKind, format: ReportExportFormat) => void;
+  onPrintable: (kind: PrintableReportKind) => void;
+}) {
+  if (action.state === 'pending') {
+    return <PendingReportButton icon={action.icon}>{action.label}</PendingReportButton>;
+  }
+
+  if (action.state === 'export') {
+    return (
+      <WorkspaceButton
+        type="button"
+        icon={action.icon}
+        {...(action.tone ? { tone: action.tone } : {})}
+        onClick={() => onExport(action.exportKind, action.exportFormat)}
+      >
+        {action.label}
+      </WorkspaceButton>
+    );
+  }
+
+  return (
+    <WorkspaceButton
+      type="button"
+      icon={action.icon}
+      {...(action.tone ? { tone: action.tone } : {})}
+      onClick={() => onPrintable(action.printableKind)}
+    >
+      {action.label}
+    </WorkspaceButton>
+  );
+}
+
+function ReportActionButtons({
+  actions,
+  onExport,
+  onPrintable,
+}: {
+  actions: readonly ReportAction[];
+  onExport: (kind: ReportExportKind, format: ReportExportFormat) => void;
+  onPrintable: (kind: PrintableReportKind) => void;
+}) {
+  return actions.map((action) => (
+    <ReportActionButton
+      key={action.id}
+      action={action}
+      onExport={onExport}
+      onPrintable={onPrintable}
+    />
+  ));
+}
+
 function isPastCompetition(endDate: string): boolean {
   const end = new Date(endDate);
   if (Number.isNaN(end.getTime())) return false;
@@ -98,6 +182,7 @@ export default function CompetitionReportsFeature() {
   const [hidePastCompetitions, setHidePastCompetitions] = useState(false);
   const [competitionSelected, setCompetitionSelected] = useState(true);
   const [activeTab, setActiveTab] = useState<ReportsTab>('protocols');
+  const [printableReport, setPrintableReport] = useState<PrintableReportKind | null>(null);
   const competitionGenderStats = useMemo(
     () => nominationGenderStats(data?.nominations ?? []),
     [data?.nominations],
@@ -130,7 +215,7 @@ export default function CompetitionReportsFeature() {
     toast.success('Отчет обновлен');
   }
 
-  async function exportFile(kind: 'protocol' | 'accounting', format: 'csv' | 'xlsx') {
+  async function exportFile(kind: ReportExportKind, format: ReportExportFormat) {
     if (!data) return;
     try {
       const filename = `${data.competition.code}-${kind}.${format}`;
@@ -152,6 +237,16 @@ export default function CompetitionReportsFeature() {
     }
   }
 
+  function renderReportActions(actions: readonly ReportAction[]) {
+    return (
+      <ReportActionButtons
+        actions={actions}
+        onExport={(kind, format) => void exportFile(kind, format)}
+        onPrintable={setPrintableReport}
+      />
+    );
+  }
+
   if (isLoading) {
     return <div className="pt-page p-6 text-sm text-gray-600">{t('common.loading')}</div>;
   }
@@ -160,6 +255,37 @@ export default function CompetitionReportsFeature() {
       <div className="pt-page p-6 text-sm text-red-700">
         {t('common.error')}: {error instanceof Error ? error.message : 'not found'}
       </div>
+    );
+  }
+
+  if (printableReport) {
+    return (
+      <WorkspacePage
+        title={PRINTABLE_REPORT_TITLES[printableReport]}
+        subtitle={data.competition.nameRu}
+        actions={
+          <>
+            <WorkspaceButton type="button" icon="print" tone="green" onClick={() => window.print()}>
+              Печать
+            </WorkspaceButton>
+            <WorkspaceButton
+              type="button"
+              icon="arrow-left"
+              onClick={() => setPrintableReport(null)}
+            >
+              Вернуться
+            </WorkspaceButton>
+          </>
+        }
+        federationBar={
+          <>
+            <span>{data.competition.federation.code}</span>
+            <span>{data.competition.federation.nameRu}</span>
+          </>
+        }
+      >
+        <PrintableCompetitionReport kind={printableReport} data={data} />
+      </WorkspacePage>
     );
   }
 
@@ -252,78 +378,26 @@ export default function CompetitionReportsFeature() {
               title="Форма протоколов соревнований ФПР"
               description="Требуется LibreOffice для PDF-экспорта."
             >
-              <WorkspaceButton type="button" icon="document">
-                Подробный
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="document">
-                Сжатый
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="document">
-                Сокращённый
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="document">
-                Выгрузка в АСП Паурлифтинг
-              </WorkspaceButton>
+              {renderReportActions(REPORT_ACTIONS.fprProtocols)}
             </StubSection>
 
             <StubSection title="Формы протоколов для большого количества дисциплин" tone="green">
-              <WorkspaceButton
-                type="button"
-                icon="chart"
-                tone="green"
-                onClick={() => void exportFile('protocol', 'xlsx')}
-              >
-                Дисциплины на отдельном листе
-              </WorkspaceButton>
-              <WorkspaceButton
-                type="button"
-                icon="chart"
-                tone="green"
-                onClick={() => void exportFile('protocol', 'xlsx')}
-              >
-                Дисциплины на одном листе
-              </WorkspaceButton>
+              {renderReportActions(REPORT_ACTIONS.protocolDisciplineSheets)}
             </StubSection>
 
             <StubSection title="Выгрузка во внешний файл с листами (необходим LibreOffice)">
-              <WorkspaceButton
-                type="button"
-                icon="document"
-                onClick={() => void exportFile('protocol', 'csv')}
-              >
-                Итоговый протокол CSV
-              </WorkspaceButton>
-              <WorkspaceButton
-                type="button"
-                icon="document"
-                onClick={() => void exportFile('protocol', 'xlsx')}
-              >
-                Итоговый протокол (ENGLISH) XLSX
-              </WorkspaceButton>
+              {renderReportActions(REPORT_ACTIONS.protocolExternalFiles)}
             </StubSection>
 
             <StubSection
               title="WRPF / WEPF / WSF / СПР / ФЖД / WAF / CAP"
               description="Экспорт в форматах сторонних федераций."
             >
-              <WorkspaceButton type="button" icon="document">
-                Итоговый протокол
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="chart">
-                Выгрузка XLSX
-              </WorkspaceButton>
+              {renderReportActions(REPORT_ACTIONS.externalFederationFormats)}
             </StubSection>
 
             <StubSection title="Выгрузка протоколов в сторонние сервисы" tone="yellow">
-              <WorkspaceButton type="button" icon="link">
-                allpowerlifting.com v1 от 09.2020
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="link">
-                Прямая через API allpowerlifting.com (тест)
-              </WorkspaceButton>
-              <WorkspaceButton type="button" icon="link">
-                OpenPowerLifting
-              </WorkspaceButton>
+              {renderReportActions(REPORT_ACTIONS.externalServices)}
             </StubSection>
           </div>
         )}
@@ -333,18 +407,7 @@ export default function CompetitionReportsFeature() {
             title="Пустографики"
             description="Печать пустых форм для секретариата и судей."
           >
-            <WorkspaceButton type="button" icon="print">
-              Бланк весов
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="print">
-              Бланк попыток (3 подхода)
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="print">
-              Бланк решения судей
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="print">
-              Бланк протокола ВК
-            </WorkspaceButton>
+            {renderReportActions(REPORT_ACTIONS.blanks)}
           </StubSection>
         )}
 
@@ -353,15 +416,7 @@ export default function CompetitionReportsFeature() {
             title="Печать номинаций"
             description="Списки спортсменов с номинациями для секретариата."
           >
-            <WorkspaceButton type="button" icon="nomination">
-              Все номинации
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="nomination">
-              По группам
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="nomination">
-              По помостам
-            </WorkspaceButton>
+            {renderReportActions(REPORT_ACTIONS.nominations)}
             <Link to="/competitions/$id/nominations" params={{ id }} className="pt-link-button">
               Открыть страницу номинаций
             </Link>
@@ -373,15 +428,7 @@ export default function CompetitionReportsFeature() {
             title="Назначения судей"
             description="Печать назначений для бригад и кодов авторизации."
           >
-            <WorkspaceButton type="button" icon="judges">
-              Печать назначения судей
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="judges">
-              Печать назначения судей (English)
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="telegram">
-              Печать кодов быстрой авторизации в телеграм
-            </WorkspaceButton>
+            {renderReportActions(REPORT_ACTIONS.judges)}
           </StubSection>
         )}
 
@@ -390,15 +437,7 @@ export default function CompetitionReportsFeature() {
             title="Карточки спортсменов"
             description="Индивидуальные карточки для секретариата и помоста."
           >
-            <WorkspaceButton type="button" icon="list">
-              Карточки A4
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="list">
-              Карточки A5 на 2 на лист
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="list">
-              Карточки только взвешенных
-            </WorkspaceButton>
+            {renderReportActions(REPORT_ACTIONS.cards)}
           </StubSection>
         )}
 
@@ -407,15 +446,7 @@ export default function CompetitionReportsFeature() {
             title="Расписание"
             description="Расписание помостов и групп с временами выходов."
           >
-            <WorkspaceButton type="button" icon="history">
-              Полное расписание
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="history">
-              По помостам
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="history">
-              По группам
-            </WorkspaceButton>
+            {renderReportActions(REPORT_ACTIONS.schedule)}
           </StubSection>
         )}
 
@@ -497,22 +528,7 @@ export default function CompetitionReportsFeature() {
         {activeTab === 'finance' && (
           <WorkspacePanel className="p-3 space-y-3">
             <WorkspaceSectionTitle>Финансовые показатели</WorkspaceSectionTitle>
-            <WorkspaceToolbar>
-              <WorkspaceButton
-                type="button"
-                icon="billing"
-                onClick={() => void exportFile('accounting', 'csv')}
-              >
-                Бухгалтерия CSV
-              </WorkspaceButton>
-              <WorkspaceButton
-                type="button"
-                icon="chart"
-                onClick={() => void exportFile('accounting', 'xlsx')}
-              >
-                Бухгалтерия XLSX
-              </WorkspaceButton>
-            </WorkspaceToolbar>
+            <WorkspaceToolbar>{renderReportActions(REPORT_ACTIONS.finance)}</WorkspaceToolbar>
             <table className="pt-grid">
               <thead>
                 <tr>
@@ -559,12 +575,7 @@ export default function CompetitionReportsFeature() {
             <Link to="/competitions/$id/certificates" params={{ id }} className="pt-link-button">
               Открыть Печать грамот
             </Link>
-            <WorkspaceButton type="button" icon="certificate">
-              Справка об участии
-            </WorkspaceButton>
-            <WorkspaceButton type="button" icon="certificate">
-              Благодарственное письмо
-            </WorkspaceButton>
+            {renderReportActions(REPORT_ACTIONS.references)}
           </StubSection>
         )}
       </div>
