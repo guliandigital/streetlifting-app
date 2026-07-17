@@ -198,7 +198,11 @@ export const AUTHORIZATION_MATRIX = [
   {
     key: 'competition.ops.readLive',
     module: 'competition-ops',
-    routePatterns: ['/competitions/:id/live-ops', '/competitions/:id/scoreboard'],
+    routePatterns: [
+      '/competitions/:id/live-ops',
+      '/competitions/:id/scoreboard',
+      '/live/competitions/:id',
+    ],
     methods: ['GET'],
     auth: 'required',
     roles: LIVE_OPS_READ_ROLES,
@@ -298,7 +302,7 @@ export const AUTHORIZATION_MATRIX = [
   {
     key: 'competition.publicScoreboard.read',
     module: 'public',
-    routePatterns: ['/public/competitions/:id/scoreboard'],
+    routePatterns: ['/public/competitions/:id/scoreboard', '/live/public/competitions/:id'],
     methods: ['GET'],
     auth: 'public',
     roles: [],

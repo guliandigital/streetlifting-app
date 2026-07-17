@@ -6,6 +6,7 @@ import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { validateUuidParams } from '../lib/params.js';
+import { publishCompetitionLiveUpdate } from '../lib/live-updates.js';
 
 const log = moduleLogger('public-registration');
 
@@ -501,6 +502,7 @@ export const publicRegistrationPlugin: FeaturePlugin = {
             },
             'public registration created',
           );
+          publishCompetitionLiveUpdate(app, competition.id);
           return reply.code(201).send({
             registration: {
               athleteId: result.athlete.id,

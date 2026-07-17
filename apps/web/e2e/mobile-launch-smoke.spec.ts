@@ -226,5 +226,11 @@ test('mobile launch smoke covers public registration and tournament tablet surfa
     await expectUsableViewport(page);
   }
 
+  await page.goto(`/broadcast/competitions/${setup.competitionId}`);
+  await expect(page.getByTestId('public-broadcast')).toBeVisible();
+  await expect(page.getByText('Текущее выступление:')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Зачёт' })).toHaveCount(0);
+  await expectUsableViewport(page);
+
   expect(pageErrors).toEqual([]);
 });

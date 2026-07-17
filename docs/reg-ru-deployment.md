@@ -75,6 +75,8 @@ Set real values for:
 - `JWT_SECRET`
 - `CORS_ORIGIN`
 - `SENTRY_DSN` if used
+- `REDIS_URL=redis://127.0.0.1:6379` when API runs in more than one process. Install and enable
+  a local Redis service first; `/api/health/live-updates` must return `200` with `transport: redis`.
 
 Install systemd:
 

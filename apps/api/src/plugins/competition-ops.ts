@@ -20,6 +20,7 @@ import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
 import { validateUuidParams } from '../lib/params.js';
 import { assertNoForbiddenExportKeys } from '../lib/privacy-allowlist.js';
+import { publishCompetitionLiveUpdate } from '../lib/live-updates.js';
 
 const log = moduleLogger('competition-ops');
 
@@ -1208,6 +1209,28 @@ export const competitionOpsPlugin: FeaturePlugin = {
       'preHandler',
       validateUuidParams(['id', 'assignmentId', 'nominationId', 'componentId']),
     );
+    app.addHook('onResponse', async (req, reply) => {
+      if (
+        reply.statusCode < 200 ||
+        reply.statusCode >= 300 ||
+        ['GET', 'HEAD', 'OPTIONS'].includes(req.method)
+      ) {
+        return;
+      }
+
+      const params = req.params as { id?: string; nominationId?: string };
+      if (params.id) {
+        publishCompetitionLiveUpdate(app, params.id);
+        return;
+      }
+      if (!params.nominationId) return;
+
+      const nomination = await prisma.nomination.findUnique({
+        where: { id: params.nominationId },
+        select: { competitionId: true },
+      });
+      if (nomination?.competitionId) publishCompetitionLiveUpdate(app, nomination.competitionId);
+    });
 
     app.get('/health/competition-ops', async () => ({ status: 'ok', module: 'competition-ops' }));
 
@@ -1574,6 +1597,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
           );
         });
 
+        publishCompetitionLiveUpdate(app, before.competition.id);
         return { deleted: true };
       },
     );

@@ -3,6 +3,20 @@
 Дата: 2026-06-11  
 Область: локальный checkout `main` проекта `streetlifting-app`.
 
+## Дополнение 2026-07-17
+
+- Рабочие экраны оператора и судьи получают WebSocket invalidation-события после tournament
+  mutations; токен передаётся через `Sec-WebSocket-Protocol`, а scope повторно проверяется на
+  upgrade. HTTP polling каждые 2 секунды и при возврате фокуса остаётся fallback.
+- Публичное табло стало read-only: оно показывает только спортсмена со статусом `on_platform`
+  и больше не содержит локальных кнопок таймера или судейского решения, которые не меняли бы
+  официальный результат.
+- Полный browser regression (`4` Playwright flows) и workspace unit tests проходят на этом
+  состоянии. При заданном `REDIS_URL` API передаёт invalidation-события между process instances
+  через Redis Pub/Sub; без него безопасно остаётся single-process delivery. `/health/live-updates`
+  показывает состояние transport и возвращает `503`, если настроенный Redis недоступен. Desktop
+  sync/replay остаётся отдельным P0.
+
 ## Цель
 
 Проверить фактическое состояние существующих модулей и превратить его в рабочий план дореализации. Фокус: сначала безопасный web-first пилот, затем production hardening, затем offline/desktop после стабилизации web-потока.
@@ -75,7 +89,10 @@
 
 Пробелы:
 
-- `@fastify/websocket` установлен, но server plugin не зарегистрирован. Архитектура обещает topic-based broadcast, runtime пока HTTP/polling.
+- `live-updates` регистрирует authenticated `/live/competitions/:id` и public
+  `/live/public/competitions/:id`. Канал передаёт только no-PII invalidation-события; клиенты
+  перечитывают свои уже защищённые HTTP DTO. Между несколькими API process канал передаётся через
+  Redis Pub/Sub при заданном `REDIS_URL`.
 - `RoleAssignment` есть в модели и материализуется на запросе, но нет полноценного admin module для grant/revoke scoped roles со step-up auth.
 - Public registration rate-limited и consent-aware, но нет CAPTCHA/abuse scoring и payment provider integration.
 - Athlete/federation uploads проверяют размер и declared MIME, но magic-byte validation и server-side image re-encoding не закрыты полностью.

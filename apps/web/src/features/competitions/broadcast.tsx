@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@streetlifting/ui';
@@ -144,9 +144,6 @@ export default function CompetitionBroadcastFeature() {
   const [sortMode, setSortMode] = useState<BroadcastSortMode>('name');
   const [visibleColumns, setVisibleColumns] = useState(defaultColumnVisibility);
   const [hideAthletePhoto, setHideAthletePhoto] = useState(true);
-  const [timerSeconds, setTimerSeconds] = useState(60);
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [localDecision, setLocalDecision] = useState<'good_lift' | 'no_lift' | null>(null);
   const competitionGenderStats = useMemo(
     () => nominationGenderStats(data?.nominations ?? []),
     [data?.nominations],
@@ -170,27 +167,12 @@ export default function CompetitionBroadcastFeature() {
   );
 
   const current = useMemo(
-    () => (visibleRows[0] ? (nominationsById.get(visibleRows[0].nominationId) ?? null) : null),
-    [nominationsById, visibleRows],
+    () => data?.nominations.find((nomination) => nomination.status === 'on_platform') ?? null,
+    [data?.nominations],
   );
   const athleteName = current ? fullName(current.athlete) : '';
   const visibleColumnCount =
     2 + broadcastColumns.filter((column) => visibleColumns[column.key]).length;
-
-  useEffect(() => {
-    if (!timerRunning) return undefined;
-    const timer = window.setInterval(() => {
-      setTimerSeconds((seconds) => {
-        if (seconds <= 1) {
-          window.clearInterval(timer);
-          setTimerRunning(false);
-          return 0;
-        }
-        return seconds - 1;
-      });
-    }, 1_000);
-    return () => window.clearInterval(timer);
-  }, [timerRunning]);
 
   async function refreshList() {
     const result = await refetch();
@@ -199,22 +181,6 @@ export default function CompetitionBroadcastFeature() {
       return;
     }
     toast.success('Список трансляции обновлен');
-  }
-
-  function startTimer(seconds = 60) {
-    setTimerSeconds(seconds);
-    setTimerRunning(true);
-  }
-
-  function pauseTimer() {
-    setTimerRunning(false);
-  }
-
-  function markDecision(decision: 'good_lift' | 'no_lift') {
-    setLocalDecision(decision);
-    toast.success(
-      decision === 'good_lift' ? 'На табло отмечен зачет' : 'На табло отмечен не зачет',
-    );
   }
 
   function setColumnVisibility(key: BroadcastColumnKey, checked: boolean) {
@@ -308,7 +274,10 @@ export default function CompetitionBroadcastFeature() {
         { label: 'Звук и Музыка', icon: 'music' },
       ]}
     >
-      <div className="pt-info-gray mb-2 flex items-center justify-between">
+      <div
+        data-testid="public-broadcast"
+        className="pt-info-gray mb-2 flex items-center justify-between"
+      >
         <span className="pt-inline-icon">
           <WorkspaceIcon name="warning" />В списке отображаются соревнования + 30 дней от текущей
           даты
@@ -407,43 +376,9 @@ export default function CompetitionBroadcastFeature() {
               )
             ) : null}
             <div className="pt-black-display">
-              {athleteName || '-'}
-              {localDecision ? (
-                <span className="ml-3 text-sm font-bold">
-                  {localDecision === 'good_lift' ? 'Зачет' : 'Не зачет'}
-                </span>
-              ) : null}
+              <span className="mr-3 text-sm font-bold text-[#98e400]">Текущее выступление:</span>
+              {athleteName || 'ожидание вызова спортсмена'}
             </div>
-            <WorkspaceButton type="button" icon="break" aria-label="Пауза" onClick={pauseTimer} />
-            <WorkspaceButton type="button" onClick={() => startTimer(60)}>
-              60s Старт
-            </WorkspaceButton>
-            <button
-              className="pt-big-green"
-              type="button"
-              onClick={() => setTimerRunning((running) => !running)}
-            >
-              <WorkspaceIcon name="timer" />
-              {timerRunning ? 'Пауза' : 'Старт'} [{timerSeconds} сек]
-            </button>
-            <WorkspaceButton
-              type="button"
-              icon="break"
-              aria-label="Пауза таймера"
-              onClick={pauseTimer}
-            />
-            <button
-              className="pt-big-green"
-              type="button"
-              onClick={() => markDecision('good_lift')}
-            >
-              <WorkspaceIcon name="flag" />
-              Зачёт
-            </button>
-            <button className="pt-big-pink" type="button" onClick={() => markDecision('no_lift')}>
-              <WorkspaceIcon name="flag" />
-              Не зачёт
-            </button>
           </div>
 
           <table className="pt-grid">

@@ -10,6 +10,10 @@ import type {
   JudgeDecisionSubmission,
 } from '@streetlifting/domain';
 import { api } from '../../lib/api-client.js';
+import {
+  useCompetitionLiveUpdates,
+  usePublicCompetitionLiveUpdates,
+} from '../../lib/competition-live-updates.js';
 
 export interface DivisionDto {
   id: string;
@@ -349,9 +353,15 @@ export function useCompetitionOps(id: string) {
 }
 
 export function useCompetitionLiveOps(id: string) {
+  useCompetitionLiveUpdates(id);
   return useQuery<CompetitionLiveOpsResponse>({
     queryKey: ['competitions', id, 'live-ops'],
     queryFn: () => api.competitions.liveOps(id),
+    // The operator and judge tablets are separate devices during a meet. Keep
+    // their read model fresh even when another device makes the mutation.
+    // WebSocket fan-out remains a separate, authenticated transport slice.
+    refetchInterval: 2_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -364,6 +374,7 @@ export function useScoreboard(id: string) {
 }
 
 export function usePublicScoreboard(id: string) {
+  usePublicCompetitionLiveUpdates(id);
   return useQuery<PublicScoreboardResponse>({
     queryKey: ['public-competitions', id, 'scoreboard'],
     queryFn: () => api.competitions.publicScoreboard(id),

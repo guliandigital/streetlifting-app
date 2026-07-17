@@ -6,6 +6,7 @@ import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
 import { validateUuidParams } from '../lib/params.js';
 import { createSyncOutboxEvent, outboxPayload } from '../lib/sync-outbox.js';
+import { publishCompetitionLiveUpdate } from '../lib/live-updates.js';
 
 const log = moduleLogger('competitions');
 
@@ -444,6 +445,7 @@ export const competitionsPlugin: FeaturePlugin = {
           },
         );
 
+        publishCompetitionLiveUpdate(app, updated.id);
         return { competition: updated };
       },
     );

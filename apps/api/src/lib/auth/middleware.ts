@@ -25,6 +25,37 @@ export interface AuthenticatedUser {
 }
 
 /**
+ * Materialize a user and active roles from an access token. HTTP requests use
+ * Authorization; browser WebSockets pass the token in Sec-WebSocket-Protocol
+ * because browsers do not permit arbitrary upgrade headers.
+ */
+export async function authenticateAccessToken(
+  token: string | null | undefined,
+): Promise<AuthenticatedUser | null> {
+  if (!token) return null;
+  const claims = await verifyAccessToken(token);
+  if (!claims) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: claims.sub },
+    include: {
+      roleAssignments: {
+        where: { revokedAt: null },
+        select: { role: true, federationId: true, competitionId: true },
+      },
+    },
+  });
+  if (!user) return null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName,
+    roles: user.roleAssignments,
+  };
+}
+
+/**
  * preHandler: extract Bearer token, verify, materialize user + active roles.
  * Sets `req.user = null` when there is no/invalid token but does NOT 401 —
  * use `requireAuth` to enforce. This split lets routes opt in to optional
@@ -38,35 +69,20 @@ export const attachUser: preHandlerHookHandler = async (req: FastifyRequest) => 
   const token = header.slice('Bearer '.length).trim();
   if (!token) return;
 
-  const claims = await verifyAccessToken(token);
-  if (!claims) return;
-
-  const user = await prisma.user.findUnique({
-    where: { id: claims.sub },
-    include: {
-      roleAssignments: {
-        where: { revokedAt: null },
-        select: { role: true, federationId: true, competitionId: true },
-      },
-    },
-  });
-  if (!user) return;
-
-  req.user = {
-    id: user.id,
-    email: user.email,
-    displayName: user.displayName,
-    roles: user.roleAssignments,
-  };
+  req.user = await authenticateAccessToken(token);
 };
 
 /** Enforce that `req.user` is set (after `attachUser`). 401 if not. */
 export function requireAuth(): preHandlerHookHandler {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user) {
-      await reply
-        .code(401)
-        .send({ error: { code: 'unauthorized', message: 'Authentication required', requestId: req.requestId } });
+      await reply.code(401).send({
+        error: {
+          code: 'unauthorized',
+          message: 'Authentication required',
+          requestId: req.requestId,
+        },
+      });
     }
   };
 }
@@ -92,9 +108,13 @@ export function requireRole(
   const allowed = Array.isArray(roles) ? roles : [roles];
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user) {
-      await reply
-        .code(401)
-        .send({ error: { code: 'unauthorized', message: 'Authentication required', requestId: req.requestId } });
+      await reply.code(401).send({
+        error: {
+          code: 'unauthorized',
+          message: 'Authentication required',
+          requestId: req.requestId,
+        },
+      });
       return;
     }
     const ok = req.user.roles.some(
@@ -104,9 +124,9 @@ export function requireRole(
         (options.competitionId ? r.competitionId === options.competitionId : true),
     );
     if (!ok) {
-      await reply
-        .code(403)
-        .send({ error: { code: 'forbidden', message: 'Insufficient role', requestId: req.requestId } });
+      await reply.code(403).send({
+        error: { code: 'forbidden', message: 'Insufficient role', requestId: req.requestId },
+      });
     }
   };
 }

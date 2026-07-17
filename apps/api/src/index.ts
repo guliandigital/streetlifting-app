@@ -1,6 +1,7 @@
 import Fastify, { type FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import websocket from '@fastify/websocket';
 import { initSentry } from './lib/sentry.js';
 import { rootLogger, moduleLogger } from './lib/logger.js';
 
@@ -27,6 +28,7 @@ import { competitionsPlugin } from './plugins/competitions.js';
 import { competitionOpsPlugin } from './plugins/competition-ops.js';
 import { publicRegistrationPlugin } from './plugins/public-registration.js';
 import { isfIntegrationPlugin } from './plugins/isf-integration.js';
+import { liveUpdatesPlugin } from './plugins/live-updates.js';
 import rateLimit from '@fastify/rate-limit';
 
 const port = Number(process.env.PORT ?? 3000);
@@ -50,6 +52,13 @@ const app = Fastify({
 const boot = moduleLogger('boot');
 
 await registerRequestContext(app);
+await app.register(websocket, {
+  options: {
+    maxPayload: 1024,
+    handleProtocols: (protocols: Set<string>) =>
+      protocols.has('streetlifting-live.v1') ? 'streetlifting-live.v1' : false,
+  },
+});
 
 // Attach req.user globally so every plugin can use requireAuth/requireRole.
 app.addHook('preHandler', attachUser);
@@ -100,6 +109,7 @@ const features = [
   federationChaptersPlugin,
   competitionsPlugin,
   competitionOpsPlugin,
+  liveUpdatesPlugin,
   publicRegistrationPlugin,
   isfIntegrationPlugin,
   // Feature plugins are appended here as milestones land. Each loads
