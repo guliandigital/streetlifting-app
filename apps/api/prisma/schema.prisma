@@ -110,6 +110,11 @@ enum JudgeRole {
   jury
 }
 
+enum JudgeDecisionCall {
+  white
+  red
+}
+
 enum PaymentMethod {
   bank_transfer
   card
@@ -194,6 +199,7 @@ model User {
   updatedAt       DateTime @updatedAt @db.Timestamptz(6)
 
   roleAssignments RoleAssignment[]
+  judgeProfile    Judge?
   consents        Consent[]
   attachments     Attachment[]    @relation("AttachmentUploader")
   refreshTokens   RefreshToken[]
@@ -590,6 +596,7 @@ model Group {
 
 model Judge {
   id                   String   @id @default(uuid()) @db.Uuid
+  userId               String?  @unique @db.Uuid
   lastName             String
   firstName            String
   middleName           String?
@@ -601,6 +608,7 @@ model Judge {
   updatedAt            DateTime @updatedAt @db.Timestamptz(6)
 
   assignments          JudgeAssignment[]
+  user                 User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([lastName, firstName])
   @@map("judge")
@@ -617,6 +625,7 @@ model JudgeAssignment {
   competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
   judge         Judge       @relation(fields: [judgeId], references: [id], onDelete: Cascade)
   platform      Platform?   @relation(fields: [platformId], references: [id], onDelete: SetNull)
+  decisions     AttemptJudgeDecision[]
 
   @@unique([competitionId, judgeId, platformId, role])
   @@map("judge_assignment")
@@ -687,10 +696,28 @@ model Attempt {
   nomination      Nomination    @relation(fields: [nominationId], references: [id], onDelete: Cascade)
   component       DisciplineComponent? @relation(fields: [componentId], references: [id], onDelete: Restrict)
   records         Record[]
+  judgeVotes      AttemptJudgeDecision[]
 
   @@unique([nominationId, componentId, attemptNumber])
   @@index([componentId])
   @@map("attempt")
+}
+
+model AttemptJudgeDecision {
+  id                String          @id @default(uuid()) @db.Uuid
+  attemptId         String          @db.Uuid
+  judgeAssignmentId String          @db.Uuid
+  call              JudgeDecisionCall
+  reasonCode        String?
+  decidedAt         DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(6)
+
+  attempt           Attempt         @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  judgeAssignment   JudgeAssignment @relation(fields: [judgeAssignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, judgeAssignmentId])
+  @@index([judgeAssignmentId])
+  @@map("attempt_judge_decision")
 }
 
 // ─── Reference data overrides ────────────────────────────────────────────

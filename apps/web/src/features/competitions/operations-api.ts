@@ -7,6 +7,7 @@ import type {
   NominationCreate,
   NominationDraw,
   NominationUpdate,
+  JudgeDecisionSubmission,
 } from '@streetlifting/domain';
 import { api } from '../../lib/api-client.js';
 
@@ -475,6 +476,27 @@ export function useUpsertAttempt(id: string) {
       componentId
         ? api.competitions.upsertComponentAttempt(nominationId, componentId, attemptNumber, data)
         : api.competitions.upsertAttempt(nominationId, attemptNumber, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['competitions', id] });
+      void qc.invalidateQueries({ queryKey: ['competitions', id, 'ops'] });
+      void qc.invalidateQueries({ queryKey: ['competitions', id, 'live-ops'] });
+      void qc.invalidateQueries({ queryKey: ['competitions', id, 'scoreboard'] });
+    },
+  });
+}
+
+export function useSubmitJudgeDecision(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      nominationId,
+      attemptNumber,
+      data,
+    }: {
+      nominationId: string;
+      attemptNumber: number;
+      data: JudgeDecisionSubmission;
+    }) => api.competitions.submitJudgeDecision(nominationId, attemptNumber, data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['competitions', id] });
       void qc.invalidateQueries({ queryKey: ['competitions', id, 'ops'] });

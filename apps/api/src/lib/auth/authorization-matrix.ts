@@ -35,6 +35,7 @@ export type AuthorizationActionKey =
   | 'competition.ops.nominations'
   | 'competition.ops.nominationHeadJudgeUpdate'
   | 'competition.ops.attempts'
+  | 'competition.ops.judgeDecisions'
   | 'competition.ops.attemptNotes'
   | 'competition.reports.protocolExport'
   | 'competition.reports.accountingExport'
@@ -75,9 +76,10 @@ export const ATTEMPT_WRITE_ROLES = [
   'federation_admin',
   'secretary',
   'head_judge',
-  'judge',
   'scoreboard_operator',
 ] as const satisfies readonly Role[];
+
+export const JUDGE_DECISION_ROLES = ['head_judge', 'judge'] as const satisfies readonly Role[];
 
 export const ACCOUNTING_ROLES = [
   'federation_admin',
@@ -251,7 +253,17 @@ export const AUTHORIZATION_MATRIX = [
     auth: 'required',
     roles: ATTEMPT_WRITE_ROLES,
     scope: 'competition',
-    notes: 'Attempt writes are allowed for live platform roles; notes are restricted separately.',
+    notes: 'Attempt writes are restricted to operators and senior competition roles.',
+  },
+  {
+    key: 'competition.ops.judgeDecisions',
+    module: 'competition-ops',
+    routePatterns: ['/nominations/:nominationId/attempts/:attemptNumber/judge-decision'],
+    methods: ['PUT'],
+    auth: 'required',
+    roles: JUDGE_DECISION_ROLES,
+    scope: 'competition',
+    notes: 'Judge calls require a linked judge profile and an effective platform assignment.',
   },
   {
     key: 'competition.ops.attemptNotes',
@@ -408,6 +420,10 @@ export function canAccessAuthorizationAction(
     case 'competition.ops.attempts':
       return target.competition
         ? hasCompetitionRole(actor, target.competition, ATTEMPT_WRITE_ROLES)
+        : false;
+    case 'competition.ops.judgeDecisions':
+      return target.competition
+        ? hasCompetitionRole(actor, target.competition, JUDGE_DECISION_ROLES)
         : false;
     case 'competition.reports.accountingExport':
       return target.competition

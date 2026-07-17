@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AttemptUpsert,
+  JudgeDecisionSubmission,
   JudgeAssignmentCreate,
   NominationCreate,
   NominationUpdate,
@@ -68,5 +69,10 @@ describe('competition operations input schemas', () => {
       role: 'head',
     });
     expect(JudgeAssignmentCreate.safeParse({ judgeId: uuid, role: 'speaker' }).success).toBe(false);
+  });
+
+  it('accepts only a valid judge decision call', () => {
+    expect(JudgeDecisionSubmission.parse({ call: 'white' })).toEqual({ call: 'white' });
+    expect(JudgeDecisionSubmission.safeParse({ call: 'green' }).success).toBe(false);
   });
 });

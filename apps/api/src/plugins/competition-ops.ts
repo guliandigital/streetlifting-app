@@ -8,7 +8,9 @@ import {
   NominationUpdate,
   calculateNominationPlaces,
   calculateNominationScore,
+  JudgeDecisionSubmission,
   presets,
+  resolveJudgeMajority,
 } from '@streetlifting/domain';
 import type { FastifyReply } from 'fastify';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
@@ -39,6 +41,45 @@ const HEAD_JUDGE_NOMINATION_UPDATE_FIELDS = new Set<keyof NominationUpdate>([
   'status',
   'isMandatePassed',
 ]);
+
+const VOTING_JUDGE_ROLES = ['head', 'side_left', 'side_right'] as const;
+
+class JudgeDecisionConflictError extends Error {}
+
+function judgeDecisionPosition(role: string): 'head' | 'left' | 'right' {
+  if (role === 'head') return 'head';
+  return role === 'side_left' ? 'left' : 'right';
+}
+
+function effectiveJudgeAssignments<
+  T extends { id: string; judgeId: string; platformId: string | null; role: string },
+>(assignments: T[], platformId: string): T[] {
+  const byJudge = new Map<string, T>();
+  for (const assignment of assignments) {
+    const existing = byJudge.get(assignment.judgeId);
+    if (!existing || (assignment.platformId === platformId && existing.platformId === null)) {
+      byJudge.set(assignment.judgeId, assignment);
+    }
+  }
+  return [...byJudge.values()];
+}
+
+async function runSerializable<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2034' ||
+        attempt === 2
+      ) {
+        throw error;
+      }
+    }
+  }
+  throw new Error('Serializable transaction retry limit exceeded');
+}
 
 type UserWithRoles = {
   id: string;
@@ -2042,7 +2083,6 @@ export const competitionOpsPlugin: FeaturePlugin = {
             'federation_admin',
             'secretary',
             'head_judge',
-            'judge',
             'scoreboard_operator',
           ])
         ) {
@@ -2157,6 +2197,226 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const response = { attempt: safeAttempt ?? null, nomination: safeNomination };
         assertNoForbiddenExportKeys(response);
         return response;
+      },
+    );
+
+    app.put<{ Params: { nominationId: string; componentId: string; attemptNumber: string } }>(
+      '/nominations/:nominationId/attempts/:attemptNumber/judge-decision',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const nomination = await prisma.nomination.findUnique({
+          where: { id: req.params.nominationId },
+          include: {
+            competition: { select: { id: true, federationId: true, status: true } },
+            discipline: { select: { components: { orderBy: { order: 'asc' } } } },
+            flight: { select: { platformId: true } },
+          },
+        });
+        if (!nomination) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Nomination not found', requestId: req.requestId },
+          });
+        }
+        if (!hasScopedRole(req.user, nomination.competition, ['head_judge', 'judge'])) {
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'judge decision role required',
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (isCompetitionLocked(nomination.competition)) {
+          return sendCompetitionLocked(reply, req.requestId);
+        }
+        if (!nomination.flight) {
+          return reply.code(409).send({
+            error: {
+              code: 'nomination_platform_missing',
+              message: 'Nomination must be assigned to a platform before judging',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const attemptNumber = Number(req.params.attemptNumber);
+        const parsed = JudgeDecisionSubmission.safeParse(req.body);
+        if (
+          !Number.isInteger(attemptNumber) ||
+          attemptNumber < 1 ||
+          attemptNumber > 5 ||
+          !parsed.success
+        ) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.success ? 'Invalid attempt number' : parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        const componentId =
+          parsed.data.componentId ?? nomination.discipline.components[0]?.id ?? null;
+        if (
+          componentId &&
+          !nomination.discipline.components.some((component) => component.id === componentId)
+        ) {
+          return reply.code(400).send({
+            error: {
+              code: 'component_out_of_scope',
+              message: 'Component is not in nomination discipline',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const judge = await prisma.judge.findUnique({
+          where: { userId: req.user!.id },
+          select: { id: true },
+        });
+        if (!judge) {
+          return reply.code(403).send({
+            error: {
+              code: 'judge_profile_missing',
+              message: 'No judge profile is linked to the authenticated user',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        try {
+          const attempt = await runSerializable(() =>
+            prisma.$transaction(
+              async (tx) => {
+                const assignments = effectiveJudgeAssignments(
+                  await tx.judgeAssignment.findMany({
+                    where: {
+                      competitionId: nomination.competition.id,
+                      role: { in: [...VOTING_JUDGE_ROLES] },
+                      OR: [{ platformId: nomination.flight!.platformId }, { platformId: null }],
+                    },
+                    select: { id: true, judgeId: true, platformId: true, role: true },
+                  }),
+                  nomination.flight!.platformId,
+                );
+                const ownAssignments = assignments.filter(
+                  (assignment) => assignment.judgeId === judge.id,
+                );
+                if (ownAssignments.length !== 1) {
+                  throw new JudgeDecisionConflictError(
+                    'Judge must have exactly one voting assignment',
+                  );
+                }
+
+                const currentAttempt = await tx.attempt.findFirst({
+                  where: { nominationId: nomination.id, componentId, attemptNumber },
+                  select: { id: true, result: true },
+                });
+                if (!currentAttempt) {
+                  throw new JudgeDecisionConflictError(
+                    'Attempt must be called by the operator before voting',
+                  );
+                }
+                if (currentAttempt.result !== 'pending') {
+                  throw new JudgeDecisionConflictError('Attempt is already decided');
+                }
+
+                const ownAssignment = ownAssignments[0]!;
+                await tx.attemptJudgeDecision.upsert({
+                  where: {
+                    attemptId_judgeAssignmentId: {
+                      attemptId: currentAttempt.id,
+                      judgeAssignmentId: ownAssignment.id,
+                    },
+                  },
+                  create: {
+                    attemptId: currentAttempt.id,
+                    judgeAssignmentId: ownAssignment.id,
+                    call: parsed.data.call,
+                    reasonCode: parsed.data.reasonCode ?? null,
+                  },
+                  update: {
+                    call: parsed.data.call,
+                    reasonCode: parsed.data.reasonCode ?? null,
+                    decidedAt: new Date(),
+                  },
+                });
+
+                const votes = await tx.attemptJudgeDecision.findMany({
+                  where: {
+                    attemptId: currentAttempt.id,
+                    judgeAssignmentId: { in: assignments.map((assignment) => assignment.id) },
+                  },
+                  include: { judgeAssignment: { select: { judgeId: true, role: true } } },
+                  orderBy: { decidedAt: 'asc' },
+                });
+                const result = resolveJudgeMajority(
+                  assignments.length,
+                  votes.map((vote) => vote.call),
+                );
+                const saved = await tx.attempt.update({
+                  where: { id: currentAttempt.id },
+                  data: {
+                    result,
+                    judgeDecisions: votes.map((vote) => ({
+                      judgeId: vote.judgeAssignment.judgeId,
+                      position: judgeDecisionPosition(vote.judgeAssignment.role),
+                      call: vote.call,
+                      ...(vote.reasonCode ? { reasonCode: vote.reasonCode } : {}),
+                      decidedAt: vote.decidedAt.toISOString(),
+                    })) as Prisma.InputJsonValue,
+                    decidedAt: result === 'pending' ? null : new Date(),
+                  },
+                });
+                await recalculateNomination(tx, nomination.id);
+                await recalculateCompetitionPlacings(tx, nomination.competition.id);
+                await audit.record(
+                  {
+                    ...audit.fromRequest(req),
+                    actorUserId: req.user!.id,
+                    action: 'attempt.judge_decision_submitted',
+                    scopeFederationId: nomination.competition.federationId,
+                    scopeCompetitionId: nomination.competition.id,
+                    targetType: 'attempt',
+                    targetId: saved.id,
+                    before: null,
+                    after: { call: parsed.data.call, result, assignmentId: ownAssignment.id },
+                    result: 'success',
+                  },
+                  tx,
+                );
+                return saved;
+              },
+              { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+            ),
+          );
+
+          const updatedNomination = await prisma.nomination.findUnique({
+            where: { id: nomination.id },
+            include: nominationInclude,
+          });
+          if (!updatedNomination) return { attempt, nomination: null };
+          const safeNomination = liveNomination(updatedNomination);
+          const safeAttempt =
+            safeNomination.attempts.find((item) => item.id === attempt.id) ??
+            safeNomination.attempts.find(
+              (item) => item.componentId === componentId && item.attemptNumber === attemptNumber,
+            );
+          const response = { attempt: safeAttempt ?? null, nomination: safeNomination };
+          assertNoForbiddenExportKeys(response);
+          return response;
+        } catch (error) {
+          if (error instanceof JudgeDecisionConflictError) {
+            return reply.code(409).send({
+              error: {
+                code: 'judge_decision_conflict',
+                message: error.message,
+                requestId: req.requestId,
+              },
+            });
+          }
+          throw error;
+        }
       },
     );
 

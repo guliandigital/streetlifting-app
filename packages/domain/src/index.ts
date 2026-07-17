@@ -17,6 +17,7 @@ export * from './nomination.js';
 export * from './attempt.js';
 export * from './flight.js';
 export * from './judge.js';
+export * from './judge-decision.js';
 export * from './judge-input.js';
 export * from './country.js';
 export * from './country-input.js';

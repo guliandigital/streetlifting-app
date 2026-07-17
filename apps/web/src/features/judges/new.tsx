@@ -18,6 +18,7 @@ export default function JudgeNewFeature() {
   const [categoryCode, setCategoryCode] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [cityRegion, setCityRegion] = useState('');
+  const [userId, setUserId] = useState('');
 
   const { data: categoriesData } = useLookups('judge_category');
   const category = categoriesData?.lookups.find((l) => l.code === categoryCode);
@@ -33,6 +34,7 @@ export default function JudgeNewFeature() {
         ...(category && { categoryRu: category.nameRu, categoryEn: category.nameEn }),
         ...(cardNumber.trim() !== '' && { cardNumber: trimmed(cardNumber) }),
         ...(cityRegion.trim() !== '' && { cityRegion: trimmed(cityRegion) }),
+        ...(userId.trim() !== '' && { userId: trimmed(userId) }),
       });
       toast.success(t('judges.created'));
       await navigate({ to: '/judges/$id', params: { id: res.judge.id } });
@@ -67,6 +69,12 @@ export default function JudgeNewFeature() {
                   required
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="userId">{t('judges.fields.userId')}</Label>
+              <Input id="userId" value={userId} onChange={(e) => setUserId(e.target.value)} />
+              <p className="text-xs text-muted-foreground">{t('judges.fields.userIdHint')}</p>
             </div>
 
             <div className="space-y-2">

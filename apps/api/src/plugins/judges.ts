@@ -17,6 +17,16 @@ function stripUndefined<T extends object>(obj: T): Partial<T> {
   return out as Partial<T>;
 }
 
+function judgePayload<T extends { userId: string | null }>(judge: T, includeUserId: boolean) {
+  if (includeUserId) return judge;
+  const { userId: _userId, ...publicJudge } = judge;
+  return publicJudge;
+}
+
+function isPlatformAdmin(user: { roles: Array<{ role: string }> } | null): boolean {
+  return user?.roles.some((role) => role.role === 'platform_admin') ?? false;
+}
+
 export const judgesPlugin: FeaturePlugin = {
   name: 'judges',
   register: async (app) => {
@@ -59,7 +69,12 @@ export const judgesPlugin: FeaturePlugin = {
         prisma.judge.count({ where }),
       ]);
 
-      return { judges, total, limit, offset };
+      return {
+        judges: judges.map((judge) => judgePayload(judge, isPlatformAdmin(req.user))),
+        total,
+        limit,
+        offset,
+      };
     });
 
     // ─── Get one ──────────────────────────────────────────────────────
@@ -73,7 +88,7 @@ export const judgesPlugin: FeaturePlugin = {
             error: { code: 'not_found', message: 'Judge not found', requestId: req.requestId },
           });
         }
-        return { judge };
+        return { judge: judgePayload(judge, isPlatformAdmin(req.user)) };
       },
     );
 
@@ -90,7 +105,28 @@ export const judgesPlugin: FeaturePlugin = {
         });
       }
       const data = parsed.data;
+      if (data.userId) {
+        const [user, linkedJudge] = await Promise.all([
+          prisma.user.findUnique({ where: { id: data.userId }, select: { id: true } }),
+          prisma.judge.findUnique({ where: { userId: data.userId }, select: { id: true } }),
+        ]);
+        if (!user) {
+          return reply.code(400).send({
+            error: { code: 'user_not_found', message: 'User not found', requestId: req.requestId },
+          });
+        }
+        if (linkedJudge) {
+          return reply.code(409).send({
+            error: {
+              code: 'judge_user_already_linked',
+              message: 'User is already linked to another judge profile',
+              requestId: req.requestId,
+            },
+          });
+        }
+      }
       const createData = stripUndefined({
+        userId: data.userId,
         lastName: data.lastName,
         firstName: data.firstName,
         middleName: data.middleName,
@@ -138,6 +174,33 @@ export const judgesPlugin: FeaturePlugin = {
           return reply.code(404).send({
             error: { code: 'not_found', message: 'Judge not found', requestId: req.requestId },
           });
+        }
+        if (parsed.data.userId && parsed.data.userId !== before.userId) {
+          const [user, linkedJudge] = await Promise.all([
+            prisma.user.findUnique({ where: { id: parsed.data.userId }, select: { id: true } }),
+            prisma.judge.findUnique({
+              where: { userId: parsed.data.userId },
+              select: { id: true },
+            }),
+          ]);
+          if (!user) {
+            return reply.code(400).send({
+              error: {
+                code: 'user_not_found',
+                message: 'User not found',
+                requestId: req.requestId,
+              },
+            });
+          }
+          if (linkedJudge && linkedJudge.id !== before.id) {
+            return reply.code(409).send({
+              error: {
+                code: 'judge_user_already_linked',
+                message: 'User is already linked to another judge profile',
+                requestId: req.requestId,
+              },
+            });
+          }
         }
         const updateData = stripUndefined(parsed.data) as Prisma.JudgeUpdateInput;
         const updated = await audit.withAudit(

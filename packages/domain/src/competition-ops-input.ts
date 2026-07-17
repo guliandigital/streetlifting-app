@@ -12,6 +12,15 @@ const OptionalNullableUuid = Uuid.nullable().optional();
 const OptionalNullableText = z.string().max(2000).nullable().optional();
 const Kopecks = z.number().int().nonnegative();
 
+export const JudgeDecisionSubmission = z
+  .object({
+    componentId: OptionalNullableUuid,
+    call: z.enum(['white', 'red']),
+    reasonCode: z.string().max(120).optional(),
+  })
+  .strict();
+export type JudgeDecisionSubmission = z.infer<typeof JudgeDecisionSubmission>;
+
 export const CompetitionDefaultSetup = z
   .object({
     platformName: z.string().min(1).max(120).default('Main platform'),

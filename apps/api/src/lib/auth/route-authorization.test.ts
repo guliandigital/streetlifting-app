@@ -28,6 +28,7 @@ const prismaMock = vi.hoisted(() => ({
   },
   nomination: {
     findMany: vi.fn(),
+    findUnique: vi.fn(),
   },
 }));
 
@@ -128,6 +129,10 @@ describe('API route authorization', () => {
     prismaMock.platform.findMany.mockResolvedValue([]);
     prismaMock.judgeAssignment.findMany.mockResolvedValue([]);
     prismaMock.nomination.findMany.mockResolvedValue([]);
+    prismaMock.nomination.findUnique.mockResolvedValue({
+      competition: { id: competitionA, federationId: federationA, status: 'in_progress' },
+      discipline: { components: [] },
+    });
   });
 
   it('returns 401 before DB reads when auth is missing on protected routes', async () => {
@@ -188,6 +193,27 @@ describe('API route authorization', () => {
       expect(fullOps.json().error).toMatchObject({ code: 'forbidden', message: 'Out of scope' });
       expect(liveOps.statusCode).toBe(200);
       expect(liveOps.json().competition.id).toBe(competitionA);
+    });
+  });
+
+  it('keeps legacy attempt upserts unavailable to judges while protecting the vote route', async () => {
+    await withApp(async (app) => {
+      const legacyAttempt = await app.inject({
+        method: 'PUT',
+        url: `/nominations/00000000-0000-4000-8000-000000000011/attempts/1`,
+        headers: authHeaders('judge', { competitionId: competitionA }),
+        payload: { weightKg: 40, result: 'good_lift' },
+      });
+      const unauthenticatedVote = await app.inject({
+        method: 'PUT',
+        url: `/nominations/00000000-0000-4000-8000-000000000011/attempts/1/judge-decision`,
+        payload: { call: 'white' },
+      });
+
+      expect(legacyAttempt.statusCode).toBe(403);
+      expect(legacyAttempt.json().error.code).toBe('forbidden');
+      expect(unauthenticatedVote.statusCode).toBe(401);
+      expect(unauthenticatedVote.json().error.code).toBe('unauthorized');
     });
   });
 

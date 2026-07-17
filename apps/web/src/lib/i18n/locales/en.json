@@ -457,8 +457,8 @@
     "empty": "No active attempts for judging.",
     "good": "Good lift",
     "no": "No lift",
-    "withdraw": "Withdraw",
-    "decisionSaved": "Decision saved"
+    "decisionSaved": "Decision saved",
+    "waitForCall": "Wait for the operator to call the attempt, or the result has already been finalized."
   },
   "protocolPrint": {
     "title": "Print protocol",
@@ -502,13 +502,16 @@
     "newTitle": "New judge",
     "empty": "No judges yet.",
     "created": "Judge created",
+    "userLinked": "Judge account updated",
     "noCategory": "No category",
     "searchPlaceholder": "Search by name or card number…",
     "cols": {
       "name": "Name",
       "category": "Category",
       "cardNumber": "Card number",
-      "cityRegion": "City / region"
+      "cityRegion": "City / region",
+      "userId": "Judge user ID",
+      "userIdHint": "Copy it from the judge's Profile page. An empty value unlinks the account."
     },
     "fields": {
       "lastName": "Last name",

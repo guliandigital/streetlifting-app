@@ -26,6 +26,7 @@ import type {
   RegionCreate,
   RegionUpdate,
   AttemptUpsert,
+  JudgeDecisionSubmission,
 } from '@streetlifting/domain';
 import { useAuthStore } from './auth/store.js';
 import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './auth/types.js';
@@ -478,6 +479,15 @@ export const api = {
       data: Omit<AttemptUpsert, 'attemptNumber'>,
     ): Promise<{ attempt: MutationAttemptDto | null; nomination: MutationNominationDto | null }> =>
       request(`/nominations/${nominationId}/attempts/${componentId}/${attemptNumber}`, {
+        method: 'PUT',
+        body: data,
+      }),
+    submitJudgeDecision: (
+      nominationId: string,
+      attemptNumber: number,
+      data: JudgeDecisionSubmission,
+    ): Promise<{ attempt: MutationAttemptDto | null; nomination: MutationNominationDto | null }> =>
+      request(`/nominations/${nominationId}/attempts/${attemptNumber}/judge-decision`, {
         method: 'PUT',
         body: data,
       }),

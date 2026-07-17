@@ -4,6 +4,7 @@ import { api } from '../../lib/api-client.js';
 
 export interface JudgeDto {
   id: string;
+  userId?: string | null;
   lastName: string;
   firstName: string;
   middleName: string | null;

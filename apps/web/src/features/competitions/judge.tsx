@@ -13,7 +13,7 @@ import {
 } from '@streetlifting/ui';
 import { WorkspacePage, WorkspaceState } from '../../components/workspace.js';
 import type { LiveNominationDto } from './operations-api.js';
-import { useCompetitionLiveOps, useUpsertAttempt } from './operations-api.js';
+import { useCompetitionLiveOps, useSubmitJudgeDecision } from './operations-api.js';
 import {
   attemptSummary,
   componentOptions,
@@ -39,7 +39,7 @@ export default function CompetitionJudgeFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/competitions/$id/judge' });
   const { data, isLoading, error } = useCompetitionLiveOps(id);
-  const upsertAttempt = useUpsertAttempt(id);
+  const submitJudgeDecision = useSubmitJudgeDecision(id);
   const [selectedNominationId, setSelectedNominationId] = useState('');
   const [componentId, setComponentId] = useState<string | null>(null);
   const [attemptNumber, setAttemptNumber] = useState('1');
@@ -71,7 +71,7 @@ export default function CompetitionJudgeFeature() {
     setAttemptNumber(String(nextAttemptNumber(selected, selectedComponent?.id ?? null)));
   }, [selected, selectedComponent?.id]);
 
-  async function decide(result: 'good_lift' | 'no_lift' | 'withdrawn') {
+  async function decide(call: 'white' | 'red') {
     if (!selected || !selectedComponent) return;
     const parsedAttempt = Number(attemptNumber);
     if (
@@ -83,20 +83,17 @@ export default function CompetitionJudgeFeature() {
       return;
     }
 
-    await upsertAttempt.mutateAsync({
+    if (!currentAttempt || currentAttempt.result !== 'pending') {
+      toast.error(t('competitionJudge.waitForCall'));
+      return;
+    }
+
+    await submitJudgeDecision.mutateAsync({
       nominationId: selected.id,
-      componentId: selectedComponent.id,
       attemptNumber: parsedAttempt,
       data: {
         componentId: selectedComponent.id,
-        weightKg: Number(currentAttempt?.weightKg ?? selectedComponent.fixedWeightKg ?? 0),
-        repsCount: currentAttempt?.repsCount ?? null,
-        result,
-        judgeDecisions: [
-          ...(Array.isArray(currentAttempt?.judgeDecisions) ? currentAttempt.judgeDecisions : []),
-          { result, source: 'judge_tablet', decidedAt: new Date().toISOString() },
-        ],
-        decidedAt: new Date().toISOString(),
+        call,
       },
     });
     toast.success(t('competitionJudge.decisionSaved'));
@@ -200,12 +197,13 @@ export default function CompetitionJudgeFeature() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Button
                   data-testid="judge-good"
                   type="button"
                   className="h-24 text-xl"
-                  onClick={() => void decide('good_lift')}
+                  disabled={submitJudgeDecision.isPending}
+                  onClick={() => void decide('white')}
                 >
                   {t('competitionJudge.good')}
                 </Button>
@@ -214,20 +212,16 @@ export default function CompetitionJudgeFeature() {
                   type="button"
                   variant="destructive"
                   className="h-24 text-xl"
-                  onClick={() => void decide('no_lift')}
+                  disabled={submitJudgeDecision.isPending}
+                  onClick={() => void decide('red')}
                 >
                   {t('competitionJudge.no')}
                 </Button>
-                <Button
-                  data-testid="judge-withdraw"
-                  type="button"
-                  variant="outline"
-                  className="h-24 text-xl"
-                  onClick={() => void decide('withdrawn')}
-                >
-                  {t('competitionJudge.withdraw')}
-                </Button>
               </div>
+
+              {!currentAttempt || currentAttempt.result !== 'pending' ? (
+                <p className="text-sm text-muted-foreground">{t('competitionJudge.waitForCall')}</p>
+              ) : null}
 
               <div className="rounded-md border border-border p-3 text-sm">
                 <div className="font-medium">{t('scoreboard.attempts')}</div>

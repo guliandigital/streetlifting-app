@@ -96,12 +96,13 @@ describe('authorization matrix', () => {
     expect(can(secretary, 'competition.ops.readFull', competitionB)).toBe(false);
   });
 
-  it('keeps judge access limited to live surfaces and attempts', () => {
+  it('keeps judge access limited to live surfaces and individual decisions', () => {
     const judge = actor('judge', { competitionId: competitionA.id });
 
     expect(can(judge, 'competition.ops.readLive')).toBe(true);
     expect(can(judge, 'competition.reports.protocolExport')).toBe(true);
-    expect(can(judge, 'competition.ops.attempts')).toBe(true);
+    expect(can(judge, 'competition.ops.judgeDecisions')).toBe(true);
+    expect(can(judge, 'competition.ops.attempts')).toBe(false);
     expect(can(judge, 'competition.ops.readFull')).toBe(false);
     expect(can(judge, 'competition.ops.attemptNotes')).toBe(false);
     expect(can(judge, 'competition.reports.accountingExport')).toBe(false);
