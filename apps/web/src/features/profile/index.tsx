@@ -16,7 +16,7 @@ import { WorkspacePage } from '../../components/workspace.js';
 import { api, ApiClientError } from '../../lib/api-client.js';
 import { useAuth } from '../../lib/auth/hooks.js';
 import { useAuthStore } from '../../lib/auth/store.js';
-import { useCabinetOverview } from './api.js';
+import { useCabinetOverview, usePassportExternalLinks, usePassportReviewRequests } from './api.js';
 
 const PASSWORD_MIN_LENGTH = 12;
 
@@ -34,6 +34,8 @@ export default function ProfileFeature() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const cabinet = useCabinetOverview();
+  const externalLinks = usePassportExternalLinks();
+  const reviewRequests = usePassportReviewRequests();
 
   function profileRoleLabel(role: string): string {
     return t(`profile.role.${role}`, { defaultValue: role });
@@ -140,6 +142,36 @@ export default function ProfileFeature() {
                   {cabinet.data.identity.consents.map((consent) => (
                     <li key={consent.id}>
                       {consent.scope} · {consent.textVersion} · {formatDate(consent.grantedAt)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
+              )}
+            </section>
+            <section className="mt-4 border-t pt-3">
+              <h3 className="mb-2 text-sm font-medium">Внешние спортивные профили</h3>
+              {externalLinks.data?.links.length ? (
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {externalLinks.data.links.map((link) => (
+                    <li key={link.id}>
+                      {link.system} · {link.externalId} · подтверждено
+                      {link.verifiedAt ? ` ${formatDate(link.verifiedAt)}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
+              )}
+            </section>
+            <section className="mt-4 border-t pt-3">
+              <h3 className="mb-2 text-sm font-medium">Заявки в федерацию</h3>
+              {reviewRequests.data?.requests.length ? (
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {reviewRequests.data.requests.map((request) => (
+                    <li key={request.id}>
+                      {request.kind} · {request.status} · {formatDate(request.submittedAt)}
+                      {request.reviewNote ? ` · ${request.reviewNote}` : ''}
                     </li>
                   ))}
                 </ul>

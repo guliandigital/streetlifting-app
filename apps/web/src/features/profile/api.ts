@@ -109,9 +109,43 @@ export interface CabinetOverview {
   } | null;
 }
 
+export interface PassportExternalLink {
+  id: string;
+  system: string;
+  externalId: string;
+  status: string;
+  verifiedAt: string | null;
+}
+
+export interface PassportReviewRequest {
+  id: string;
+  federationId: string;
+  kind: string;
+  status: string;
+  payload: Record<string, unknown>;
+  supportingAttachmentId: string | null;
+  submittedAt: string;
+  resolvedAt: string | null;
+  reviewNote: string | null;
+}
+
 export function useCabinetOverview() {
   return useQuery<CabinetOverview>({
     queryKey: ['cabinet', 'overview'],
     queryFn: () => api.cabinet.overview(),
+  });
+}
+
+export function usePassportExternalLinks() {
+  return useQuery<{ links: PassportExternalLink[] }>({
+    queryKey: ['passport', 'external-links'],
+    queryFn: () => api.passport.externalLinks(),
+  });
+}
+
+export function usePassportReviewRequests() {
+  return useQuery<{ requests: PassportReviewRequest[] }>({
+    queryKey: ['passport', 'requests'],
+    queryFn: () => api.passport.requests(),
   });
 }

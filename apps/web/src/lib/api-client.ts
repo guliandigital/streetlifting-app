@@ -71,7 +71,11 @@ import type {
   LookupValueDto,
   RegionDto,
 } from './references-api.js';
-import type { CabinetOverview } from '../features/profile/api.js';
+import type {
+  CabinetOverview,
+  PassportExternalLink,
+  PassportReviewRequest,
+} from '../features/profile/api.js';
 
 const log = moduleLogger('api-client');
 
@@ -302,6 +306,12 @@ export const api = {
 
   cabinet: {
     overview: (): Promise<CabinetOverview> => request('/cabinet/overview'),
+  },
+
+  passport: {
+    externalLinks: (): Promise<{ links: PassportExternalLink[] }> =>
+      request('/passport/external-links'),
+    requests: (): Promise<{ requests: PassportReviewRequest[] }> => request('/passport/requests'),
   },
 
   federations: {
