@@ -35,6 +35,9 @@ const teamMemberInput = z.object({
   platformId: uuid.nullable().optional(),
   judgeAssignmentId: uuid.nullable().optional(),
 });
+const teamMemberCorrectionInput = teamMemberInput
+  .omit({ userId: true })
+  .extend({ status: z.enum(['invited', 'confirmed', 'completed', 'declined', 'cancelled']) });
 
 function defined(value: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
@@ -229,6 +232,187 @@ export const passportManagementPlugin: FeaturePlugin = {
                 memberNameSnapshot: memberUser.displayName,
                 status: 'invited',
                 invitedAt: new Date(),
+              }) as Prisma.CompetitionTeamMemberUncheckedCreateInput,
+            }),
+        );
+        return reply.code(201).send({ teamMember });
+      },
+    );
+
+    // The member can only answer their own invitation. This never changes a
+    // finalized team snapshot and is fully auditable.
+    app.post<{ Params: { id: string } }>(
+      '/competition-team-members/:id/respond',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const parsed = z.object({ status: z.enum(['confirmed', 'declined']) }).safeParse(req.body);
+        if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
+        const before = await prisma.competitionTeamMember.findUnique({
+          where: { id: req.params.id },
+          include: { competition: { select: { federationId: true, status: true } } },
+        });
+        if (!before)
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Team member not found',
+              requestId: req.requestId,
+            },
+          });
+        if (before.userId !== req.user!.id)
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'Invitation belongs to another user',
+              requestId: req.requestId,
+            },
+          });
+        if (
+          before.status !== 'invited' ||
+          before.competition.status === 'finalized' ||
+          before.competition.status === 'archived'
+        )
+          return reply.code(409).send({
+            error: {
+              code: 'invitation_not_actionable',
+              message: 'Invitation is not actionable',
+              requestId: req.requestId,
+            },
+          });
+        const at = new Date();
+        const teamMember = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: `passport.team_member.${parsed.data.status}`,
+            scopeFederationId: before.competition.federationId,
+            scopeCompetitionId: before.competitionId,
+            targetType: 'competition_team_member',
+            targetId: before.id,
+            before,
+            after: parsed.data,
+          },
+          (tx) =>
+            tx.competitionTeamMember.update({
+              where: { id: before.id },
+              data:
+                parsed.data.status === 'confirmed'
+                  ? { status: 'confirmed', confirmedAt: at }
+                  : { status: 'declined' },
+            }),
+        );
+        return { teamMember };
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/competition-team-members/:id/complete',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const before = await prisma.competitionTeamMember.findUnique({
+          where: { id: req.params.id },
+          include: { competition: { select: { federationId: true } } },
+        });
+        if (!before)
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Team member not found',
+              requestId: req.requestId,
+            },
+          });
+        if (
+          !isFederationManager(req as never, before.competition.federationId, before.competitionId)
+        )
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'Competition team management required',
+              requestId: req.requestId,
+            },
+          });
+        if (before.status !== 'confirmed')
+          return reply.code(409).send({
+            error: {
+              code: 'team_member_not_confirmed',
+              message: 'Only confirmed members can be completed',
+              requestId: req.requestId,
+            },
+          });
+        const teamMember = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'passport.team_member.completed',
+            scopeFederationId: before.competition.federationId,
+            scopeCompetitionId: before.competitionId,
+            targetType: 'competition_team_member',
+            targetId: before.id,
+            before,
+            after: { status: 'completed' },
+          },
+          (tx) =>
+            tx.competitionTeamMember.update({
+              where: { id: before.id },
+              data: { status: 'completed', completedAt: new Date() },
+            }),
+        );
+        return { teamMember };
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/competition-team-members/:id/corrections',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const parsed = teamMemberCorrectionInput.safeParse(req.body);
+        if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
+        const before = await prisma.competitionTeamMember.findUnique({
+          where: { id: req.params.id },
+          include: { competition: { select: { federationId: true } } },
+        });
+        if (!before)
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Team member not found',
+              requestId: req.requestId,
+            },
+          });
+        if (
+          !isFederationManager(req as never, before.competition.federationId, before.competitionId)
+        )
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'Competition team management required',
+              requestId: req.requestId,
+            },
+          });
+        const teamMember = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'passport.team_member.corrected',
+            scopeFederationId: before.competition.federationId,
+            scopeCompetitionId: before.competitionId,
+            targetType: 'competition_team_member',
+            targetId: before.id,
+            before,
+            after: parsed.data,
+          },
+          (tx) =>
+            tx.competitionTeamMember.create({
+              data: defined({
+                ...parsed.data,
+                competitionId: before.competitionId,
+                userId: before.userId,
+                memberNameSnapshot: before.memberNameSnapshot,
+                correctionOfId: before.id,
+                invitedAt: before.invitedAt,
+                confirmedAt: before.confirmedAt,
+                completedAt:
+                  parsed.data.status === 'completed' ? (before.completedAt ?? new Date()) : null,
               }) as Prisma.CompetitionTeamMemberUncheckedCreateInput,
             }),
         );

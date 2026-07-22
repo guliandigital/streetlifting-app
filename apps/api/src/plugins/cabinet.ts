@@ -168,6 +168,7 @@ export const cabinetPlugin: FeaturePlugin = {
           where: {
             userId: user.id,
             status: 'completed',
+            corrections: { none: {} },
             competition: { status: { in: ['finalized', 'archived'] } },
           },
           orderBy: { competition: { startDate: 'desc' } },
@@ -207,6 +208,7 @@ export const cabinetPlugin: FeaturePlugin = {
             userId: user.id,
             role: 'organizer',
             status: 'completed',
+            corrections: { none: {} },
             competition: { status: { in: ['finalized', 'archived'] } },
           },
           orderBy: { competition: { startDate: 'desc' } },
