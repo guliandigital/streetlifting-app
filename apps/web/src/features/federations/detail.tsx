@@ -26,6 +26,7 @@ import {
   useUpdateFederation,
 } from './api.js';
 import { ChaptersCard } from './chapters-card.js';
+import { PassportRequestsPanel } from './passport-requests-panel.js';
 
 function todayInput(): string {
   return new Date().toISOString().slice(0, 10);
@@ -1004,6 +1005,7 @@ export default function FederationDetailFeature() {
           </div>
 
           <ChaptersCard federationId={f.id} />
+          {canEditFederation ? <PassportRequestsPanel federationId={f.id} /> : null}
         </main>
       </div>
     </WorkspacePage>

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import {
@@ -16,7 +16,13 @@ import { WorkspacePage } from '../../components/workspace.js';
 import { api, ApiClientError } from '../../lib/api-client.js';
 import { useAuth } from '../../lib/auth/hooks.js';
 import { useAuthStore } from '../../lib/auth/store.js';
-import { useCabinetOverview, usePassportExternalLinks, usePassportReviewRequests } from './api.js';
+import { useFederations } from '../federations/api.js';
+import {
+  useCabinetOverview,
+  usePassportAttachments,
+  usePassportExternalLinks,
+  usePassportReviewRequests,
+} from './api.js';
 
 const PASSWORD_MIN_LENGTH = 12;
 
@@ -33,15 +39,174 @@ export default function ProfileFeature() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [passportBusy, setPassportBusy] = useState(false);
+  const [displayName, setDisplayName] = useState(user?.displayName ?? '');
+  const [phone, setPhone] = useState('');
+  const [telegramHandle, setTelegramHandle] = useState('');
+  const [requestFederationId, setRequestFederationId] = useState('');
+  const [requestKind, setRequestKind] = useState<
+    'official_profile' | 'official_credential' | 'sport_rank'
+  >('official_profile');
+  const [requestMessage, setRequestMessage] = useState('');
+  const [supportingAttachmentId, setSupportingAttachmentId] = useState<string | null>(null);
   const cabinet = useCabinetOverview();
   const externalLinks = usePassportExternalLinks();
   const reviewRequests = usePassportReviewRequests();
+  const attachments = usePassportAttachments();
+  const federations = useFederations();
 
   function profileRoleLabel(role: string): string {
     return t(`profile.role.${role}`, { defaultValue: role });
   }
 
+  useEffect(() => {
+    if (!user) return;
+    setDisplayName(user.displayName);
+    setPhone(cabinet.data?.identity.phone ?? '');
+    setTelegramHandle(cabinet.data?.identity.telegramHandle ?? '');
+  }, [cabinet.data?.identity.phone, cabinet.data?.identity.telegramHandle, user]);
+
+  useEffect(() => {
+    if (!requestFederationId && federations.data?.federations[0]) {
+      setRequestFederationId(federations.data.federations[0].id);
+    }
+  }, [federations.data, requestFederationId]);
+
   if (!user) return null;
+
+  async function refreshPassport(): Promise<void> {
+    await Promise.all([
+      cabinet.refetch(),
+      reviewRequests.refetch(),
+      attachments.refetch(),
+      externalLinks.refetch(),
+    ]);
+  }
+
+  async function onContactsSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    setPassportBusy(true);
+    try {
+      await api.passport.updateProfile({
+        displayName: displayName.trim(),
+        phone: phone.trim() || null,
+        telegramHandle: telegramHandle.trim() || null,
+      });
+      await refreshPassport();
+      toast.success('Контактные данные сохранены');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setPassportBusy(false);
+    }
+  }
+
+  async function onPrivacyChange(privacyMode: 'public_results' | 'hidden'): Promise<void> {
+    setPassportBusy(true);
+    try {
+      await api.passport.updatePrivacy(privacyMode);
+      await cabinet.refetch();
+      toast.success('Настройки приватности сохранены');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setPassportBusy(false);
+    }
+  }
+
+  async function onUploadDocument(e: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Размер документа не должен превышать 5 МБ');
+      return;
+    }
+    setPassportBusy(true);
+    try {
+      const contentBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+        reader.onload = () => resolve(String(reader.result));
+        reader.readAsDataURL(file);
+      });
+      const { attachment } = await api.passport.uploadAttachment({
+        filename: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        contentBase64,
+        kind: file.type === 'application/pdf' ? 'certificate_pdf' : 'misc',
+      });
+      setSupportingAttachmentId(attachment.id);
+      await attachments.refetch();
+      toast.success('Документ загружен');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      e.target.value = '';
+      setPassportBusy(false);
+    }
+  }
+
+  async function onRequestSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!requestFederationId) return;
+    setPassportBusy(true);
+    try {
+      await api.passport.submitRequest({
+        federationId: requestFederationId,
+        kind: requestKind,
+        payload: { message: requestMessage.trim() },
+        supportingAttachmentId,
+      });
+      setRequestMessage('');
+      setSupportingAttachmentId(null);
+      await reviewRequests.refetch();
+      toast.success('Заявка отправлена в федерацию');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setPassportBusy(false);
+    }
+  }
+
+  async function revokeConsent(id: string): Promise<void> {
+    setPassportBusy(true);
+    try {
+      await api.passport.revokeConsent(id);
+      await cabinet.refetch();
+      toast.success('Согласие отозвано');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setPassportBusy(false);
+    }
+  }
+
+  async function cancelRequest(id: string): Promise<void> {
+    setPassportBusy(true);
+    try {
+      await api.passport.cancelRequest(id);
+      await reviewRequests.refetch();
+      toast.success('Заявка отозвана');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setPassportBusy(false);
+    }
+  }
+
+  async function downloadDocument(id: string): Promise<void> {
+    try {
+      const blob = await api.passport.downloadAttachment(id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = '';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.error'));
+    }
+  }
 
   async function onPasswordSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -136,12 +301,81 @@ export default function ProfileFeature() {
               </dd>
             </dl>
             <section className="mt-4 border-t pt-3">
+              <h3 className="mb-2 text-sm font-medium">Контакты и приватность</h3>
+              <form
+                className="grid gap-2 sm:grid-cols-3"
+                onSubmit={(e) => void onContactsSubmit(e)}
+              >
+                <Input
+                  aria-label="Отображаемое имя"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  required
+                />
+                <Input
+                  aria-label="Телефон"
+                  placeholder="Телефон"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <Input
+                  aria-label="Telegram"
+                  placeholder="Telegram"
+                  value={telegramHandle}
+                  onChange={(e) => setTelegramHandle(e.target.value)}
+                />
+                <div className="sm:col-span-3 flex flex-wrap items-center gap-2">
+                  <Button type="submit" size="sm" disabled={passportBusy || !displayName.trim()}>
+                    Сохранить контакты
+                  </Button>
+                  {cabinet.data?.athlete ? (
+                    <>
+                      <span className="text-xs text-muted-foreground">Результаты:</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          cabinet.data.athlete.privacyMode === 'public_results'
+                            ? 'default'
+                            : 'outline'
+                        }
+                        disabled={passportBusy}
+                        onClick={() => void onPrivacyChange('public_results')}
+                      >
+                        Публичные
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          cabinet.data.athlete.privacyMode === 'hidden' ? 'default' : 'outline'
+                        }
+                        disabled={passportBusy}
+                        onClick={() => void onPrivacyChange('hidden')}
+                      >
+                        Скрыть
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              </form>
+            </section>
+            <section className="mt-4 border-t pt-3">
               <h3 className="mb-2 text-sm font-medium">Согласия</h3>
               {cabinet.data?.identity.consents.length ? (
                 <ul className="space-y-1 text-xs text-muted-foreground">
                   {cabinet.data.identity.consents.map((consent) => (
-                    <li key={consent.id}>
+                    <li key={consent.id} className="flex flex-wrap items-center gap-2">
                       {consent.scope} · {consent.textVersion} · {formatDate(consent.grantedAt)}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        disabled={passportBusy}
+                        onClick={() => void revokeConsent(consent.id)}
+                      >
+                        Отозвать
+                      </Button>
                     </li>
                   ))}
                 </ul>
@@ -166,17 +400,105 @@ export default function ProfileFeature() {
             </section>
             <section className="mt-4 border-t pt-3">
               <h3 className="mb-2 text-sm font-medium">Заявки в федерацию</h3>
+              <form
+                className="mb-3 grid gap-2 sm:grid-cols-2"
+                onSubmit={(e) => void onRequestSubmit(e)}
+              >
+                <select
+                  className="h-9 rounded-md border bg-background px-2 text-sm"
+                  value={requestFederationId}
+                  onChange={(e) => setRequestFederationId(e.target.value)}
+                  required
+                >
+                  <option value="">Выберите федерацию</option>
+                  {federations.data?.federations.map((federation) => (
+                    <option key={federation.id} value={federation.id}>
+                      {federation.nameRu}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="h-9 rounded-md border bg-background px-2 text-sm"
+                  value={requestKind}
+                  onChange={(e) =>
+                    setRequestKind(
+                      e.target.value as 'official_profile' | 'official_credential' | 'sport_rank',
+                    )
+                  }
+                >
+                  <option value="official_profile">Функция официального лица</option>
+                  <option value="official_credential">Аттестация или категория</option>
+                  <option value="sport_rank">Звание или разряд</option>
+                </select>
+                <textarea
+                  className="min-h-20 rounded-md border bg-background p-2 text-sm sm:col-span-2"
+                  placeholder="Опишите основание заявки"
+                  value={requestMessage}
+                  onChange={(e) => setRequestMessage(e.target.value)}
+                  maxLength={1000}
+                  required
+                />
+                <label className="text-xs text-muted-foreground">
+                  Подтверждающий документ (до 5 МБ)
+                  <input
+                    type="file"
+                    className="mt-1 block text-xs"
+                    onChange={(e) => void onUploadDocument(e)}
+                  />
+                </label>
+                <div className="flex items-end gap-2">
+                  {supportingAttachmentId ? (
+                    <span className="text-xs text-muted-foreground">Документ прикреплён</span>
+                  ) : null}
+                  <Button type="submit" size="sm" disabled={passportBusy || !requestFederationId}>
+                    Отправить заявку
+                  </Button>
+                </div>
+              </form>
               {reviewRequests.data?.requests.length ? (
                 <ul className="space-y-1 text-xs text-muted-foreground">
                   {reviewRequests.data.requests.map((request) => (
-                    <li key={request.id}>
+                    <li key={request.id} className="flex flex-wrap items-center gap-2">
                       {request.kind} · {request.status} · {formatDate(request.submittedAt)}
                       {request.reviewNote ? ` · ${request.reviewNote}` : ''}
+                      {request.status === 'pending' ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={passportBusy}
+                          onClick={() => void cancelRequest(request.id)}
+                        >
+                          Отозвать
+                        </Button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
               ) : (
                 <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
+              )}
+            </section>
+            <section className="mt-4 border-t pt-3">
+              <h3 className="mb-2 text-sm font-medium">Документы паспорта</h3>
+              {attachments.data?.attachments.length ? (
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {attachments.data.attachments.map((attachment) => (
+                    <li key={attachment.id} className="flex flex-wrap items-center gap-2">
+                      {attachment.filename} · {formatDate(attachment.uploadedAt)}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void downloadDocument(attachment.id)}
+                      >
+                        Открыть
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">Документов пока нет.</p>
               )}
             </section>
           </CardContent>

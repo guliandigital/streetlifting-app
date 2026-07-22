@@ -16,6 +16,7 @@ import { ApiClientError } from '../../lib/api-client.js';
 import { formatRub, rubToKopecks } from '../../lib/money.js';
 import { type CompetitionDto, useCompetition, useUpdateCompetition } from './api.js';
 import { type CompetitionOpsResponse, useCompetitionOps } from './operations-api.js';
+import { CompetitionTeamPanel } from './team-panel.js';
 import { useDisciplines } from '../disciplines/api.js';
 import {
   dateTimeInputToIso,
@@ -758,6 +759,7 @@ export default function CompetitionDetailFeature() {
               <WorkspaceSectionTitle>Доступ к данным онлайн</WorkspaceSectionTitle>
               Ссылки на протоколы, грамоты и публичное табло доступны из верхней панели действий.
             </div>
+            {canWrite ? <CompetitionTeamPanel competitionId={c.id} /> : null}
           </>
         )}
         {activeTab === 'disciplines' && <DisciplinesTabContent ops={opsData} />}

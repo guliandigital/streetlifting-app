@@ -73,7 +73,9 @@ import type {
 } from './references-api.js';
 import type {
   CabinetOverview,
+  PassportAttachment,
   PassportExternalLink,
+  PassportFederationReviewRequest,
   PassportReviewRequest,
 } from '../features/profile/api.js';
 
@@ -312,6 +314,58 @@ export const api = {
     externalLinks: (): Promise<{ links: PassportExternalLink[] }> =>
       request('/passport/external-links'),
     requests: (): Promise<{ requests: PassportReviewRequest[] }> => request('/passport/requests'),
+    attachments: (): Promise<{ attachments: PassportAttachment[] }> =>
+      request('/passport/attachments'),
+    uploadAttachment: (data: {
+      filename: string;
+      mimeType: string;
+      contentBase64: string;
+      kind?: 'certificate_pdf' | 'misc';
+    }): Promise<{ attachment: PassportAttachment }> =>
+      request('/passport/attachments', { method: 'POST', body: data }),
+    downloadAttachment: (id: string): Promise<Blob> =>
+      requestBlob(`/passport/attachments/${id}/download`),
+    updateProfile: (data: {
+      displayName?: string;
+      phone?: string | null;
+      telegramHandle?: string | null;
+    }): Promise<{
+      user: {
+        id: string;
+        displayName: string;
+        phone: string | null;
+        telegramHandle: string | null;
+      };
+    }> => request('/passport/profile', { method: 'PATCH', body: data }),
+    updatePrivacy: (
+      privacyMode: 'public_results' | 'hidden',
+    ): Promise<{ athlete: { id: string; privacyMode: string } }> =>
+      request('/passport/privacy', { method: 'PATCH', body: { privacyMode } }),
+    revokeConsent: (id: string): Promise<unknown> =>
+      request(`/passport/consents/${id}/revoke`, { method: 'POST' }),
+    submitRequest: (data: {
+      federationId: string;
+      kind: 'official_profile' | 'official_credential' | 'sport_rank';
+      payload: Record<string, unknown>;
+      supportingAttachmentId?: string | null;
+    }): Promise<{ request: PassportReviewRequest }> =>
+      request('/passport/requests', { method: 'POST', body: data }),
+    cancelRequest: (id: string): Promise<{ request: PassportReviewRequest }> =>
+      request(`/passport/requests/${id}/cancel`, { method: 'POST' }),
+    federationReviewRequests: (
+      federationId: string,
+      status: 'pending' | 'approved' | 'rejected' | 'cancelled' = 'pending',
+    ): Promise<{ requests: PassportFederationReviewRequest[] }> =>
+      request(`/passport/federations/${federationId}/review-requests?status=${status}`),
+    reviewRequest: (
+      id: string,
+      data: {
+        status: 'approved' | 'rejected';
+        reviewNote?: string;
+        resolution?: Record<string, unknown>;
+      },
+    ): Promise<{ request: PassportReviewRequest }> =>
+      request(`/passport/requests/${id}/review`, { method: 'POST', body: data }),
   },
 
   federations: {
@@ -513,6 +567,49 @@ export const api = {
       request(`/competitions/${id}/judge-assignments`, { method: 'POST', body: data }),
     deleteJudgeAssignment: (assignmentId: string): Promise<{ deleted: true }> =>
       request(`/judge-assignments/${assignmentId}`, { method: 'DELETE' }),
+    teamMembers: (
+      id: string,
+    ): Promise<{
+      teamMembers: Array<{
+        id: string;
+        userId: string;
+        role: string;
+        status: string;
+        memberNameSnapshot: string;
+        platform: { id: string; name: string } | null;
+        judgeAssignmentId: string | null;
+        invitedAt: string | null;
+        confirmedAt: string | null;
+        completedAt: string | null;
+        correctionOfId: string | null;
+      }>;
+    }> => request(`/competitions/${id}/team-members`),
+    inviteTeamMember: (
+      id: string,
+      data: {
+        userId: string;
+        role:
+          | 'organizer'
+          | 'head_judge'
+          | 'judge'
+          | 'secretary'
+          | 'assistant'
+          | 'scoreboard_operator'
+          | 'speaker'
+          | 'technical_official'
+          | 'medical_official';
+        platformId?: string | null;
+        judgeAssignmentId?: string | null;
+      },
+    ): Promise<{ teamMember: unknown }> =>
+      request(`/competitions/${id}/team-members`, { method: 'POST', body: data }),
+    respondTeamMember: (
+      id: string,
+      status: 'confirmed' | 'declined',
+    ): Promise<{ teamMember: unknown }> =>
+      request(`/competition-team-members/${id}/respond`, { method: 'POST', body: { status } }),
+    completeTeamMember: (id: string): Promise<{ teamMember: unknown }> =>
+      request(`/competition-team-members/${id}/complete`, { method: 'POST' }),
     scoreboard: (id: string): Promise<ScoreboardResponse> =>
       request(`/competitions/${id}/scoreboard`),
     publicScoreboard: (id: string): Promise<PublicScoreboardResponse> =>

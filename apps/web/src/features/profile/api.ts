@@ -129,6 +129,27 @@ export interface PassportReviewRequest {
   reviewNote: string | null;
 }
 
+export interface PassportAttachment {
+  id: string;
+  kind: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: string;
+  uploadedAt: string;
+}
+
+export interface PassportFederationReviewRequest {
+  id: string;
+  kind: 'official_profile' | 'official_credential' | 'sport_rank';
+  status: string;
+  payload: unknown;
+  submittedAt: string;
+  resolvedAt: string | null;
+  reviewNote: string | null;
+  applicant: { id: string; displayName: string };
+  supportingAttachment: PassportAttachment | null;
+}
+
 export function useCabinetOverview() {
   return useQuery<CabinetOverview>({
     queryKey: ['cabinet', 'overview'],
@@ -147,5 +168,12 @@ export function usePassportReviewRequests() {
   return useQuery<{ requests: PassportReviewRequest[] }>({
     queryKey: ['passport', 'requests'],
     queryFn: () => api.passport.requests(),
+  });
+}
+
+export function usePassportAttachments() {
+  return useQuery<{ attachments: PassportAttachment[] }>({
+    queryKey: ['passport', 'attachments'],
+    queryFn: () => api.passport.attachments(),
   });
 }

@@ -1,3 +1,6 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { z } from 'zod';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
@@ -7,6 +10,15 @@ import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
 
 const uuid = z.string().uuid();
+const MAX_PASSPORT_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const passportAttachmentInput = z
+  .object({
+    filename: z.string().trim().min(1).max(180),
+    mimeType: z.string().trim().min(1).max(120),
+    contentBase64: z.string().min(1),
+    kind: z.enum(['certificate_pdf', 'misc']).default('misc'),
+  })
+  .strict();
 const credentialInput = z.object({
   kind: z.enum(['category', 'attestation', 'certificate']),
   name: z.string().trim().min(1).max(160),
@@ -74,6 +86,9 @@ const profileUpdateInput = z
     'No changes provided',
   );
 const privacyInput = z.object({ privacyMode: z.enum(['public_results', 'hidden']) });
+const reviewRequestQuery = z.object({
+  status: z.enum(['pending', 'approved', 'rejected', 'cancelled']).optional(),
+});
 
 function defined(value: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
@@ -95,6 +110,36 @@ function isFederationManager(
 
 function invalid(reply: FastifyReply, requestId: string, message: string) {
   return reply.code(400).send({ error: { code: 'validation_error', message, requestId } });
+}
+
+function uploadRoot(): string {
+  return process.env.STORAGE_DIR ?? path.join(process.cwd(), 'storage');
+}
+
+function sanitizeFilename(filename: string): string {
+  return (
+    filename
+      .replace(/[\\/:"*?<>|]+/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180) || 'file'
+  );
+}
+
+function decodeBase64File(contentBase64: string): Buffer | null {
+  const normalized = contentBase64.includes(',')
+    ? contentBase64.slice(contentBase64.indexOf(',') + 1)
+    : contentBase64;
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) || normalized.length % 4 === 1) return null;
+  try {
+    return Buffer.from(normalized, 'base64');
+  } catch {
+    return null;
+  }
+}
+
+function contentDispositionFilename(filename: string): string {
+  return sanitizeFilename(filename).replace(/[\r\n"]/g, '_');
 }
 
 function resolveApproval(
@@ -244,6 +289,167 @@ export const passportManagementPlugin: FeaturePlugin = {
       },
     );
 
+    app.get('/passport/attachments', { preHandler: requireAuth() }, async (req) => {
+      const attachments = await prisma.attachment.findMany({
+        where: {
+          deletedAt: null,
+          OR: [
+            { uploadedByUserId: req.user!.id },
+            { passportReviewRequests: { some: { applicantUserId: req.user!.id } } },
+            {
+              officialCredentialDocuments: {
+                some: { officialProfile: { userId: req.user!.id } },
+              },
+            },
+            { sportRankAwardDocuments: { some: { athlete: { userId: req.user!.id } } } },
+          ],
+        },
+        select: {
+          id: true,
+          kind: true,
+          filename: true,
+          mimeType: true,
+          sizeBytes: true,
+          uploadedAt: true,
+        },
+        orderBy: { uploadedAt: 'desc' },
+      });
+      return {
+        attachments: attachments.map((attachment) => ({
+          ...attachment,
+          sizeBytes: attachment.sizeBytes.toString(),
+          uploadedAt: attachment.uploadedAt.toISOString(),
+        })),
+      };
+    });
+
+    app.post('/passport/attachments', { preHandler: requireAuth() }, async (req, reply) => {
+      const parsed = passportAttachmentInput.safeParse(req.body);
+      if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
+      const content = decodeBase64File(parsed.data.contentBase64);
+      if (!content || content.length === 0 || content.length > MAX_PASSPORT_ATTACHMENT_BYTES)
+        return reply.code(400).send({
+          error: {
+            code: 'invalid_file',
+            message: `File must be between 1 byte and ${MAX_PASSPORT_ATTACHMENT_BYTES} bytes`,
+            requestId: req.requestId,
+          },
+        });
+      const filename = sanitizeFilename(parsed.data.filename);
+      const storagePath = path.join('passport', req.user!.id, `${randomUUID()}-${filename}`);
+      const absolutePath = path.join(uploadRoot(), storagePath);
+      await mkdir(path.dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, content);
+      try {
+        const attachment = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'passport.attachment.uploaded',
+            scopeFederationId: null,
+            scopeCompetitionId: null,
+            targetType: 'attachment',
+            targetId: 'pending',
+            before: null,
+            after: {
+              kind: parsed.data.kind,
+              filename,
+              mimeType: parsed.data.mimeType,
+              sizeBytes: content.length,
+            },
+          },
+          (tx) =>
+            tx.attachment.create({
+              data: {
+                kind: parsed.data.kind,
+                uploadedByUserId: req.user!.id,
+                filename,
+                mimeType: parsed.data.mimeType,
+                sizeBytes: BigInt(content.length),
+                sha256: createHash('sha256').update(content).digest('hex'),
+                storagePath,
+              },
+            }),
+        );
+        return reply.code(201).send({
+          attachment: {
+            id: attachment.id,
+            kind: attachment.kind,
+            filename: attachment.filename,
+            mimeType: attachment.mimeType,
+            sizeBytes: attachment.sizeBytes.toString(),
+            uploadedAt: attachment.uploadedAt.toISOString(),
+          },
+        });
+      } catch (error) {
+        await unlink(absolutePath).catch(() => undefined);
+        throw error;
+      }
+    });
+
+    app.get<{ Params: { id: string } }>(
+      '/passport/attachments/:id/download',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const attachment = await prisma.attachment.findUnique({
+          where: { id: req.params.id },
+          include: {
+            passportReviewRequests: { select: { applicantUserId: true, federationId: true } },
+            officialCredentialDocuments: {
+              select: { officialProfile: { select: { userId: true } } },
+            },
+            sportRankAwardDocuments: { select: { athlete: { select: { userId: true } } } },
+          },
+        });
+        const canRead =
+          attachment &&
+          !attachment.deletedAt &&
+          (attachment.uploadedByUserId === req.user!.id ||
+            attachment.passportReviewRequests.some(
+              (request) =>
+                request.applicantUserId === req.user!.id ||
+                isFederationManager(req as never, request.federationId),
+            ) ||
+            attachment.officialCredentialDocuments.some(
+              (credential) => credential.officialProfile.userId === req.user!.id,
+            ) ||
+            attachment.sportRankAwardDocuments.some(
+              (rank) => rank.athlete.userId === req.user!.id,
+            ));
+        if (!canRead || !attachment)
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Attachment not found', requestId: req.requestId },
+          });
+        const root = path.resolve(uploadRoot());
+        const absolutePath = path.resolve(root, attachment.storagePath);
+        if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`))
+          return reply.code(500).send({
+            error: {
+              code: 'invalid_storage_path',
+              message: 'Attachment storage path is invalid',
+              requestId: req.requestId,
+            },
+          });
+        try {
+          const content = await readFile(absolutePath);
+          reply.header('Content-Type', attachment.mimeType);
+          reply.header(
+            'Content-Disposition',
+            `attachment; filename="${contentDispositionFilename(attachment.filename)}"`,
+          );
+          return reply.send(content);
+        } catch {
+          return reply.code(404).send({
+            error: {
+              code: 'file_missing',
+              message: 'Attachment file is missing',
+              requestId: req.requestId,
+            },
+          });
+        }
+      },
+    );
+
     app.get('/passport/requests', { preHandler: requireAuth() }, async (req) => {
       const requests = await prisma.passportReviewRequest.findMany({
         where: { applicantUserId: req.user!.id },
@@ -262,6 +468,65 @@ export const passportManagementPlugin: FeaturePlugin = {
       });
       return { requests };
     });
+
+    app.get<{ Params: { federationId: string } }>(
+      '/passport/federations/:federationId/review-requests',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const federationId = uuid.safeParse(req.params.federationId);
+        const query = reviewRequestQuery.safeParse(req.query);
+        if (!federationId.success) return invalid(reply, req.requestId, federationId.error.message);
+        if (!query.success) return invalid(reply, req.requestId, query.error.message);
+        if (!isFederationManager(req as never, federationId.data))
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'Federation approval required',
+              requestId: req.requestId,
+            },
+          });
+        const requests = await prisma.passportReviewRequest.findMany({
+          where: {
+            federationId: federationId.data,
+            ...(query.data.status ? { status: query.data.status } : {}),
+          },
+          orderBy: { submittedAt: 'asc' },
+          select: {
+            id: true,
+            kind: true,
+            status: true,
+            payload: true,
+            submittedAt: true,
+            resolvedAt: true,
+            reviewNote: true,
+            applicant: { select: { id: true, displayName: true } },
+            supportingAttachment: {
+              select: {
+                id: true,
+                filename: true,
+                mimeType: true,
+                sizeBytes: true,
+                uploadedAt: true,
+              },
+            },
+          },
+        });
+        return {
+          requests: requests.map((item) => ({
+            ...item,
+            submittedAt: item.submittedAt.toISOString(),
+            resolvedAt: item.resolvedAt?.toISOString() ?? null,
+            supportingAttachment: item.supportingAttachment
+              ? {
+                  ...item.supportingAttachment,
+                  sizeBytes: item.supportingAttachment.sizeBytes.toString(),
+                  uploadedAt: item.supportingAttachment.uploadedAt.toISOString(),
+                }
+              : null,
+          })),
+        };
+      },
+    );
 
     app.post('/passport/requests', { preHandler: requireAuth() }, async (req, reply) => {
       const parsed = passportRequestInput.safeParse(req.body);
@@ -400,6 +665,34 @@ export const passportManagementPlugin: FeaturePlugin = {
             ? resolveApproval(before, parsed.data.resolution)
             : null;
         if (approval && 'error' in approval) return invalid(reply, req.requestId, approval.error);
+        if (approval?.kind === 'official_credential') {
+          const profile = await prisma.officialProfile.findUnique({
+            where: { userId: before.applicantUserId },
+            select: { id: true },
+          });
+          if (!profile)
+            return reply.code(409).send({
+              error: {
+                code: 'official_profile_required',
+                message: 'Official profile must be approved before a credential',
+                requestId: req.requestId,
+              },
+            });
+        }
+        if (approval?.kind === 'sport_rank') {
+          const athlete = await prisma.athlete.findUnique({
+            where: { userId: before.applicantUserId },
+            select: { id: true },
+          });
+          if (!athlete)
+            return reply.code(409).send({
+              error: {
+                code: 'athlete_profile_required',
+                message: 'Athlete profile must be linked before a sport rank',
+                requestId: req.requestId,
+              },
+            });
+        }
         const request = await audit.withAudit(
           {
             ...audit.fromRequest(req),
@@ -565,6 +858,58 @@ export const passportManagementPlugin: FeaturePlugin = {
       },
     );
 
+    app.get<{ Params: { id: string } }>(
+      '/competitions/:id/team-members',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const competition = await prisma.competition.findUnique({
+          where: { id: req.params.id },
+          select: { id: true, federationId: true },
+        });
+        if (!competition)
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
+          });
+        if (!isFederationManager(req as never, competition.federationId, competition.id))
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'Competition team management required',
+              requestId: req.requestId,
+            },
+          });
+        const teamMembers = await prisma.competitionTeamMember.findMany({
+          where: { competitionId: competition.id },
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+            status: true,
+            memberNameSnapshot: true,
+            platform: { select: { id: true, name: true } },
+            judgeAssignmentId: true,
+            invitedAt: true,
+            confirmedAt: true,
+            completedAt: true,
+            correctionOfId: true,
+          },
+          orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
+        });
+        return {
+          teamMembers: teamMembers.map((member) => ({
+            ...member,
+            invitedAt: member.invitedAt?.toISOString() ?? null,
+            confirmedAt: member.confirmedAt?.toISOString() ?? null,
+            completedAt: member.completedAt?.toISOString() ?? null,
+          })),
+        };
+      },
+    );
+
     app.post<{ Params: { id: string } }>(
       '/competitions/:id/team-members',
       { preHandler: requireAuth() },
@@ -611,30 +956,33 @@ export const passportManagementPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
-        if (parsed.data.judgeAssignmentId) {
-          if (!['judge', 'head_judge'].includes(parsed.data.role))
-            return invalid(
-              reply,
-              req.requestId,
-              'judgeAssignmentId is only valid for judge or head_judge team roles',
-            );
-          const assignment = await prisma.judgeAssignment.findFirst({
-            where: {
-              id: parsed.data.judgeAssignmentId,
-              competitionId: competition.id,
-              judge: { userId: parsed.data.userId },
-            },
-            select: { id: true },
-          });
-          if (!assignment)
-            return reply.code(409).send({
-              error: {
-                code: 'judge_assignment_mismatch',
-                message: 'Judge assignment must belong to this competition and team member',
-                requestId: req.requestId,
+        if (parsed.data.judgeAssignmentId && !['judge', 'head_judge'].includes(parsed.data.role))
+          return invalid(
+            reply,
+            req.requestId,
+            'judgeAssignmentId is only valid for judge or head_judge team roles',
+          );
+        const assignments = ['judge', 'head_judge'].includes(parsed.data.role)
+          ? await prisma.judgeAssignment.findMany({
+              where: {
+                competitionId: competition.id,
+                judge: { userId: parsed.data.userId },
+                ...(parsed.data.judgeAssignmentId ? { id: parsed.data.judgeAssignmentId } : {}),
               },
-            });
-        }
+              select: { id: true },
+              take: parsed.data.judgeAssignmentId ? 1 : 2,
+            })
+          : [];
+        if (parsed.data.judgeAssignmentId && assignments.length !== 1)
+          return reply.code(409).send({
+            error: {
+              code: 'judge_assignment_mismatch',
+              message: 'Judge assignment must belong to this competition and team member',
+              requestId: req.requestId,
+            },
+          });
+        const judgeAssignmentId =
+          parsed.data.judgeAssignmentId ?? (assignments.length === 1 ? assignments[0]!.id : null);
         const teamMember = await audit.withAudit(
           {
             ...audit.fromRequest(req),
@@ -651,6 +999,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             tx.competitionTeamMember.create({
               data: defined({
                 ...parsed.data,
+                judgeAssignmentId,
                 competitionId: competition.id,
                 memberNameSnapshot: memberUser.displayName,
                 status: 'invited',
@@ -812,6 +1161,33 @@ export const passportManagementPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
+        if (parsed.data.judgeAssignmentId && !['judge', 'head_judge'].includes(parsed.data.role))
+          return invalid(
+            reply,
+            req.requestId,
+            'judgeAssignmentId is only valid for judge or head_judge team roles',
+          );
+        const assignments = ['judge', 'head_judge'].includes(parsed.data.role)
+          ? await prisma.judgeAssignment.findMany({
+              where: {
+                competitionId: before.competitionId,
+                judge: { userId: before.userId },
+                ...(parsed.data.judgeAssignmentId ? { id: parsed.data.judgeAssignmentId } : {}),
+              },
+              select: { id: true },
+              take: parsed.data.judgeAssignmentId ? 1 : 2,
+            })
+          : [];
+        if (parsed.data.judgeAssignmentId && assignments.length !== 1)
+          return reply.code(409).send({
+            error: {
+              code: 'judge_assignment_mismatch',
+              message: 'Judge assignment must belong to this competition and team member',
+              requestId: req.requestId,
+            },
+          });
+        const judgeAssignmentId =
+          parsed.data.judgeAssignmentId ?? (assignments.length === 1 ? assignments[0]!.id : null);
         const teamMember = await audit.withAudit(
           {
             ...audit.fromRequest(req),
@@ -828,6 +1204,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             tx.competitionTeamMember.create({
               data: defined({
                 ...parsed.data,
+                judgeAssignmentId,
                 competitionId: before.competitionId,
                 userId: before.userId,
                 memberNameSnapshot: before.memberNameSnapshot,
