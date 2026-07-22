@@ -42,8 +42,34 @@
     "displayName": "Display name",
     "email": "Email",
     "userId": "User ID",
+    "isfId": "ISF ID",
+    "isfIdNotLinked": "not linked yet",
     "roles": "Roles",
     "noRoles": "No role assignments yet",
+    "empty": "No data yet",
+    "cabinetUnavailable": "Unable to load personal cabinet data.",
+    "athlete": {
+      "title": "Athlete profile",
+      "summary": "Appearances: {{appearances}} · records: {{records}}",
+      "card": "Card number",
+      "club": "Club",
+      "appearances": "Competition history",
+      "records": "Records",
+      "place": "place {{value}}"
+    },
+    "official": {
+      "title": "Official profile",
+      "summary": "Assignments: {{count}}",
+      "category": "Category",
+      "card": "Credential number",
+      "region": "Region",
+      "assignments": "Assignment history"
+    },
+    "organizer": {
+      "title": "Organizer",
+      "subtitle": "Competitions within your organization permissions and their teams.",
+      "team": "Competition team"
+    },
     "role": {
       "platform_admin": "Super admin",
       "federation_admin": "Federation admin",

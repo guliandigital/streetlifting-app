@@ -71,6 +71,7 @@ import type {
   LookupValueDto,
   RegionDto,
 } from './references-api.js';
+import type { CabinetOverview } from '../features/profile/api.js';
 
 const log = moduleLogger('api-client');
 
@@ -298,6 +299,10 @@ export const api = {
       method: 'PATCH',
       body: { currentPassword, newPassword },
     }),
+
+  cabinet: {
+    overview: (): Promise<CabinetOverview> => request('/cabinet/overview'),
+  },
 
   federations: {
     list: (): Promise<{ federations: Federation[] }> => request('/federations'),

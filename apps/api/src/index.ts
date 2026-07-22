@@ -19,6 +19,7 @@ import { loadPlugins } from './lib/load-plugins.js';
 import { healthPlugin } from './plugins/health.js';
 import { authPlugin } from './plugins/auth.js';
 import { isfIdAuthPlugin } from './plugins/isf-id-auth.js';
+import { cabinetPlugin } from './plugins/cabinet.js';
 import { federationsPlugin } from './plugins/federations.js';
 import { athletesPlugin } from './plugins/athletes.js';
 import { disciplinesPlugin } from './plugins/disciplines.js';
@@ -103,6 +104,7 @@ const features = [
   healthPlugin,
   authPlugin,
   isfIdAuthPlugin,
+  cabinetPlugin,
   federationsPlugin,
   athletesPlugin,
   disciplinesPlugin,

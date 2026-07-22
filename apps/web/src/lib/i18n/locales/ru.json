@@ -42,8 +42,34 @@
     "displayName": "Имя",
     "email": "Email",
     "userId": "User ID",
+    "isfId": "ISF ID",
+    "isfIdNotLinked": "ещё не связан",
     "roles": "Роли",
     "noRoles": "Ролей пока нет",
+    "empty": "Данных пока нет",
+    "cabinetUnavailable": "Не удалось загрузить данные личного кабинета.",
+    "athlete": {
+      "title": "Спортивный профиль",
+      "summary": "Выступлений: {{appearances}} · рекордов: {{records}}",
+      "card": "Номер карты",
+      "club": "Клуб",
+      "appearances": "История выступлений",
+      "records": "Рекорды",
+      "place": "место {{value}}"
+    },
+    "official": {
+      "title": "Судейский профиль",
+      "summary": "Назначений: {{count}}",
+      "category": "Категория",
+      "card": "Номер удостоверения",
+      "region": "Регион",
+      "assignments": "История назначений"
+    },
+    "organizer": {
+      "title": "Организатор",
+      "subtitle": "Турниры в пределах ваших организационных доступов и состав команд.",
+      "team": "Команда турнира"
+    },
     "role": {
       "platform_admin": "Супер-админ",
       "federation_admin": "Админ федерации",

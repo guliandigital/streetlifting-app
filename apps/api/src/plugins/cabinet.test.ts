@@ -1,0 +1,101 @@
+import Fastify from 'fastify';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { registerRequestContext } from '../lib/request-context.js';
+import { cabinetPlugin } from './cabinet.js';
+
+const prismaMock = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() },
+  athlete: { findUnique: vi.fn() },
+  judge: { findUnique: vi.fn() },
+  competition: { findMany: vi.fn() },
+}));
+
+vi.mock('../lib/db.js', () => ({ prisma: prismaMock }));
+
+const user = {
+  id: '00000000-0000-0000-0000-000000000001',
+  email: 'cabinet@example.test',
+  displayName: 'Cabinet User',
+  roles: [
+    {
+      role: 'federation_admin' as const,
+      federationId: '00000000-0000-0000-0000-000000000002',
+      competitionId: null,
+    },
+  ],
+};
+
+async function buildApp(authenticated = true) {
+  const app = Fastify({ logger: false });
+  await registerRequestContext(app);
+  app.addHook('preHandler', async (req) => {
+    req.user = authenticated ? user : null;
+  });
+  await app.register(cabinetPlugin.register);
+  return app;
+}
+
+describe('cabinet overview', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.user.findUnique.mockResolvedValue({ isfSubjectId: null });
+    prismaMock.athlete.findUnique.mockResolvedValue(null);
+    prismaMock.judge.findUnique.mockResolvedValue(null);
+    prismaMock.competition.findMany.mockResolvedValue([]);
+  });
+
+  it('requires an authenticated user', async () => {
+    const app = await buildApp(false);
+    const response = await app.inject({ method: 'GET', url: '/cabinet/overview' });
+
+    expect(response.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('returns only profiles linked to the signed-in user and organiser competitions in scope', async () => {
+    prismaMock.athlete.findUnique.mockResolvedValue({
+      id: '00000000-0000-0000-0000-000000000003',
+      lastName: 'Иванов',
+      firstName: 'Иван',
+      middleName: null,
+      federationCardNumber: 'A-1',
+      clubName: 'Club',
+      _count: { nominations: 3, records: 1 },
+      nominations: [],
+      records: [],
+    });
+    prismaMock.judge.findUnique.mockResolvedValue({
+      id: '00000000-0000-0000-0000-000000000004',
+      lastName: 'Петров',
+      firstName: 'Пётр',
+      middleName: null,
+      categoryRu: 'I категория',
+      categoryEn: null,
+      cardNumber: 'J-1',
+      cityRegion: 'Москва',
+      _count: { assignments: 2 },
+      assignments: [],
+    });
+
+    const app = await buildApp();
+    const response = await app.inject({ method: 'GET', url: '/cabinet/overview' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().athlete).toMatchObject({
+      displayName: 'Иванов Иван',
+      appearancesTotal: 3,
+    });
+    expect(response.json().official).toMatchObject({
+      displayName: 'Петров Пётр',
+      assignmentsTotal: 2,
+    });
+    expect(response.json().organizer).toEqual({ competitions: [] });
+    expect(prismaMock.athlete.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: user.id } }),
+    );
+    expect(JSON.stringify(prismaMock.competition.findMany.mock.calls[0]?.[0].where)).toContain(
+      user.roles[0]!.federationId,
+    );
+    await app.close();
+  });
+});
