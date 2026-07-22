@@ -71,6 +71,19 @@ enum CredentialStatus {
   revoked
 }
 
+enum PassportReviewRequestKind {
+  official_profile
+  official_credential
+  sport_rank
+}
+
+enum PassportReviewRequestStatus {
+  pending
+  approved
+  rejected
+  cancelled
+}
+
 /// A factual role in a particular competition team, never an access grant.
 enum CompetitionTeamMemberRole {
   organizer
@@ -250,6 +263,8 @@ model User {
   judgeProfile    Judge?
   officialProfile OfficialProfile?
   competitionTeamMembers CompetitionTeamMember[]
+  passportReviewRequests PassportReviewRequest[] @relation("PassportRequestApplicant")
+  resolvedPassportReviewRequests PassportReviewRequest[] @relation("PassportRequestResolver")
   consents        Consent[]
   attachments     Attachment[]    @relation("AttachmentUploader")
   refreshTokens   RefreshToken[]
@@ -337,6 +352,7 @@ model Federation {
   attachments       Attachment[]
   issuedOfficialCredentials OfficialCredential[] @relation("OfficialCredentialIssuer")
   issuedSportRankAwards      SportRankAward[]      @relation("SportRankAwardIssuer")
+  passportReviewRequests     PassportReviewRequest[]
   consents          Consent[]
   roleAssignments   RoleAssignment[]
   records           Record[]
@@ -788,6 +804,32 @@ model CompetitionTeamMember {
   @@map("competition_team_member")
 }
 
+/// A user-submitted request. It is immutable evidence for the reviewer; only
+/// the federation may resolve it and create the resulting final credential,
+/// rank or official profile.
+model PassportReviewRequest {
+  id                    String                     @id @default(uuid()) @db.Uuid
+  applicantUserId       String                     @db.Uuid
+  federationId          String                     @db.Uuid
+  kind                  PassportReviewRequestKind
+  status                PassportReviewRequestStatus @default(pending)
+  payload               Json
+  supportingAttachmentId String?                   @db.Uuid
+  resolvedByUserId      String?                    @db.Uuid
+  submittedAt           DateTime                   @default(now()) @db.Timestamptz(6)
+  resolvedAt            DateTime?                  @db.Timestamptz(6)
+  reviewNote            String?
+
+  applicant             User                       @relation("PassportRequestApplicant", fields: [applicantUserId], references: [id], onDelete: Cascade)
+  federation            Federation                 @relation(fields: [federationId], references: [id], onDelete: Restrict)
+  supportingAttachment  Attachment?                @relation("PassportRequestAttachment", fields: [supportingAttachmentId], references: [id], onDelete: SetNull)
+  resolvedBy            User?                      @relation("PassportRequestResolver", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([applicantUserId, status])
+  @@index([federationId, status, submittedAt])
+  @@map("passport_review_request")
+}
+
 model Nomination {
   id                      String           @id @default(uuid()) @db.Uuid
   competitionId           String           @db.Uuid
@@ -1036,6 +1078,7 @@ model Attachment {
   uploadedBy        User           @relation("AttachmentUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
   officialCredentialDocuments OfficialCredential[] @relation("OfficialCredentialDocument")
   sportRankAwardDocuments      SportRankAward[]      @relation("SportRankAwardDocument")
+  passportReviewRequests       PassportReviewRequest[] @relation("PassportRequestAttachment")
 
   @@index([sha256])
   @@map("attachment")

@@ -38,6 +38,12 @@ const teamMemberInput = z.object({
 const teamMemberCorrectionInput = teamMemberInput
   .omit({ userId: true })
   .extend({ status: z.enum(['invited', 'confirmed', 'completed', 'declined', 'cancelled']) });
+const passportRequestInput = z.object({
+  federationId: uuid,
+  kind: z.enum(['official_profile', 'official_credential', 'sport_rank']),
+  payload: z.record(z.unknown()),
+  supportingAttachmentId: uuid.nullable().optional(),
+});
 
 function defined(value: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
@@ -66,6 +72,188 @@ function invalid(reply: FastifyReply, requestId: string, message: string) {
 export const passportManagementPlugin: FeaturePlugin = {
   name: 'passport-management',
   register: async (app) => {
+    app.get('/passport/requests', { preHandler: requireAuth() }, async (req) => {
+      const requests = await prisma.passportReviewRequest.findMany({
+        where: { applicantUserId: req.user!.id },
+        orderBy: { submittedAt: 'desc' },
+        select: {
+          id: true,
+          federationId: true,
+          kind: true,
+          status: true,
+          payload: true,
+          supportingAttachmentId: true,
+          submittedAt: true,
+          resolvedAt: true,
+          reviewNote: true,
+        },
+      });
+      return { requests };
+    });
+
+    app.post('/passport/requests', { preHandler: requireAuth() }, async (req, reply) => {
+      const parsed = passportRequestInput.safeParse(req.body);
+      if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
+      const [federation, attachment] = await Promise.all([
+        prisma.federation.findUnique({
+          where: { id: parsed.data.federationId },
+          select: { id: true },
+        }),
+        parsed.data.supportingAttachmentId
+          ? prisma.attachment.findFirst({
+              where: {
+                id: parsed.data.supportingAttachmentId,
+                uploadedByUserId: req.user!.id,
+                deletedAt: null,
+              },
+              select: { id: true },
+            })
+          : null,
+      ]);
+      if (!federation)
+        return reply.code(404).send({
+          error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+        });
+      if (parsed.data.supportingAttachmentId && !attachment)
+        return reply.code(403).send({
+          error: {
+            code: 'forbidden',
+            message: 'Supporting document is not owned by user',
+            requestId: req.requestId,
+          },
+        });
+      const request = await audit.withAudit(
+        {
+          ...audit.fromRequest(req),
+          actorUserId: req.user!.id,
+          action: 'passport.review_request.submitted',
+          scopeFederationId: parsed.data.federationId,
+          scopeCompetitionId: null,
+          targetType: 'passport_review_request',
+          targetId: 'pending',
+          before: null,
+          after: parsed.data,
+        },
+        (tx) =>
+          tx.passportReviewRequest.create({
+            data: defined({
+              ...parsed.data,
+              applicantUserId: req.user!.id,
+            }) as Prisma.PassportReviewRequestUncheckedCreateInput,
+          }),
+      );
+      return reply.code(201).send({ request });
+    });
+
+    app.post<{ Params: { id: string } }>(
+      '/passport/requests/:id/cancel',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const before = await prisma.passportReviewRequest.findUnique({
+          where: { id: req.params.id },
+        });
+        if (!before)
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Request not found', requestId: req.requestId },
+          });
+        if (before.applicantUserId !== req.user!.id)
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'Request belongs to another user',
+              requestId: req.requestId,
+            },
+          });
+        if (before.status !== 'pending')
+          return reply.code(409).send({
+            error: {
+              code: 'request_not_pending',
+              message: 'Only pending requests can be cancelled',
+              requestId: req.requestId,
+            },
+          });
+        const request = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'passport.review_request.cancelled',
+            scopeFederationId: before.federationId,
+            scopeCompetitionId: null,
+            targetType: 'passport_review_request',
+            targetId: before.id,
+            before,
+            after: { status: 'cancelled' },
+          },
+          (tx) =>
+            tx.passportReviewRequest.update({
+              where: { id: before.id },
+              data: { status: 'cancelled' },
+            }),
+        );
+        return { request };
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/passport/requests/:id/review',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const parsed = z
+          .object({
+            status: z.enum(['approved', 'rejected']),
+            reviewNote: z.string().trim().max(1000).optional(),
+          })
+          .safeParse(req.body);
+        if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
+        const before = await prisma.passportReviewRequest.findUnique({
+          where: { id: req.params.id },
+        });
+        if (!before)
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Request not found', requestId: req.requestId },
+          });
+        if (!isFederationManager(req as never, before.federationId))
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'Federation approval required',
+              requestId: req.requestId,
+            },
+          });
+        if (before.status !== 'pending')
+          return reply.code(409).send({
+            error: {
+              code: 'request_not_pending',
+              message: 'Request has already been resolved',
+              requestId: req.requestId,
+            },
+          });
+        const request = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: `passport.review_request.${parsed.data.status}`,
+            scopeFederationId: before.federationId,
+            scopeCompetitionId: null,
+            targetType: 'passport_review_request',
+            targetId: before.id,
+            before,
+            after: parsed.data,
+          },
+          (tx) =>
+            tx.passportReviewRequest.update({
+              where: { id: before.id },
+              data: defined({
+                ...parsed.data,
+                resolvedAt: new Date(),
+                resolvedByUserId: req.user!.id,
+              }) as Prisma.PassportReviewRequestUncheckedUpdateInput,
+            }),
+        );
+        return { request };
+      },
+    );
+
     app.post<{ Params: { id: string } }>(
       '/passport/official-profiles/:id/credentials',
       { preHandler: requireAuth() },
