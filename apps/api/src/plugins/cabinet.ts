@@ -22,10 +22,31 @@ export const cabinetPlugin: FeaturePlugin = {
     app.get('/cabinet/overview', { preHandler: requireAuth() }, async (req) => {
       const user = req.user!;
       const now = new Date();
-      const [identity, athlete, judge, upcomingAssignments] = await Promise.all([
+      const [
+        identity,
+        athlete,
+        judge,
+        officialProfile,
+        officialHistory,
+        officialUpcoming,
+        organizerHistory,
+      ] = await Promise.all([
         prisma.user.findUnique({
           where: { id: user.id },
-          select: { isfSubjectId: true },
+          select: {
+            displayName: true,
+            email: true,
+            isEmailVerified: true,
+            isfSubjectId: true,
+            isfPersonId: true,
+            phone: true,
+            telegramHandle: true,
+            consents: {
+              where: { revokedAt: null },
+              orderBy: { grantedAt: 'desc' },
+              select: { id: true, scope: true, textVersion: true, grantedAt: true },
+            },
+          },
         }),
         prisma.athlete.findUnique({
           where: { userId: user.id },
@@ -36,6 +57,7 @@ export const cabinetPlugin: FeaturePlugin = {
             middleName: true,
             federationCardNumber: true,
             clubName: true,
+            privacyMode: true,
             _count: {
               select: {
                 nominations: { where: { status: 'finished' } },
@@ -72,6 +94,20 @@ export const cabinetPlugin: FeaturePlugin = {
                 competition: { select: { id: true, nameRu: true } },
               },
             },
+            sportRankAwards: {
+              orderBy: { issuedAt: 'desc' },
+              take: 12,
+              select: {
+                id: true,
+                name: true,
+                basis: true,
+                issuedAt: true,
+                expiresAt: true,
+                status: true,
+                statusReason: true,
+                documentAttachmentId: true,
+              },
+            },
           },
         }),
         prisma.judge.findUnique({
@@ -106,9 +142,49 @@ export const cabinetPlugin: FeaturePlugin = {
             },
           },
         }),
-        prisma.judgeAssignment.findMany({
+        prisma.officialProfile.findUnique({
+          where: { userId: user.id },
+          select: {
+            id: true,
+            functions: true,
+            credentials: {
+              orderBy: { issuedAt: 'desc' },
+              take: 12,
+              select: {
+                id: true,
+                kind: true,
+                name: true,
+                credentialNumber: true,
+                issuedAt: true,
+                expiresAt: true,
+                status: true,
+                statusReason: true,
+                documentAttachmentId: true,
+              },
+            },
+          },
+        }),
+        prisma.competitionTeamMember.findMany({
           where: {
-            judge: { userId: user.id },
+            userId: user.id,
+            status: 'completed',
+            competition: { status: { in: ['finalized', 'archived'] } },
+          },
+          orderBy: { competition: { startDate: 'desc' } },
+          take: 12,
+          select: {
+            id: true,
+            role: true,
+            status: true,
+            completedAt: true,
+            competition: { select: { id: true, nameRu: true, startDate: true, city: true } },
+            platform: { select: { id: true, name: true } },
+          },
+        }),
+        prisma.competitionTeamMember.findMany({
+          where: {
+            userId: user.id,
+            status: { in: ['invited', 'confirmed'] },
             competition: {
               startDate: { gte: now },
               status: { in: ['registration_open', 'registration_closed', 'in_progress'] },
@@ -119,21 +195,66 @@ export const cabinetPlugin: FeaturePlugin = {
           select: {
             id: true,
             role: true,
-            assignedAt: true,
+            status: true,
+            invitedAt: true,
+            confirmedAt: true,
             competition: { select: { id: true, nameRu: true, startDate: true, city: true } },
             platform: { select: { id: true, name: true } },
+          },
+        }),
+        prisma.competitionTeamMember.findMany({
+          where: {
+            userId: user.id,
+            role: 'organizer',
+            status: 'completed',
+            competition: { status: { in: ['finalized', 'archived'] } },
+          },
+          orderBy: { competition: { startDate: 'desc' } },
+          take: 12,
+          select: {
+            id: true,
+            completedAt: true,
+            competition: {
+              select: {
+                id: true,
+                nameRu: true,
+                startDate: true,
+                city: true,
+                teamMembers: {
+                  orderBy: { createdAt: 'asc' },
+                  select: {
+                    id: true,
+                    role: true,
+                    status: true,
+                    memberNameSnapshot: true,
+                    completedAt: true,
+                    platform: { select: { id: true, name: true } },
+                  },
+                },
+              },
+            },
           },
         }),
       ]);
 
       return {
-        identity: { isfSubjectId: identity?.isfSubjectId ?? null },
+        identity: {
+          displayName: identity?.displayName ?? user.displayName,
+          email: identity?.email ?? user.email,
+          isEmailVerified: identity?.isEmailVerified ?? false,
+          isfSubjectId: identity?.isfSubjectId ?? null,
+          isfPersonId: identity?.isfPersonId ?? null,
+          phone: identity?.phone ?? null,
+          telegramHandle: identity?.telegramHandle ?? null,
+          consents: identity?.consents ?? [],
+        },
         athlete: athlete
           ? {
               id: athlete.id,
               displayName: fullName(athlete),
               federationCardNumber: athlete.federationCardNumber,
               clubName: athlete.clubName,
+              privacyMode: athlete.privacyMode,
               appearancesTotal: athlete._count.nominations,
               recordsTotal: athlete._count.records,
               appearances: athlete.nominations.map((nomination) => ({
@@ -156,19 +277,33 @@ export const cabinetPlugin: FeaturePlugin = {
                 discipline: record.discipline,
                 competition: record.competition,
               })),
+              ranks: athlete.sportRankAwards,
             }
           : null,
-        official: judge
+        official:
+          judge || officialProfile
+            ? {
+                id: officialProfile?.id ?? judge!.id,
+                displayName: judge ? fullName(judge) : (identity?.displayName ?? user.displayName),
+                categoryRu: judge?.categoryRu ?? null,
+                categoryEn: judge?.categoryEn ?? null,
+                cardNumber: judge?.cardNumber ?? null,
+                cityRegion: judge?.cityRegion ?? null,
+                functions: officialProfile?.functions ?? [],
+                credentials: officialProfile?.credentials ?? [],
+                assignmentsTotal: officialHistory.length,
+                assignments: officialHistory,
+                upcomingAssignments: officialUpcoming,
+              }
+            : null,
+        organizer: organizerHistory.length
           ? {
-              id: judge.id,
-              displayName: fullName(judge),
-              categoryRu: judge.categoryRu,
-              categoryEn: judge.categoryEn,
-              cardNumber: judge.cardNumber,
-              cityRegion: judge.cityRegion,
-              assignmentsTotal: judge._count.assignments,
-              assignments: judge.assignments,
-              upcomingAssignments,
+              tournamentsTotal: organizerHistory.length,
+              tournaments: organizerHistory.map((membership) => ({
+                id: membership.id,
+                completedAt: membership.completedAt,
+                competition: membership.competition,
+              })),
             }
           : null,
       };

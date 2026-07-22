@@ -93,6 +93,17 @@ export default function ProfileFeature() {
                 {cabinet.data?.identity.isfSubjectId ?? t('profile.isfIdNotLinked')}
               </dd>
 
+              <dt className="text-muted-foreground">ISF person ID</dt>
+              <dd className="min-w-0 break-all font-mono text-xs text-muted-foreground">
+                {cabinet.data?.identity.isfPersonId ?? '—'}
+              </dd>
+
+              <dt className="text-muted-foreground">{t('profile.phone')}</dt>
+              <dd>{cabinet.data?.identity.phone ?? '—'}</dd>
+
+              <dt className="text-muted-foreground">Telegram</dt>
+              <dd>{cabinet.data?.identity.telegramHandle ?? '—'}</dd>
+
               <dt className="text-muted-foreground">{t('profile.roles')}</dt>
               <dd>
                 {user.roles.length === 0 ? (
@@ -122,6 +133,20 @@ export default function ProfileFeature() {
                 )}
               </dd>
             </dl>
+            <section className="mt-4 border-t pt-3">
+              <h3 className="mb-2 text-sm font-medium">Согласия</h3>
+              {cabinet.data?.identity.consents.length ? (
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {cabinet.data.identity.consents.map((consent) => (
+                    <li key={consent.id}>
+                      {consent.scope} · {consent.textVersion} · {formatDate(consent.grantedAt)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
+              )}
+            </section>
           </CardContent>
         </Card>
 
@@ -216,6 +241,8 @@ export default function ProfileFeature() {
                   <dd>{cabinet.data.athlete.federationCardNumber ?? '—'}</dd>
                   <dt className="text-muted-foreground">{t('profile.athlete.club')}</dt>
                   <dd>{cabinet.data.athlete.clubName ?? '—'}</dd>
+                  <dt className="text-muted-foreground">Приватность</dt>
+                  <dd>{cabinet.data.athlete.privacyMode}</dd>
                 </dl>
                 <section>
                   <h3 className="mb-2 text-sm font-medium">{t('profile.athlete.appearances')}</h3>
@@ -261,6 +288,24 @@ export default function ProfileFeature() {
                     <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
                   )}
                 </section>
+                <section>
+                  <h3 className="mb-2 text-sm font-medium">Звания и разряды</h3>
+                  {cabinet.data.athlete.ranks.length ? (
+                    <ul className="space-y-2 text-sm">
+                      {cabinet.data.athlete.ranks.map((rank) => (
+                        <li key={rank.id} className="rounded-md border p-2">
+                          <p className="font-medium">{rank.name}</p>
+                          <p className="text-muted-foreground">
+                            {rank.status} · {formatDate(rank.issuedAt)}
+                            {rank.expiresAt ? ` · до ${formatDate(rank.expiresAt)}` : ''}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
+                  )}
+                </section>
               </CardContent>
             </Card>
           ) : null}
@@ -283,6 +328,12 @@ export default function ProfileFeature() {
                   <dd>{cabinet.data.official.cardNumber ?? '—'}</dd>
                   <dt className="text-muted-foreground">{t('profile.official.region')}</dt>
                   <dd>{cabinet.data.official.cityRegion ?? '—'}</dd>
+                  <dt className="text-muted-foreground">Функции</dt>
+                  <dd>
+                    {cabinet.data.official.functions.length
+                      ? cabinet.data.official.functions.map(profileRoleLabel).join(', ')
+                      : '—'}
+                  </dd>
                 </dl>
                 <section>
                   <h3 className="mb-2 text-sm font-medium">
@@ -324,6 +375,58 @@ export default function ProfileFeature() {
                     <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
                   )}
                 </section>
+                <section>
+                  <h3 className="mb-2 text-sm font-medium">Аттестации и категории</h3>
+                  {cabinet.data.official.credentials.length ? (
+                    <ul className="space-y-2 text-sm">
+                      {cabinet.data.official.credentials.map((credential) => (
+                        <li key={credential.id} className="rounded-md border p-2">
+                          <p className="font-medium">{credential.name}</p>
+                          <p className="text-muted-foreground">
+                            {credential.status} · {formatDate(credential.issuedAt)}
+                            {credential.expiresAt
+                              ? ` · до ${formatDate(credential.expiresAt)}`
+                              : ''}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
+                  )}
+                </section>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {cabinet.data.organizer ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Организатор</CardTitle>
+                <CardDescription>
+                  Проведено турниров: {cabinet.data.organizer.tournamentsTotal}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-3 text-sm">
+                  {cabinet.data.organizer.tournaments.map((tournament) => (
+                    <li key={tournament.id} className="rounded-md border p-2">
+                      <p className="font-medium">{tournament.competition.nameRu}</p>
+                      <p className="text-muted-foreground">
+                        {formatDate(tournament.competition.startDate)}
+                        {tournament.competition.city ? ` · ${tournament.competition.city}` : ''}
+                      </p>
+                      <ul className="mt-2 space-y-1 text-muted-foreground">
+                        {tournament.competition.teamMembers.map((member) => (
+                          <li key={member.id}>
+                            {member.memberNameSnapshot} · {profileRoleLabel(member.role)} ·{' '}
+                            {member.status}
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
               </CardContent>
             </Card>
           ) : null}

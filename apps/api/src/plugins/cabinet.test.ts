@@ -8,6 +8,8 @@ const prismaMock = vi.hoisted(() => ({
   athlete: { findUnique: vi.fn() },
   judge: { findUnique: vi.fn() },
   judgeAssignment: { findMany: vi.fn() },
+  officialProfile: { findUnique: vi.fn() },
+  competitionTeamMember: { findMany: vi.fn() },
 }));
 
 vi.mock('../lib/db.js', () => ({ prisma: prismaMock }));
@@ -42,6 +44,8 @@ describe('cabinet overview', () => {
     prismaMock.athlete.findUnique.mockResolvedValue(null);
     prismaMock.judge.findUnique.mockResolvedValue(null);
     prismaMock.judgeAssignment.findMany.mockResolvedValue([]);
+    prismaMock.officialProfile.findUnique.mockResolvedValue(null);
+    prismaMock.competitionTeamMember.findMany.mockResolvedValue([]);
   });
 
   it('requires an authenticated user', async () => {
@@ -87,7 +91,7 @@ describe('cabinet overview', () => {
     });
     expect(response.json().official).toMatchObject({
       displayName: 'Петров Пётр',
-      assignmentsTotal: 2,
+      assignmentsTotal: 0,
     });
     expect(response.json().official.upcomingAssignments).toEqual([]);
     expect(prismaMock.athlete.findUnique).toHaveBeenCalledWith(
@@ -100,9 +104,9 @@ describe('cabinet overview', () => {
       '"ratifiedAt":{"not":null}',
     );
     expect(JSON.stringify(prismaMock.judge.findUnique.mock.calls[0]?.[0])).toContain('"finalized"');
-    expect(JSON.stringify(prismaMock.judgeAssignment.findMany.mock.calls[0]?.[0].where)).toContain(
-      user.id,
-    );
+    expect(
+      JSON.stringify(prismaMock.competitionTeamMember.findMany.mock.calls[0]?.[0].where),
+    ).toContain(user.id);
     await app.close();
   });
 });

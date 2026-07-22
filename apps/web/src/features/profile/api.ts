@@ -2,12 +2,22 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api-client.js';
 
 export interface CabinetOverview {
-  identity: { isfSubjectId: string | null };
+  identity: {
+    displayName: string;
+    email: string;
+    isEmailVerified: boolean;
+    isfSubjectId: string | null;
+    isfPersonId: string | null;
+    phone: string | null;
+    telegramHandle: string | null;
+    consents: Array<{ id: string; scope: string; textVersion: string; grantedAt: string }>;
+  };
   athlete: {
     id: string;
     displayName: string;
     federationCardNumber: string | null;
     clubName: string | null;
+    privacyMode: string;
     appearancesTotal: number;
     recordsTotal: number;
     appearances: Array<{
@@ -30,6 +40,16 @@ export interface CabinetOverview {
       discipline: { code: string; nameRu: string };
       competition: { id: string; nameRu: string };
     }>;
+    ranks: Array<{
+      id: string;
+      name: string;
+      basis: string;
+      issuedAt: string;
+      expiresAt: string | null;
+      status: string;
+      statusReason: string | null;
+      documentAttachmentId: string | null;
+    }>;
   } | null;
   official: {
     id: string;
@@ -38,6 +58,18 @@ export interface CabinetOverview {
     categoryEn: string | null;
     cardNumber: string | null;
     cityRegion: string | null;
+    functions: string[];
+    credentials: Array<{
+      id: string;
+      kind: string;
+      name: string;
+      credentialNumber: string | null;
+      issuedAt: string;
+      expiresAt: string | null;
+      status: string;
+      statusReason: string | null;
+      documentAttachmentId: string | null;
+    }>;
     assignmentsTotal: number;
     assignments: Array<{
       id: string;
@@ -52,6 +84,27 @@ export interface CabinetOverview {
       assignedAt: string;
       competition: { id: string; nameRu: string; startDate: string; city: string | null };
       platform: { id: string; name: string } | null;
+    }>;
+  } | null;
+  organizer: {
+    tournamentsTotal: number;
+    tournaments: Array<{
+      id: string;
+      completedAt: string | null;
+      competition: {
+        id: string;
+        nameRu: string;
+        startDate: string;
+        city: string | null;
+        teamMembers: Array<{
+          id: string;
+          role: string;
+          status: string;
+          memberNameSnapshot: string;
+          completedAt: string | null;
+          platform: { id: string; name: string } | null;
+        }>;
+      };
     }>;
   } | null;
 }

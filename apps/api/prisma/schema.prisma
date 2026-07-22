@@ -47,6 +47,51 @@ enum CompetitionStatus {
   archived
 }
 
+/// Declared operational functions of an official. A single ISF ID holder may
+/// serve in several functions without creating duplicate personal cabinets.
+enum OfficialFunction {
+  judge
+  secretary
+  assistant
+  scoreboard_operator
+  speaker
+  technical_official
+}
+
+enum CredentialKind {
+  category
+  attestation
+  certificate
+}
+
+enum CredentialStatus {
+  active
+  expired
+  suspended
+  revoked
+}
+
+/// A factual role in a particular competition team, never an access grant.
+enum CompetitionTeamMemberRole {
+  organizer
+  head_judge
+  judge
+  secretary
+  assistant
+  scoreboard_operator
+  speaker
+  technical_official
+  medical_official
+}
+
+enum CompetitionTeamMemberStatus {
+  invited
+  confirmed
+  completed
+  declined
+  cancelled
+}
+
 enum NominationStatus {
   draft
   paid
@@ -203,6 +248,8 @@ model User {
   roleAssignments RoleAssignment[]
   athleteProfile  Athlete?
   judgeProfile    Judge?
+  officialProfile OfficialProfile?
+  competitionTeamMembers CompetitionTeamMember[]
   consents        Consent[]
   attachments     Attachment[]    @relation("AttachmentUploader")
   refreshTokens   RefreshToken[]
@@ -288,6 +335,8 @@ model Federation {
   veteranOverrides  VeteranCoefficient[]
   plateSets         PlateSet[]
   attachments       Attachment[]
+  issuedOfficialCredentials OfficialCredential[] @relation("OfficialCredentialIssuer")
+  issuedSportRankAwards      SportRankAward[]      @relation("SportRankAwardIssuer")
   consents          Consent[]
   roleAssignments   RoleAssignment[]
   records           Record[]
@@ -473,6 +522,7 @@ model Competition {
   records                   Record[]
   plateSets                 PlateSet[]
   roleAssignments           RoleAssignment[]
+  teamMembers               CompetitionTeamMember[]
 
   @@unique([federationId, code])
   @@index([federationId, status])
@@ -548,6 +598,7 @@ model Athlete {
   consents             Consent[]
   attachments          Attachment[]
   records              Record[]
+  sportRankAwards      SportRankAward[]
 
   @@index([lastName, firstName])
   @@index([dateOfBirth])
@@ -563,6 +614,7 @@ model Platform {
   competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
   flights       Flight[]
   judgeAssigns  JudgeAssignment[]
+  teamMembers   CompetitionTeamMember[]
 
   @@unique([competitionId, order])
   @@map("platform")
@@ -627,6 +679,7 @@ model JudgeAssignment {
   platformId    String?     @db.Uuid
   role          JudgeRole
   assignedAt    DateTime    @default(now()) @db.Timestamptz(6)
+  teamMember    CompetitionTeamMember?
 
   competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
   judge         Judge       @relation(fields: [judgeId], references: [id], onDelete: Cascade)
@@ -635,6 +688,104 @@ model JudgeAssignment {
 
   @@unique([competitionId, judgeId, platformId, role])
   @@map("judge_assignment")
+}
+
+/// Account-owned official profile. It intentionally has no names: identity
+/// remains canonical in `user`, while legacy `judge` remains an operational
+/// record for attempt decisions.
+model OfficialProfile {
+  id          String             @id @default(uuid()) @db.Uuid
+  userId      String             @unique @db.Uuid
+  functions   OfficialFunction[]
+  createdAt   DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @db.Timestamptz(6)
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentials OfficialCredential[]
+
+  @@map("official_profile")
+}
+
+/// Federation-issued credential. Users can view it, but only an authorized
+/// federation workflow can create or change its final state.
+model OfficialCredential {
+  id                    String           @id @default(uuid()) @db.Uuid
+  officialProfileId     String           @db.Uuid
+  kind                  CredentialKind
+  name                  String
+  credentialNumber      String?
+  issuedByFederationId  String?          @db.Uuid
+  issuedAt              DateTime         @db.Timestamptz(6)
+  expiresAt             DateTime?        @db.Timestamptz(6)
+  status                CredentialStatus @default(active)
+  statusReason          String?
+  documentAttachmentId  String?          @db.Uuid
+  createdAt             DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime         @updatedAt @db.Timestamptz(6)
+
+  officialProfile       OfficialProfile  @relation(fields: [officialProfileId], references: [id], onDelete: Cascade)
+  issuedByFederation    Federation?      @relation("OfficialCredentialIssuer", fields: [issuedByFederationId], references: [id], onDelete: SetNull)
+  documentAttachment    Attachment?      @relation("OfficialCredentialDocument", fields: [documentAttachmentId], references: [id], onDelete: SetNull)
+
+  @@index([officialProfileId, status])
+  @@index([issuedByFederationId])
+  @@map("official_credential")
+}
+
+/// Federation-ratified sporting rank. The award is linked to the athlete
+/// record, therefore it cannot be rewritten through a user's profile form.
+model SportRankAward {
+  id                    String           @id @default(uuid()) @db.Uuid
+  athleteId             String           @db.Uuid
+  name                  String
+  basis                 String
+  issuedByFederationId  String?          @db.Uuid
+  issuedAt              DateTime         @db.Timestamptz(6)
+  expiresAt             DateTime?        @db.Timestamptz(6)
+  status                CredentialStatus @default(active)
+  statusReason          String?
+  documentAttachmentId  String?          @db.Uuid
+  createdAt             DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime         @updatedAt @db.Timestamptz(6)
+
+  athlete               Athlete          @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  issuedByFederation    Federation?      @relation("SportRankAwardIssuer", fields: [issuedByFederationId], references: [id], onDelete: SetNull)
+  documentAttachment    Attachment?      @relation("SportRankAwardDocument", fields: [documentAttachmentId], references: [id], onDelete: SetNull)
+
+  @@index([athleteId, status])
+  @@index([issuedByFederationId])
+  @@map("sport_rank_award")
+}
+
+/// Immutable operational-team evidence. Cancellation/correction creates a new
+/// factual record instead of deleting or overwriting historical participation.
+model CompetitionTeamMember {
+  id                String                      @id @default(uuid()) @db.Uuid
+  competitionId     String                      @db.Uuid
+  userId            String                      @db.Uuid
+  platformId        String?                     @db.Uuid
+  role              CompetitionTeamMemberRole
+  status            CompetitionTeamMemberStatus @default(invited)
+  memberNameSnapshot String
+  invitedAt         DateTime?                   @db.Timestamptz(6)
+  confirmedAt       DateTime?                   @db.Timestamptz(6)
+  completedAt       DateTime?                   @db.Timestamptz(6)
+  judgeAssignmentId String?                     @unique @db.Uuid
+  correctionOfId    String?                     @db.Uuid
+  createdAt         DateTime                    @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime                    @updatedAt @db.Timestamptz(6)
+
+  competition       Competition                 @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  user              User                        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  platform          Platform?                   @relation(fields: [platformId], references: [id], onDelete: SetNull)
+  judgeAssignment   JudgeAssignment?            @relation(fields: [judgeAssignmentId], references: [id], onDelete: SetNull)
+  correctionOf      CompetitionTeamMember?      @relation("CompetitionTeamMemberCorrections", fields: [correctionOfId], references: [id], onDelete: Restrict)
+  corrections       CompetitionTeamMember[]     @relation("CompetitionTeamMemberCorrections")
+
+  @@index([competitionId, status])
+  @@index([userId, status])
+  @@index([correctionOfId])
+  @@map("competition_team_member")
 }
 
 model Nomination {
@@ -883,6 +1034,8 @@ model Attachment {
   competition       Competition?   @relation(fields: [competitionId], references: [id], onDelete: Cascade)
   athlete           Athlete?       @relation(fields: [athleteId], references: [id], onDelete: Cascade)
   uploadedBy        User           @relation("AttachmentUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  officialCredentialDocuments OfficialCredential[] @relation("OfficialCredentialDocument")
+  sportRankAwardDocuments      SportRankAward[]      @relation("SportRankAwardDocument")
 
   @@index([sha256])
   @@map("attachment")
