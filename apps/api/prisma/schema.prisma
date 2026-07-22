@@ -189,6 +189,8 @@ enum SupportTicketStatus {
 model User {
   id              String   @id @default(uuid()) @db.Uuid
   email           String   @unique
+  /// Globally stable subject from ISF ID. The local UUID remains the service id.
+  isfSubjectId    String?  @unique @db.Uuid
   phone           String?
   telegramHandle  String?
   displayName     String
@@ -199,6 +201,7 @@ model User {
   updatedAt       DateTime @updatedAt @db.Timestamptz(6)
 
   roleAssignments RoleAssignment[]
+  athleteProfile  Athlete?
   judgeProfile    Judge?
   consents        Consent[]
   attachments     Attachment[]    @relation("AttachmentUploader")
@@ -520,6 +523,8 @@ model WeightClass {
 
 model Athlete {
   id                   String       @id @default(uuid()) @db.Uuid
+  /// Optional until the athlete explicitly claims the sporting profile through ISF ID.
+  userId               String?      @unique @db.Uuid
   lastName             String
   firstName            String
   middleName           String?
@@ -539,6 +544,7 @@ model Athlete {
   updatedAt            DateTime     @updatedAt @db.Timestamptz(6)
 
   nominations          Nomination[]
+  user                 User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   consents             Consent[]
   attachments          Attachment[]
   records              Record[]
@@ -804,6 +810,23 @@ model ExternalIdentityLink {
   @@unique([system, entityType, externalId])
   @@index([entityType, localEntityId])
   @@map("external_identity_link")
+}
+
+/// One-time consumption ledger for signed ISF ID launch assertions. A valid
+/// JWS is still rejected if its issuer/JTI pair was already used locally.
+model IsfSsoAssertion {
+  id        String   @id @default(uuid()) @db.Uuid
+  issuer    String
+  jti       String
+  subjectId String   @db.Uuid
+  audience  String
+  expiresAt DateTime @db.Timestamptz(6)
+  consumedAt DateTime @default(now()) @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([issuer, jti])
+  @@index([expiresAt])
+  @@map("isf_sso_assertion")
 }
 
 model ApiServiceClient {

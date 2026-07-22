@@ -18,6 +18,7 @@ export default tseslint.config(
       'output/**',
       'apps/desktop/src-tauri/target/**',
       'apps/desktop/src-tauri/gen/**',
+      'apps/isf-id/generated/**',
       '_logo_pack_unpack/**',
       'commitlint.config.js',
     ],

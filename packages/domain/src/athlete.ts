@@ -4,6 +4,7 @@ import { Gender } from './enums.js';
 
 export const Athlete = z.object({
   id: AthleteId,
+  userId: z.string().uuid().optional().nullable(),
   lastName: z.string().min(1),
   firstName: z.string().min(1),
   middleName: z.string().optional(),

@@ -5,6 +5,7 @@ import { Role } from './enums.js';
 export const User = z.object({
   id: UserId,
   email: z.string().email(),
+  isfSubjectId: z.string().uuid().optional().nullable(),
   phone: z.string().optional(),
   telegramHandle: z.string().optional(),
   displayName: z.string().min(1),

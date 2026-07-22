@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model IdentityAccount {
+  id              String   @id @default(uuid()) @db.Uuid
+  email           String   @unique
+  emailNormalized String   @unique
+  displayName     String
+  emailVerifiedAt DateTime? @db.Timestamptz(6)
+  status          String   @default("active")
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  sessions        IdentitySession[]
+
+  @@map("identity_account")
+}
+
+model IdentitySession {
+  id        String   @id @default(uuid()) @db.Uuid
+  accountId String   @db.Uuid
+  tokenHash String   @unique @db.Char(64)
+  expiresAt DateTime @db.Timestamptz(6)
+  revokedAt DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  account   IdentityAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, expiresAt])
+  @@map("identity_session")
+}
+
+model LoginChallenge {
+  id              String   @id @default(uuid()) @db.Uuid
+  emailNormalized String
+  codeHash        String   @db.Char(64)
+  expiresAt       DateTime @db.Timestamptz(6)
+  consumedAt      DateTime? @db.Timestamptz(6)
+  attemptCount    Int      @default(0)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([emailNormalized, createdAt])
+  @@index([expiresAt])
+  @@map("login_challenge")
+}

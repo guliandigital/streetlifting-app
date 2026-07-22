@@ -140,6 +140,55 @@ Add repository or environment secrets:
 
 Run **Deploy production** from GitHub Actions, choose `main` after PR merge, and keep `skip_migrations=false` unless migrations were already applied.
 
+## ISF ID service
+
+ISF ID is a separate service and database. Do not add its tables or signing key to
+`streetlifting-api` or its environment file.
+
+Before enabling `ISF_ID_ENABLED=true` in `/etc/streetlifting-api.env`, provision the
+`id.streetlifting.app` DNS record and TLS certificate, then install the dedicated
+environment file and private signing key:
+
+```bash
+sudo install -d -m 750 -o deploy -g deploy /etc/isf-id
+sudo install -m 600 -o deploy -g deploy /path/to/isf-id-signing-key.pem /etc/isf-id/signing-key.pem
+sudo install -m 640 -o root -g deploy apps/isf-id/deploy.env.example /etc/isf-id.env
+sudo nano /etc/isf-id.env
+```
+
+Set distinct strong values for `DATABASE_URL`, `ISF_ID_ISSUER_SERVICE_TOKEN`,
+`ISF_ID_CHALLENGE_SECRET`, and `ISF_ID_SESSION_SECRET`; configure either a real internal
+mailer endpoint or SMTP before exposing email login. VK Workspace uses
+`ISF_ID_SMTP_HOST=smtp.mail.ru`, port `465`, secure TLS, and the mailbox app password.
+Keep `ISF_ID_ISSUER=https://id.streetlifting.app` and the key path
+`/etc/isf-id/signing-key.pem`.
+
+Build and migrate as the service user:
+
+```bash
+cd /opt/streetlifting-app
+sudo -u deploy bash -c 'set -a; . /etc/isf-id.env; set +a; pnpm install --frozen-lockfile && pnpm --filter=@streetlifting/isf-id db:generate && pnpm --filter=@streetlifting/isf-id db:deploy && pnpm --filter=@streetlifting/isf-id build'
+```
+
+Install the process and reverse proxy, obtain the certificate, and validate before
+enabling the relying party:
+
+```bash
+sudo cp deploy/systemd/isf-id.service /etc/systemd/system/isf-id.service
+sudo cp deploy/nginx/id.streetlifting.app.conf /etc/nginx/sites-available/id.streetlifting.app
+sudo ln -sfn /etc/nginx/sites-available/id.streetlifting.app /etc/nginx/sites-enabled/id.streetlifting.app
+sudo nginx -t && sudo systemctl daemon-reload
+sudo certbot --nginx -d id.streetlifting.app
+sudo systemctl enable --now isf-id
+curl -fsS https://id.streetlifting.app/health
+curl -fsS https://id.streetlifting.app/.well-known/jwks.json
+```
+
+Only then configure the API values `ISF_ID_ENABLED=true`,
+`ISF_ID_ISSUER=https://id.streetlifting.app`, `ISF_ID_AUDIENCE=streetlifting-api`, and
+`ISF_ID_JWKS_URL=https://id.streetlifting.app/.well-known/jwks.json`, restart
+`streetlifting-api`, and smoke `GET /api/health/auth/isf-id`.
+
 ## Federation account provisioning
 
 After deploy, create or rotate a federation login on the server:

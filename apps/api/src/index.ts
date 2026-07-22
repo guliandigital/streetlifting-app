@@ -18,6 +18,7 @@ import { attachUser } from './lib/auth/middleware.js';
 import { loadPlugins } from './lib/load-plugins.js';
 import { healthPlugin } from './plugins/health.js';
 import { authPlugin } from './plugins/auth.js';
+import { isfIdAuthPlugin } from './plugins/isf-id-auth.js';
 import { federationsPlugin } from './plugins/federations.js';
 import { athletesPlugin } from './plugins/athletes.js';
 import { disciplinesPlugin } from './plugins/disciplines.js';
@@ -101,6 +102,7 @@ await app.register(rateLimit, {
 const features = [
   healthPlugin,
   authPlugin,
+  isfIdAuthPlugin,
   federationsPlugin,
   athletesPlugin,
   disciplinesPlugin,

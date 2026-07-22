@@ -146,6 +146,40 @@ importers:
         specifier: ^2.1.0
         version: 2.11.1
 
+  apps/isf-id:
+    dependencies:
+      '@prisma/client':
+        specifier: ^6.0.1
+        version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      fastify:
+        specifier: ^5.1.0
+        version: 5.8.5
+      jose:
+        specifier: ^5.9.6
+        version: 5.10.0
+      nodemailer:
+        specifier: ^8.0.7
+        version: 8.0.7
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/nodemailer':
+        specifier: ^6.4.17
+        version: 6.4.24
+      prisma:
+        specifier: ^6.0.1
+        version: 6.19.3(typescript@5.9.3)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.17)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.46.2)
+
   apps/web:
     dependencies:
       '@sentry/react':
@@ -2388,6 +2422,9 @@ packages:
 
   '@types/node@22.19.17':
     resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
+
+  '@types/nodemailer@6.4.24':
+    resolution: {integrity: sha512-Ww4u0rT9wQNXh4JiQaIwx3QWdcOFXzOjQA2zc+jtFYNmQiT4mIUqcDin51bDFdkzKubFnQCZNK7FIHlPKQ/q9w==}
 
   '@types/pg-pool@2.0.6':
     resolution: {integrity: sha512-TaAUE5rq2VQYxab5Ts7WZhKNmuN78Q6PiFonTDdpbx8a1H0M1vhy3rhiMjl+e2iHmogyMw7jZF4FrE6eJUy5HQ==}
@@ -7150,6 +7187,10 @@ snapshots:
   '@types/node@22.19.17':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/nodemailer@6.4.24':
+    dependencies:
+      '@types/node': 22.19.17
 
   '@types/pg-pool@2.0.6':
     dependencies:

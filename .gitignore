@@ -8,6 +8,7 @@ build/
 .next/
 .turbo/
 *.tsbuildinfo
+apps/isf-id/generated/
 
 # Tauri
 apps/desktop/src-tauri/target/
