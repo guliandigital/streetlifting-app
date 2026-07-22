@@ -2,8 +2,6 @@ import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma } from '../lib/db.js';
 import { requireAuth } from '../lib/auth/middleware.js';
 
-const ORGANIZER_ROLES = new Set(['platform_admin', 'federation_admin', 'secretary', 'accountant']);
-
 function fullName(person: {
   lastName: string;
   firstName: string;
@@ -23,27 +21,8 @@ export const cabinetPlugin: FeaturePlugin = {
 
     app.get('/cabinet/overview', { preHandler: requireAuth() }, async (req) => {
       const user = req.user!;
-      const federationIds = [
-        ...new Set(
-          user.roles
-            .filter((assignment) => ORGANIZER_ROLES.has(assignment.role) && assignment.federationId)
-            .map((assignment) => assignment.federationId!),
-        ),
-      ];
-      const competitionIds = [
-        ...new Set(
-          user.roles
-            .filter(
-              (assignment) => ORGANIZER_ROLES.has(assignment.role) && assignment.competitionId,
-            )
-            .map((assignment) => assignment.competitionId!),
-        ),
-      ];
-      const isPlatformAdmin = user.roles.some((assignment) => assignment.role === 'platform_admin');
-      const canSeeOrganizerPanel =
-        isPlatformAdmin || federationIds.length > 0 || competitionIds.length > 0;
-
-      const [identity, athlete, judge, organizerCompetitions] = await Promise.all([
+      const now = new Date();
+      const [identity, athlete, judge, upcomingAssignments] = await Promise.all([
         prisma.user.findUnique({
           where: { id: user.id },
           select: { isfSubjectId: true },
@@ -57,8 +36,14 @@ export const cabinetPlugin: FeaturePlugin = {
             middleName: true,
             federationCardNumber: true,
             clubName: true,
-            _count: { select: { nominations: true, records: true } },
+            _count: {
+              select: {
+                nominations: { where: { status: 'finished' } },
+                records: { where: { revokedAt: null, ratifiedAt: { not: null } } },
+              },
+            },
             nominations: {
+              where: { status: 'finished' },
               orderBy: { competition: { startDate: 'desc' } },
               take: 12,
               select: {
@@ -74,7 +59,7 @@ export const cabinetPlugin: FeaturePlugin = {
               },
             },
             records: {
-              where: { revokedAt: null },
+              where: { revokedAt: null, ratifiedAt: { not: null } },
               orderBy: { achievedOn: 'desc' },
               take: 12,
               select: {
@@ -100,8 +85,15 @@ export const cabinetPlugin: FeaturePlugin = {
             categoryEn: true,
             cardNumber: true,
             cityRegion: true,
-            _count: { select: { assignments: true } },
+            _count: {
+              select: {
+                assignments: {
+                  where: { competition: { status: { in: ['finalized', 'archived'] } } },
+                },
+              },
+            },
             assignments: {
+              where: { competition: { status: { in: ['finalized', 'archived'] } } },
               orderBy: { competition: { startDate: 'desc' } },
               take: 12,
               select: {
@@ -114,53 +106,24 @@ export const cabinetPlugin: FeaturePlugin = {
             },
           },
         }),
-        canSeeOrganizerPanel
-          ? prisma.competition.findMany({
-              where: isPlatformAdmin
-                ? {}
-                : {
-                    OR: [
-                      ...(federationIds.length ? [{ federationId: { in: federationIds } }] : []),
-                      ...(competitionIds.length ? [{ id: { in: competitionIds } }] : []),
-                    ],
-                  },
-              orderBy: { startDate: 'desc' },
-              take: 20,
-              select: {
-                id: true,
-                code: true,
-                nameRu: true,
-                startDate: true,
-                endDate: true,
-                city: true,
-                status: true,
-                federation: { select: { id: true, nameRu: true } },
-                judgeAssignments: {
-                  orderBy: [{ role: 'asc' }, { judge: { lastName: 'asc' } }],
-                  select: {
-                    id: true,
-                    role: true,
-                    platform: { select: { id: true, name: true } },
-                    judge: {
-                      select: { id: true, lastName: true, firstName: true, middleName: true },
-                    },
-                  },
-                },
-                roleAssignments: {
-                  where: {
-                    revokedAt: null,
-                    role: { in: ['secretary', 'scoreboard_operator', 'speaker'] },
-                  },
-                  orderBy: { role: 'asc' },
-                  select: {
-                    id: true,
-                    role: true,
-                    user: { select: { id: true, displayName: true } },
-                  },
-                },
-              },
-            })
-          : Promise.resolve([]),
+        prisma.judgeAssignment.findMany({
+          where: {
+            judge: { userId: user.id },
+            competition: {
+              startDate: { gte: now },
+              status: { in: ['registration_open', 'registration_closed', 'in_progress'] },
+            },
+          },
+          orderBy: { competition: { startDate: 'asc' } },
+          take: 8,
+          select: {
+            id: true,
+            role: true,
+            assignedAt: true,
+            competition: { select: { id: true, nameRu: true, startDate: true, city: true } },
+            platform: { select: { id: true, name: true } },
+          },
+        }),
       ]);
 
       return {
@@ -205,17 +168,7 @@ export const cabinetPlugin: FeaturePlugin = {
               cityRegion: judge.cityRegion,
               assignmentsTotal: judge._count.assignments,
               assignments: judge.assignments,
-            }
-          : null,
-        organizer: canSeeOrganizerPanel
-          ? {
-              competitions: organizerCompetitions.map((competition) => ({
-                ...competition,
-                judgeAssignments: competition.judgeAssignments.map((assignment) => ({
-                  ...assignment,
-                  judge: { id: assignment.judge.id, displayName: fullName(assignment.judge) },
-                })),
-              })),
+              upcomingAssignments,
             }
           : null,
       };

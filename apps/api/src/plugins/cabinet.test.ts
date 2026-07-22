@@ -7,7 +7,7 @@ const prismaMock = vi.hoisted(() => ({
   user: { findUnique: vi.fn() },
   athlete: { findUnique: vi.fn() },
   judge: { findUnique: vi.fn() },
-  competition: { findMany: vi.fn() },
+  judgeAssignment: { findMany: vi.fn() },
 }));
 
 vi.mock('../lib/db.js', () => ({ prisma: prismaMock }));
@@ -41,7 +41,7 @@ describe('cabinet overview', () => {
     prismaMock.user.findUnique.mockResolvedValue({ isfSubjectId: null });
     prismaMock.athlete.findUnique.mockResolvedValue(null);
     prismaMock.judge.findUnique.mockResolvedValue(null);
-    prismaMock.competition.findMany.mockResolvedValue([]);
+    prismaMock.judgeAssignment.findMany.mockResolvedValue([]);
   });
 
   it('requires an authenticated user', async () => {
@@ -52,7 +52,7 @@ describe('cabinet overview', () => {
     await app.close();
   });
 
-  it('returns only profiles linked to the signed-in user and organiser competitions in scope', async () => {
+  it('returns only profiles linked to the signed-in user', async () => {
     prismaMock.athlete.findUnique.mockResolvedValue({
       id: '00000000-0000-0000-0000-000000000003',
       lastName: 'Иванов',
@@ -89,12 +89,19 @@ describe('cabinet overview', () => {
       displayName: 'Петров Пётр',
       assignmentsTotal: 2,
     });
-    expect(response.json().organizer).toEqual({ competitions: [] });
+    expect(response.json().official.upcomingAssignments).toEqual([]);
     expect(prismaMock.athlete.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId: user.id } }),
     );
-    expect(JSON.stringify(prismaMock.competition.findMany.mock.calls[0]?.[0].where)).toContain(
-      user.roles[0]!.federationId,
+    expect(JSON.stringify(prismaMock.athlete.findUnique.mock.calls[0]?.[0])).toContain(
+      '"status":"finished"',
+    );
+    expect(JSON.stringify(prismaMock.athlete.findUnique.mock.calls[0]?.[0])).toContain(
+      '"ratifiedAt":{"not":null}',
+    );
+    expect(JSON.stringify(prismaMock.judge.findUnique.mock.calls[0]?.[0])).toContain('"finalized"');
+    expect(JSON.stringify(prismaMock.judgeAssignment.findMany.mock.calls[0]?.[0].where)).toContain(
+      user.id,
     );
     await app.close();
   });

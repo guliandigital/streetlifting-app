@@ -46,28 +46,12 @@ export interface CabinetOverview {
       competition: { id: string; nameRu: string; startDate: string; city: string | null };
       platform: { id: string; name: string } | null;
     }>;
-  } | null;
-  organizer: {
-    competitions: Array<{
+    upcomingAssignments: Array<{
       id: string;
-      code: string;
-      nameRu: string;
-      startDate: string;
-      endDate: string;
-      city: string | null;
-      status: string;
-      federation: { id: string; nameRu: string };
-      judgeAssignments: Array<{
-        id: string;
-        role: string;
-        platform: { id: string; name: string } | null;
-        judge: { id: string; displayName: string };
-      }>;
-      roleAssignments: Array<{
-        id: string;
-        role: string;
-        user: { id: string; displayName: string };
-      }>;
+      role: string;
+      assignedAt: string;
+      competition: { id: string; nameRu: string; startDate: string; city: string | null };
+      platform: { id: string; name: string } | null;
     }>;
   } | null;
 }

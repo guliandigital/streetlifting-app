@@ -63,12 +63,8 @@
       "category": "Category",
       "card": "Credential number",
       "region": "Region",
+      "upcomingAssignments": "Upcoming assignments",
       "assignments": "Assignment history"
-    },
-    "organizer": {
-      "title": "Organizer",
-      "subtitle": "Competitions within your organization permissions and their teams.",
-      "team": "Competition team"
     },
     "role": {
       "platform_admin": "Super admin",

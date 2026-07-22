@@ -285,6 +285,27 @@ export default function ProfileFeature() {
                   <dd>{cabinet.data.official.cityRegion ?? '—'}</dd>
                 </dl>
                 <section>
+                  <h3 className="mb-2 text-sm font-medium">
+                    {t('profile.official.upcomingAssignments')}
+                  </h3>
+                  {cabinet.data.official.upcomingAssignments.length ? (
+                    <ul className="space-y-2 text-sm">
+                      {cabinet.data.official.upcomingAssignments.map((assignment) => (
+                        <li key={assignment.id} className="rounded-md border p-2">
+                          <p className="font-medium">{assignment.competition.nameRu}</p>
+                          <p className="text-muted-foreground">
+                            {profileRoleLabel(assignment.role)} ·{' '}
+                            {formatDate(assignment.competition.startDate)}
+                            {assignment.platform ? ` · ${assignment.platform.name}` : ''}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
+                  )}
+                </section>
+                <section>
                   <h3 className="mb-2 text-sm font-medium">{t('profile.official.assignments')}</h3>
                   {cabinet.data.official.assignments.length ? (
                     <ul className="space-y-2 text-sm">
@@ -303,51 +324,6 @@ export default function ProfileFeature() {
                     <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
                   )}
                 </section>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {cabinet.data.organizer ? (
-            <Card className="xl:col-span-2">
-              <CardHeader>
-                <CardTitle>{t('profile.organizer.title')}</CardTitle>
-                <CardDescription>{t('profile.organizer.subtitle')}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {cabinet.data.organizer.competitions.length ? (
-                  <ul className="grid gap-3 lg:grid-cols-2">
-                    {cabinet.data.organizer.competitions.map((competition) => (
-                      <li key={competition.id} className="rounded-md border p-3 text-sm">
-                        <p className="font-medium">{competition.nameRu}</p>
-                        <p className="mb-2 text-muted-foreground">
-                          {competition.federation.nameRu} · {formatDate(competition.startDate)}
-                        </p>
-                        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {t('profile.organizer.team')}
-                        </p>
-                        <ul className="space-y-1 text-muted-foreground">
-                          {competition.judgeAssignments.map((assignment) => (
-                            <li key={`judge-${assignment.id}`}>
-                              {assignment.judge.displayName} · {profileRoleLabel(assignment.role)}
-                              {assignment.platform ? ` · ${assignment.platform.name}` : ''}
-                            </li>
-                          ))}
-                          {competition.roleAssignments.map((assignment) => (
-                            <li key={`role-${assignment.id}`}>
-                              {assignment.user.displayName} · {profileRoleLabel(assignment.role)}
-                            </li>
-                          ))}
-                          {competition.judgeAssignments.length === 0 &&
-                          competition.roleAssignments.length === 0 ? (
-                            <li>{t('profile.empty')}</li>
-                          ) : null}
-                        </ul>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted-foreground">{t('profile.empty')}</p>
-                )}
               </CardContent>
             </Card>
           ) : null}
