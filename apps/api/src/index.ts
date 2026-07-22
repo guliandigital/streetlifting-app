@@ -21,6 +21,7 @@ import { authPlugin } from './plugins/auth.js';
 import { isfIdAuthPlugin } from './plugins/isf-id-auth.js';
 import { cabinetPlugin } from './plugins/cabinet.js';
 import { passportManagementPlugin } from './plugins/passport-management.js';
+import { passportIdentityLinksPlugin } from './plugins/passport-identity-links.js';
 import { federationsPlugin } from './plugins/federations.js';
 import { athletesPlugin } from './plugins/athletes.js';
 import { disciplinesPlugin } from './plugins/disciplines.js';
@@ -107,6 +108,7 @@ const features = [
   isfIdAuthPlugin,
   cabinetPlugin,
   passportManagementPlugin,
+  passportIdentityLinksPlugin,
   federationsPlugin,
   athletesPlugin,
   disciplinesPlugin,
