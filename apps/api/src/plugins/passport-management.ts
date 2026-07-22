@@ -44,6 +44,36 @@ const passportRequestInput = z.object({
   payload: z.record(z.unknown()),
   supportingAttachmentId: uuid.nullable().optional(),
 });
+const officialProfileResolution = z.object({
+  functions: z
+    .array(
+      z.enum([
+        'judge',
+        'secretary',
+        'assistant',
+        'scoreboard_operator',
+        'speaker',
+        'technical_official',
+      ]),
+    )
+    .min(1),
+});
+const reviewInput = z.object({
+  status: z.enum(['approved', 'rejected']),
+  reviewNote: z.string().trim().max(1000).optional(),
+  resolution: z.record(z.unknown()).optional(),
+});
+const profileUpdateInput = z
+  .object({
+    displayName: z.string().trim().min(1).max(120).optional(),
+    phone: z.string().trim().min(3).max(40).nullable().optional(),
+    telegramHandle: z.string().trim().min(2).max(64).nullable().optional(),
+  })
+  .refine(
+    (value) => Object.values(value).some((item) => item !== undefined),
+    'No changes provided',
+  );
+const privacyInput = z.object({ privacyMode: z.enum(['public_results', 'hidden']) });
 
 function defined(value: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
@@ -67,11 +97,153 @@ function invalid(reply: FastifyReply, requestId: string, message: string) {
   return reply.code(400).send({ error: { code: 'validation_error', message, requestId } });
 }
 
+function resolveApproval(
+  request: { kind: string; federationId: string; applicantUserId: string },
+  resolution: Record<string, unknown> | undefined,
+) {
+  if (!resolution) return { error: 'Approval requires final federation data' } as const;
+  if (request.kind === 'official_profile') {
+    const parsed = officialProfileResolution.safeParse(resolution);
+    return parsed.success
+      ? { kind: request.kind, value: parsed.data }
+      : { error: parsed.error.message };
+  }
+  if (request.kind === 'official_credential') {
+    const parsed = credentialInput.safeParse({
+      ...resolution,
+      issuedByFederationId: request.federationId,
+    });
+    if (!parsed.success) return { error: parsed.error.message } as const;
+    if (parsed.data.expiresAt && parsed.data.expiresAt < parsed.data.issuedAt)
+      return { error: 'expiresAt must not precede issuedAt' } as const;
+    return { kind: request.kind, value: parsed.data };
+  }
+  if (request.kind === 'sport_rank') {
+    const parsed = rankInput.safeParse({
+      ...resolution,
+      issuedByFederationId: request.federationId,
+    });
+    if (!parsed.success) return { error: parsed.error.message } as const;
+    if (parsed.data.expiresAt && parsed.data.expiresAt < parsed.data.issuedAt)
+      return { error: 'expiresAt must not precede issuedAt' } as const;
+    return { kind: request.kind, value: parsed.data };
+  }
+  return { error: 'Unsupported passport request kind' } as const;
+}
+
 /** Federation-only finalization paths for Passport evidence. There is
  * deliberately no owner update endpoint for credentials, ranks or team facts. */
 export const passportManagementPlugin: FeaturePlugin = {
   name: 'passport-management',
   register: async (app) => {
+    app.patch('/passport/profile', { preHandler: requireAuth() }, async (req, reply) => {
+      const parsed = profileUpdateInput.safeParse(req.body);
+      if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
+      const before = await prisma.user.findUnique({ where: { id: req.user!.id } });
+      if (!before)
+        return reply.code(404).send({
+          error: { code: 'not_found', message: 'User not found', requestId: req.requestId },
+        });
+      const user = await audit.withAudit(
+        {
+          ...audit.fromRequest(req),
+          actorUserId: req.user!.id,
+          action: 'passport.profile.updated',
+          scopeFederationId: null,
+          scopeCompetitionId: null,
+          targetType: 'user',
+          targetId: before.id,
+          before: {
+            displayName: before.displayName,
+            phone: before.phone,
+            telegramHandle: before.telegramHandle,
+          },
+          after: parsed.data,
+        },
+        (tx) =>
+          tx.user.update({
+            where: { id: before.id },
+            data: defined(parsed.data) as Prisma.UserUncheckedUpdateInput,
+            select: { id: true, displayName: true, phone: true, telegramHandle: true },
+          }),
+      );
+      return { user };
+    });
+
+    app.patch('/passport/privacy', { preHandler: requireAuth() }, async (req, reply) => {
+      const parsed = privacyInput.safeParse(req.body);
+      if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
+      const before = await prisma.athlete.findUnique({
+        where: { userId: req.user!.id },
+        select: { id: true, privacyMode: true },
+      });
+      if (!before)
+        return reply.code(404).send({
+          error: {
+            code: 'not_found',
+            message: 'Athlete profile not linked',
+            requestId: req.requestId,
+          },
+        });
+      const athlete = await audit.withAudit(
+        {
+          ...audit.fromRequest(req),
+          actorUserId: req.user!.id,
+          action: 'passport.privacy.updated',
+          scopeFederationId: null,
+          scopeCompetitionId: null,
+          targetType: 'athlete',
+          targetId: before.id,
+          before,
+          after: parsed.data,
+        },
+        (tx) =>
+          tx.athlete.update({
+            where: { id: before.id },
+            data: parsed.data,
+            select: { id: true, privacyMode: true },
+          }),
+      );
+      return { athlete };
+    });
+
+    app.post<{ Params: { id: string } }>(
+      '/passport/consents/:id/revoke',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        const before = await prisma.consent.findFirst({
+          where: {
+            id: req.params.id,
+            revokedAt: null,
+            OR: [{ userId: req.user!.id }, { athlete: { userId: req.user!.id } }],
+          },
+        });
+        if (!before)
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Active consent not found',
+              requestId: req.requestId,
+            },
+          });
+        const consent = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'passport.consent.revoked',
+            scopeFederationId: null,
+            scopeCompetitionId: null,
+            targetType: 'consent',
+            targetId: before.id,
+            before,
+            after: { revokedAt: new Date().toISOString() },
+          },
+          (tx) => tx.consent.update({ where: { id: before.id }, data: { revokedAt: new Date() } }),
+        );
+        return { consent };
+      },
+    );
+
     app.get('/passport/requests', { preHandler: requireAuth() }, async (req) => {
       const requests = await prisma.passportReviewRequest.findMany({
         where: { applicantUserId: req.user!.id },
@@ -198,12 +370,7 @@ export const passportManagementPlugin: FeaturePlugin = {
       '/passport/requests/:id/review',
       { preHandler: requireAuth() },
       async (req, reply) => {
-        const parsed = z
-          .object({
-            status: z.enum(['approved', 'rejected']),
-            reviewNote: z.string().trim().max(1000).optional(),
-          })
-          .safeParse(req.body);
+        const parsed = reviewInput.safeParse(req.body);
         if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
         const before = await prisma.passportReviewRequest.findUnique({
           where: { id: req.params.id },
@@ -228,6 +395,11 @@ export const passportManagementPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
+        const approval =
+          parsed.data.status === 'approved'
+            ? resolveApproval(before, parsed.data.resolution)
+            : null;
+        if (approval && 'error' in approval) return invalid(reply, req.requestId, approval.error);
         const request = await audit.withAudit(
           {
             ...audit.fromRequest(req),
@@ -238,17 +410,56 @@ export const passportManagementPlugin: FeaturePlugin = {
             targetType: 'passport_review_request',
             targetId: before.id,
             before,
-            after: parsed.data,
+            after: {
+              status: parsed.data.status,
+              reviewNote: parsed.data.reviewNote,
+              resolution: approval,
+            },
           },
-          (tx) =>
-            tx.passportReviewRequest.update({
+          async (tx) => {
+            if (approval?.kind === 'official_profile') {
+              const profileResolution = officialProfileResolution.parse(parsed.data.resolution);
+              await tx.officialProfile.upsert({
+                where: { userId: before.applicantUserId },
+                create: { userId: before.applicantUserId, functions: profileResolution.functions },
+                update: { functions: profileResolution.functions },
+              });
+            } else if (approval?.kind === 'official_credential') {
+              const profile = await tx.officialProfile.findUnique({
+                where: { userId: before.applicantUserId },
+                select: { id: true },
+              });
+              if (!profile)
+                throw new Error('Official profile must be approved before a credential');
+              await tx.officialCredential.create({
+                data: defined({
+                  ...approval.value,
+                  officialProfileId: profile.id,
+                }) as Prisma.OfficialCredentialUncheckedCreateInput,
+              });
+            } else if (approval?.kind === 'sport_rank') {
+              const athlete = await tx.athlete.findUnique({
+                where: { userId: before.applicantUserId },
+                select: { id: true },
+              });
+              if (!athlete) throw new Error('Athlete profile must be linked before a sport rank');
+              await tx.sportRankAward.create({
+                data: defined({
+                  ...approval.value,
+                  athleteId: athlete.id,
+                }) as Prisma.SportRankAwardUncheckedCreateInput,
+              });
+            }
+            return tx.passportReviewRequest.update({
               where: { id: before.id },
               data: defined({
-                ...parsed.data,
+                status: parsed.data.status,
+                reviewNote: parsed.data.reviewNote,
                 resolvedAt: new Date(),
                 resolvedByUserId: req.user!.id,
               }) as Prisma.PassportReviewRequestUncheckedUpdateInput,
-            }),
+            });
+          },
         );
         return { request };
       },
@@ -400,6 +611,30 @@ export const passportManagementPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
+        if (parsed.data.judgeAssignmentId) {
+          if (!['judge', 'head_judge'].includes(parsed.data.role))
+            return invalid(
+              reply,
+              req.requestId,
+              'judgeAssignmentId is only valid for judge or head_judge team roles',
+            );
+          const assignment = await prisma.judgeAssignment.findFirst({
+            where: {
+              id: parsed.data.judgeAssignmentId,
+              competitionId: competition.id,
+              judge: { userId: parsed.data.userId },
+            },
+            select: { id: true },
+          });
+          if (!assignment)
+            return reply.code(409).send({
+              error: {
+                code: 'judge_assignment_mismatch',
+                message: 'Judge assignment must belong to this competition and team member',
+                requestId: req.requestId,
+              },
+            });
+        }
         const teamMember = await audit.withAudit(
           {
             ...audit.fromRequest(req),
