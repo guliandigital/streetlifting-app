@@ -323,69 +323,73 @@ export const passportManagementPlugin: FeaturePlugin = {
       };
     });
 
-    app.post('/passport/attachments', { preHandler: requireAuth() }, async (req, reply) => {
-      const parsed = passportAttachmentInput.safeParse(req.body);
-      if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
-      const content = decodeBase64File(parsed.data.contentBase64);
-      if (!content || content.length === 0 || content.length > MAX_PASSPORT_ATTACHMENT_BYTES)
-        return reply.code(400).send({
-          error: {
-            code: 'invalid_file',
-            message: `File must be between 1 byte and ${MAX_PASSPORT_ATTACHMENT_BYTES} bytes`,
-            requestId: req.requestId,
-          },
-        });
-      const filename = sanitizeFilename(parsed.data.filename);
-      const storagePath = path.join('passport', req.user!.id, `${randomUUID()}-${filename}`);
-      const absolutePath = path.join(uploadRoot(), storagePath);
-      await mkdir(path.dirname(absolutePath), { recursive: true });
-      await writeFile(absolutePath, content);
-      try {
-        const attachment = await audit.withAudit(
-          {
-            ...audit.fromRequest(req),
-            actorUserId: req.user!.id,
-            action: 'passport.attachment.uploaded',
-            scopeFederationId: null,
-            scopeCompetitionId: null,
-            targetType: 'attachment',
-            targetId: 'pending',
-            before: null,
-            after: {
-              kind: parsed.data.kind,
-              filename,
-              mimeType: parsed.data.mimeType,
-              sizeBytes: content.length,
+    app.post(
+      '/passport/attachments',
+      { preHandler: requireAuth(), bodyLimit: 7 * 1024 * 1024 },
+      async (req, reply) => {
+        const parsed = passportAttachmentInput.safeParse(req.body);
+        if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
+        const content = decodeBase64File(parsed.data.contentBase64);
+        if (!content || content.length === 0 || content.length > MAX_PASSPORT_ATTACHMENT_BYTES)
+          return reply.code(400).send({
+            error: {
+              code: 'invalid_file',
+              message: `File must be between 1 byte and ${MAX_PASSPORT_ATTACHMENT_BYTES} bytes`,
+              requestId: req.requestId,
             },
-          },
-          (tx) =>
-            tx.attachment.create({
-              data: {
+          });
+        const filename = sanitizeFilename(parsed.data.filename);
+        const storagePath = path.join('passport', req.user!.id, `${randomUUID()}-${filename}`);
+        const absolutePath = path.join(uploadRoot(), storagePath);
+        await mkdir(path.dirname(absolutePath), { recursive: true });
+        await writeFile(absolutePath, content);
+        try {
+          const attachment = await audit.withAudit(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'passport.attachment.uploaded',
+              scopeFederationId: null,
+              scopeCompetitionId: null,
+              targetType: 'attachment',
+              targetId: 'pending',
+              before: null,
+              after: {
                 kind: parsed.data.kind,
-                uploadedByUserId: req.user!.id,
                 filename,
                 mimeType: parsed.data.mimeType,
-                sizeBytes: BigInt(content.length),
-                sha256: createHash('sha256').update(content).digest('hex'),
-                storagePath,
+                sizeBytes: content.length,
               },
-            }),
-        );
-        return reply.code(201).send({
-          attachment: {
-            id: attachment.id,
-            kind: attachment.kind,
-            filename: attachment.filename,
-            mimeType: attachment.mimeType,
-            sizeBytes: attachment.sizeBytes.toString(),
-            uploadedAt: attachment.uploadedAt.toISOString(),
-          },
-        });
-      } catch (error) {
-        await unlink(absolutePath).catch(() => undefined);
-        throw error;
-      }
-    });
+            },
+            (tx) =>
+              tx.attachment.create({
+                data: {
+                  kind: parsed.data.kind,
+                  uploadedByUserId: req.user!.id,
+                  filename,
+                  mimeType: parsed.data.mimeType,
+                  sizeBytes: BigInt(content.length),
+                  sha256: createHash('sha256').update(content).digest('hex'),
+                  storagePath,
+                },
+              }),
+          );
+          return reply.code(201).send({
+            attachment: {
+              id: attachment.id,
+              kind: attachment.kind,
+              filename: attachment.filename,
+              mimeType: attachment.mimeType,
+              sizeBytes: attachment.sizeBytes.toString(),
+              uploadedAt: attachment.uploadedAt.toISOString(),
+            },
+          });
+        } catch (error) {
+          await unlink(absolutePath).catch(() => undefined);
+          throw error;
+        }
+      },
+    );
 
     app.get<{ Params: { id: string } }>(
       '/passport/attachments/:id/download',
@@ -556,6 +560,23 @@ export const passportManagementPlugin: FeaturePlugin = {
           error: {
             code: 'forbidden',
             message: 'Supporting document is not owned by user',
+            requestId: req.requestId,
+          },
+        });
+      const existing = await prisma.passportReviewRequest.findFirst({
+        where: {
+          applicantUserId: req.user!.id,
+          federationId: parsed.data.federationId,
+          kind: parsed.data.kind,
+          status: 'pending',
+        },
+        select: { id: true },
+      });
+      if (existing)
+        return reply.code(409).send({
+          error: {
+            code: 'request_already_pending',
+            message: 'A matching request is already pending',
             requestId: req.requestId,
           },
         });

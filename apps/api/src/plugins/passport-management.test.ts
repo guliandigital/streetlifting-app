@@ -11,6 +11,7 @@ const prismaMock = vi.hoisted(() => ({
   attachment: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn() },
   passportReviewRequest: {
     findUnique: vi.fn(),
+    findFirst: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -96,6 +97,28 @@ describe('passport team workflow', () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.json().error.code).toBe('judge_assignment_mismatch');
+    await app.close();
+  });
+
+  it('rejects a duplicate pending passport request before creating another review item', async () => {
+    prismaMock.federation.findUnique.mockResolvedValue({ id: federationId });
+    prismaMock.passportReviewRequest.findFirst.mockResolvedValue({
+      id: '00000000-0000-0000-0000-000000000008',
+    });
+    const app = await buildApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/passport/requests',
+      payload: {
+        federationId,
+        kind: 'official_profile',
+        payload: { message: 'Прошу рассмотреть заявку' },
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe('request_already_pending');
+    expect(prismaMock.passportReviewRequest.create).not.toHaveBeenCalled();
     await app.close();
   });
 
