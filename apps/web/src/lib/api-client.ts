@@ -101,6 +101,30 @@ class ApiClientError extends Error {
 
 export { ApiClientError };
 
+export interface IsfServiceClientDto {
+  id: string;
+  code: string;
+  name: string;
+  scopes: string[];
+  isActive: boolean;
+  rateLimitRpm: number;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export interface IsfProtocolKeyDto {
+  id: string;
+  federationId: string;
+  keyId: string;
+  publicKeyFingerprint: string;
+  sanctioningCertId: string | null;
+  isActive: boolean;
+  validFrom: string | null;
+  validUntil: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
@@ -304,6 +328,37 @@ export const api = {
         body: { token },
         unauthenticated: true,
       }),
+  },
+
+  integrations: {
+    isf: {
+      serviceClients: (): Promise<{ clients: IsfServiceClientDto[] }> =>
+        request('/integrations/isf/service-clients'),
+      createServiceClient: (data: {
+        code: string;
+        name: string;
+        scopes: Array<'isf:read' | 'isf:webhook' | 'openstreetlifting:read' | 'isf:protocol:write'>;
+        rateLimitRpm: number;
+      }): Promise<{ client: IsfServiceClientDto; token: string }> =>
+        request('/integrations/isf/service-clients', { method: 'POST', body: data }),
+      revokeServiceClient: (id: string): Promise<{ client: IsfServiceClientDto }> =>
+        request(`/integrations/isf/service-clients/${id}/revoke`, { method: 'POST' }),
+      protocolKeys: (federationId?: string): Promise<{ keys: IsfProtocolKeyDto[] }> =>
+        request(
+          `/integrations/isf/protocol-keys${
+            federationId ? `?federationId=${encodeURIComponent(federationId)}` : ''
+          }`,
+        ),
+      createProtocolKey: (data: {
+        federationId: string;
+        keyId: string;
+        publicKeyPem: string;
+        sanctioningCertId?: string;
+      }): Promise<{ key: IsfProtocolKeyDto }> =>
+        request('/integrations/isf/protocol-keys', { method: 'POST', body: data }),
+      revokeProtocolKey: (id: string): Promise<{ key: IsfProtocolKeyDto }> =>
+        request(`/integrations/isf/protocol-keys/${id}/revoke`, { method: 'POST' }),
+    },
   },
 
   changePassword: (

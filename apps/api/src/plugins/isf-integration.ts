@@ -57,6 +57,34 @@ const ProtocolKeyCreate = z
   })
   .strict();
 
+const ProtocolKeyListQuery = z.object({ federationId: z.string().uuid().optional() }).strict();
+
+function publicProtocolKey(key: {
+  id: string;
+  federationId: string;
+  keyId: string;
+  publicKeyPem: string;
+  sanctioningCertId: string | null;
+  isActive: boolean;
+  validFrom: Date | null;
+  validUntil: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+}) {
+  return {
+    id: key.id,
+    federationId: key.federationId,
+    keyId: key.keyId,
+    publicKeyFingerprint: createHash('sha256').update(key.publicKeyPem).digest('hex'),
+    sanctioningCertId: key.sanctioningCertId,
+    isActive: key.isActive,
+    validFrom: key.validFrom?.toISOString() ?? null,
+    validUntil: key.validUntil?.toISOString() ?? null,
+    revokedAt: key.revokedAt?.toISOString() ?? null,
+    createdAt: key.createdAt.toISOString(),
+  };
+}
+
 const FinalProtocolEnvelope = z
   .object({
     protocol: z
@@ -673,14 +701,7 @@ export const isfIntegrationPlugin: FeaturePlugin = {
                 },
               }),
           );
-          return reply.code(201).send({
-            key: {
-              id: key.id,
-              keyId: key.keyId,
-              federationId: key.federationId,
-              isActive: key.isActive,
-            },
-          });
+          return reply.code(201).send({ key: publicProtocolKey(key) });
         } catch (error) {
           if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
             return reply.code(409).send({
@@ -692,6 +713,65 @@ export const isfIntegrationPlugin: FeaturePlugin = {
             });
           throw error;
         }
+      },
+    );
+
+    app.get(
+      '/integrations/isf/protocol-keys',
+      { preHandler: requireRole('platform_admin') },
+      async (req, reply) => {
+        const parsed = ProtocolKeyListQuery.safeParse(req.query);
+        if (!parsed.success)
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        const keyQuery: Prisma.FederationProtocolKeyFindManyArgs = {
+          orderBy: [{ createdAt: 'desc' }, { keyId: 'asc' }],
+        };
+        if (parsed.data.federationId) keyQuery.where = { federationId: parsed.data.federationId };
+        const keys = await prisma.federationProtocolKey.findMany(keyQuery);
+        return { keys: keys.map(publicProtocolKey) };
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      '/integrations/isf/protocol-keys/:id/revoke',
+      { preHandler: requireRole('platform_admin') },
+      async (req, reply) => {
+        const before = await prisma.federationProtocolKey.findUnique({
+          where: { id: req.params.id },
+        });
+        if (!before)
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Protocol key not found',
+              requestId: req.requestId,
+            },
+          });
+        const revoked = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'isf.protocol_key.revoked',
+            scopeFederationId: before.federationId,
+            scopeCompetitionId: null,
+            targetType: 'federation_protocol_key',
+            targetId: before.id,
+            before: publicProtocolKey(before),
+            after: { isActive: false, revokedAt: 'now' },
+          },
+          (tx) =>
+            tx.federationProtocolKey.update({
+              where: { id: before.id },
+              data: { isActive: false, revokedAt: new Date() },
+            }),
+        );
+        return { key: publicProtocolKey(revoked) };
       },
     );
 

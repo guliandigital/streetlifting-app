@@ -146,6 +146,19 @@ describe('ISF integration routes', () => {
     await app.close();
   });
 
+  it('keeps federation protocol-key administration behind platform authentication', async () => {
+    const app = await buildApp();
+    const list = await app.inject({ method: 'GET', url: '/integrations/isf/protocol-keys' });
+    const revoke = await app.inject({
+      method: 'POST',
+      url: '/integrations/isf/protocol-keys/00000000-0000-4000-8000-000000000001/revoke',
+    });
+
+    expect(list.statusCode).toBe(401);
+    expect(revoke.statusCode).toBe(401);
+    await app.close();
+  });
+
   it('rejects browser-origin service requests even with a valid token', async () => {
     const app = await buildApp();
     const response = await app.inject({

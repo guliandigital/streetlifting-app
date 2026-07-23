@@ -244,7 +244,10 @@ export function RootLayout() {
       { to: '/disciplines', label: t('header.disciplines'), icon: 'bar' },
       { to: '/judges', label: t('header.judges'), icon: 'judges' },
     ];
-    if (isPlatformAdmin) tabs.push({ to: '/lookups', label: t('header.lookups'), icon: 'list' });
+    if (isPlatformAdmin) {
+      tabs.push({ to: '/lookups', label: t('header.lookups'), icon: 'list' });
+      tabs.push({ to: '/integrations/isf', label: 'ISF integrations', icon: 'platform' });
+    }
     return tabs;
   }, [t, user?.roles]);
   const searchCommands = useMemo(

@@ -10,6 +10,12 @@ const LoginFeature = () => (
 const IsfIdCallbackFeature = () => (
   <LazyModule module="isf-id" loader={() => import('./features/isf-id/callback.js')} />
 );
+const IsfIntegrationsFeature = () => (
+  <LazyModule
+    module="isf-integrations"
+    loader={() => import('./features/isf-integrations/index.js')}
+  />
+);
 const ProfileFeature = () => (
   <LazyModule module="profile" loader={() => import('./features/profile/index.js')} />
 );
@@ -231,6 +237,13 @@ const isfIdCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/isf-id',
   component: IsfIdCallbackFeature,
+});
+
+const isfIntegrationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/integrations/isf',
+  beforeLoad: ({ location }) => requirePlatformAdmin(location.href),
+  component: IsfIntegrationsFeature,
 });
 
 const meRoute = createRoute({
@@ -514,6 +527,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   isfIdCallbackRoute,
+  isfIntegrationsRoute,
   meRoute,
   federationsListRoute,
   federationNewRoute,
