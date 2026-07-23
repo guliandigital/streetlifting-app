@@ -532,24 +532,28 @@ export const isfIntegrationPlugin: FeaturePlugin = {
       },
     );
 
-    app.get('/isf/v1/meta', { preHandler: requireServiceClient(READ_SCOPES) }, async (req) => {
-      const generatedAt = new Date().toISOString();
-      return {
-        ...stamp('api_service_client', req.serviceClient?.id ?? 'meta', generatedAt, generatedAt),
-        generatedAt,
-        capabilities: {
-          changedSince: true,
-          cursorPagination: true,
-          competitionSnapshot: true,
-          records: true,
-          webhooks: true,
-        },
-      };
-    });
+    app.get(
+      '/isf/v1/meta',
+      { config: { rateLimit: false }, preHandler: requireServiceClient(READ_SCOPES) },
+      async (req) => {
+        const generatedAt = new Date().toISOString();
+        return {
+          ...stamp('api_service_client', req.serviceClient?.id ?? 'meta', generatedAt, generatedAt),
+          generatedAt,
+          capabilities: {
+            changedSince: true,
+            cursorPagination: true,
+            competitionSnapshot: true,
+            records: true,
+            webhooks: true,
+          },
+        };
+      },
+    );
 
     app.get(
       '/isf/v1/competitions',
-      { preHandler: requireServiceClient(READ_SCOPES) },
+      { config: { rateLimit: false }, preHandler: requireServiceClient(READ_SCOPES) },
       async (req, reply) => {
         const parsed = IsfCompetitionListQuery.safeParse(req.query);
         if (!parsed.success) {
@@ -608,7 +612,7 @@ export const isfIntegrationPlugin: FeaturePlugin = {
 
     app.get<{ Params: { id: string } }>(
       '/isf/v1/competitions/:id/snapshot',
-      { preHandler: requireServiceClient(READ_SCOPES) },
+      { config: { rateLimit: false }, preHandler: requireServiceClient(READ_SCOPES) },
       async (req, reply) => {
         const competition = await prisma.competition.findUnique({
           where: { id: req.params.id },
@@ -742,7 +746,7 @@ export const isfIntegrationPlugin: FeaturePlugin = {
 
     app.get(
       '/isf/v1/records',
-      { preHandler: requireServiceClient(READ_SCOPES) },
+      { config: { rateLimit: false }, preHandler: requireServiceClient(READ_SCOPES) },
       async (req, reply) => {
         const parsed = IsfCompetitionListQuery.safeParse(req.query);
         if (!parsed.success) {
@@ -808,7 +812,7 @@ export const isfIntegrationPlugin: FeaturePlugin = {
 
     app.get(
       '/isf/v1/standards',
-      { preHandler: requireServiceClient(READ_SCOPES) },
+      { config: { rateLimit: false }, preHandler: requireServiceClient(READ_SCOPES) },
       async (req, reply) => {
         const parsed = StandardsQuery.safeParse(req.query);
         if (!parsed.success) {
