@@ -279,8 +279,19 @@ export async function readCabinetOverview(user: CabinetOverviewActor) {
       },
     }),
     prisma.federation.findMany({
+      where: {
+        affiliationStatus: 'national_member',
+        affiliationBody: { in: ['isf', 'eusf'] },
+      },
       orderBy: { nameRu: 'asc' },
-      select: { id: true, code: true, nameRu: true, nameEn: true, countryCode: true },
+      select: {
+        id: true,
+        code: true,
+        nameRu: true,
+        nameEn: true,
+        countryCode: true,
+        affiliationBody: true,
+      },
     }),
   ]);
 

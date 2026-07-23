@@ -536,8 +536,12 @@ export const passportManagementPlugin: FeaturePlugin = {
       const parsed = passportRequestInput.safeParse(req.body);
       if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
       const [federation, attachment] = await Promise.all([
-        prisma.federation.findUnique({
-          where: { id: parsed.data.federationId },
+        prisma.federation.findFirst({
+          where: {
+            id: parsed.data.federationId,
+            affiliationStatus: 'national_member',
+            affiliationBody: { in: ['isf', 'eusf'] },
+          },
           select: { id: true },
         }),
         parsed.data.supportingAttachmentId
@@ -553,7 +557,11 @@ export const passportManagementPlugin: FeaturePlugin = {
       ]);
       if (!federation)
         return reply.code(404).send({
-          error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          error: {
+            code: 'not_found',
+            message: 'Affiliated national federation not found',
+            requestId: req.requestId,
+          },
         });
       if (parsed.data.supportingAttachmentId && !attachment)
         return reply.code(403).send({

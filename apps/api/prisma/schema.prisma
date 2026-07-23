@@ -320,6 +320,21 @@ model RefreshToken {
 
 // ─── Federation & billing ─────────────────────────────────────────────────
 
+/// Membership status assigned only after ISF/EUSF confirms a national federation.
+/// Passport applications may be addressed only to `national_member` entries.
+enum FederationAffiliationStatus {
+  unverified
+  national_member
+  suspended
+  withdrawn
+}
+
+/// International body that confirmed the federation's membership.
+enum FederationAffiliationBody {
+  isf
+  eusf
+}
+
 model Federation {
   id                                String    @id @default(uuid()) @db.Uuid
   code                              String    @unique
@@ -340,6 +355,9 @@ model Federation {
   securityKey                       String    @db.Uuid
   isPublicResultsClosed             Boolean   @default(false)
   notificationsDisabled             Boolean   @default(false)
+  affiliationStatus                 FederationAffiliationStatus @default(unverified)
+  affiliationBody                   FederationAffiliationBody?
+  affiliationConfirmedAt            DateTime? @db.Timestamptz(6)
   createdAt                         DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt                         DateTime  @updatedAt @db.Timestamptz(6)
 

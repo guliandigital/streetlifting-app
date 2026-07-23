@@ -114,6 +114,14 @@ describe('cabinet overview', () => {
     expect(
       JSON.stringify(prismaMock.competitionTeamMember.findMany.mock.calls[0]?.[0].where),
     ).toContain(user.id);
+    expect(prismaMock.federation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          affiliationStatus: 'national_member',
+          affiliationBody: { in: ['isf', 'eusf'] },
+        },
+      }),
+    );
     await app.close();
   });
 });

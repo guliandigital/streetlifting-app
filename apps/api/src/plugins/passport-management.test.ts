@@ -21,7 +21,7 @@ const prismaMock = vi.hoisted(() => ({
   officialCredential: { create: vi.fn() },
   sportRankAward: { create: vi.fn() },
   consent: { findFirst: vi.fn(), update: vi.fn() },
-  federation: { findUnique: vi.fn() },
+  federation: { findUnique: vi.fn(), findFirst: vi.fn() },
 }));
 
 const auditMock = vi.hoisted(() => ({
@@ -101,7 +101,7 @@ describe('passport team workflow', () => {
   });
 
   it('rejects a duplicate pending passport request before creating another review item', async () => {
-    prismaMock.federation.findUnique.mockResolvedValue({ id: federationId });
+    prismaMock.federation.findFirst.mockResolvedValue({ id: federationId });
     prismaMock.passportReviewRequest.findFirst.mockResolvedValue({
       id: '00000000-0000-0000-0000-000000000008',
     });
@@ -119,6 +119,25 @@ describe('passport team workflow', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json().error.code).toBe('request_already_pending');
     expect(prismaMock.passportReviewRequest.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('rejects a request addressed to a federation without confirmed ISF/EUSF membership', async () => {
+    prismaMock.federation.findFirst.mockResolvedValue(null);
+    const app = await buildApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/passport/requests',
+      payload: {
+        federationId,
+        kind: 'official_profile',
+        payload: { message: 'Прошу рассмотреть заявку' },
+      },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json().error.message).toBe('Affiliated national federation not found');
+    expect(prismaMock.passportReviewRequest.findFirst).not.toHaveBeenCalled();
     await app.close();
   });
 

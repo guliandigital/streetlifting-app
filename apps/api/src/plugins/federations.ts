@@ -58,6 +58,33 @@ const SupportTicketUpdateInput = z
   })
   .strict();
 
+const FederationAffiliationUpdateInput = z
+  .object({
+    affiliationStatus: z.enum(['unverified', 'national_member', 'suspended', 'withdrawn']),
+    affiliationBody: z.enum(['isf', 'eusf']).nullable().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.affiliationStatus === 'national_member' && !value.affiliationBody) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['affiliationBody'],
+        message: 'ISF or EUSF affiliation body is required for a national member',
+      });
+    }
+    if (
+      value.affiliationStatus !== 'national_member' &&
+      value.affiliationBody !== undefined &&
+      value.affiliationBody !== null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['affiliationBody'],
+        message: 'Affiliation body must be null when federation is not a national member',
+      });
+    }
+  });
+
 /**
  * Returns the set of federation IDs the caller is allowed to read/edit.
  *  - platform_admin → all
@@ -1464,6 +1491,67 @@ export const federationsPlugin: FeaturePlugin = {
         throw err;
       }
     });
+
+    // ─── ISF/EUSF affiliation ───────────────────────────────────────────
+    // Kept separate from the regular federation edit route: a national
+    // membership can only be confirmed or withdrawn by a platform admin.
+    app.patch<{ Params: { id: string } }>(
+      '/federations/:id/affiliation',
+      { preHandler: requireRole('platform_admin') },
+      async (req, reply) => {
+        const parsed = FederationAffiliationUpdateInput.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const before = await prisma.federation.findUnique({ where: { id: req.params.id } });
+        if (!before) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Federation not found', requestId: req.requestId },
+          });
+        }
+
+        const affiliationBody =
+          parsed.data.affiliationStatus === 'national_member' ? parsed.data.affiliationBody! : null;
+        const federation = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'federation.affiliation.updated',
+            scopeFederationId: req.params.id,
+            scopeCompetitionId: null,
+            targetType: 'federation',
+            targetId: req.params.id,
+            before: {
+              affiliationStatus: before.affiliationStatus,
+              affiliationBody: before.affiliationBody,
+              affiliationConfirmedAt: before.affiliationConfirmedAt,
+            },
+            after: {
+              affiliationStatus: parsed.data.affiliationStatus,
+              affiliationBody,
+            },
+          },
+          (tx) =>
+            tx.federation.update({
+              where: { id: req.params.id },
+              data: {
+                affiliationStatus: parsed.data.affiliationStatus,
+                affiliationBody,
+                affiliationConfirmedAt:
+                  parsed.data.affiliationStatus === 'national_member' ? new Date() : null,
+              },
+            }),
+        );
+        return { federation };
+      },
+    );
 
     // ─── Update ─────────────────────────────────────────────────────────
     app.patch<{ Params: { id: string } }>(
