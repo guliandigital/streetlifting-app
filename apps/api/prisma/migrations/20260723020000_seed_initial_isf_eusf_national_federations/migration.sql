@@ -8,7 +8,9 @@ INSERT INTO "federation" (
   "securityKey",
   "affiliationStatus",
   "affiliationBody",
-  "affiliationConfirmedAt"
+  "affiliationConfirmedAt",
+  "createdAt",
+  "updatedAt"
 )
 VALUES
   (
@@ -21,6 +23,8 @@ VALUES
     gen_random_uuid(),
     'national_member',
     'isf',
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
   ),
   (
@@ -33,6 +37,8 @@ VALUES
     gen_random_uuid(),
     'national_member',
     'isf',
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
   ),
   (
@@ -45,6 +51,8 @@ VALUES
     gen_random_uuid(),
     'national_member',
     'eusf',
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
   ),
   (
@@ -57,6 +65,8 @@ VALUES
     gen_random_uuid(),
     'national_member',
     'eusf',
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
   )
 ON CONFLICT ("code") DO UPDATE
