@@ -124,9 +124,9 @@ The script:
 2. runs `pnpm install --frozen-lockfile` and `pnpm release:check`;
 3. uploads `deploy/remote-deploy.sh`;
 4. makes the server pull the selected branch;
-5. runs Prisma generate/migrations, API build, web build;
+5. runs Prisma generate/migrations, API, web and ISF ID builds;
 6. replaces `/var/www/streetlifting.app`;
-7. restarts `streetlifting-api`;
+7. restarts `streetlifting-api` and `isf-id` when installed;
 8. smokes `https://streetlifting.app/api/health`.
 
 ## GitHub Actions deploy
@@ -157,7 +157,10 @@ sudo nano /etc/isf-id.env
 ```
 
 Set distinct strong values for `DATABASE_URL`, `ISF_ID_ISSUER_SERVICE_TOKEN`,
-`ISF_ID_CHALLENGE_SECRET`, and `ISF_ID_SESSION_SECRET`; configure either a real internal
+`ISF_ID_CHALLENGE_SECRET`, and `ISF_ID_SESSION_SECRET`. Set
+`ISF_ID_RELYING_PARTIES=streetlifting-api=https://streetlifting.app/isf-id` to enable the
+public browser launch endpoint; each further relying party must use an explicit audience and
+exact HTTPS return URL. Configure either a real internal
 mailer endpoint or SMTP before exposing email login. VK Workspace uses
 `ISF_ID_SMTP_HOST=smtp.mail.ru`, port `465`, secure TLS, and the mailbox app password.
 Keep `ISF_ID_ISSUER=https://id.streetlifting.app` and the key path

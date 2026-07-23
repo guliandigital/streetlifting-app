@@ -39,6 +39,31 @@ describe('ISF ID internal launch endpoint', () => {
     }
   });
 
+  it('only renders browser login for an explicit relying-party return URL', async () => {
+    const previous = process.env.ISF_ID_RELYING_PARTIES;
+    process.env.ISF_ID_RELYING_PARTIES = 'streetlifting-api=https://streetlifting.example/isf-id';
+    const { app } = await testApp();
+    try {
+      const accepted = await app.inject({
+        method: 'GET',
+        url: '/login?audience=streetlifting-api&return_to=https%3A%2F%2Fstreetlifting.example%2Fisf-id',
+      });
+      expect(accepted.statusCode).toBe(200);
+      expect(accepted.headers['cache-control']).toBe('no-store');
+      expect(accepted.body).toContain('ISF ID');
+
+      const rejected = await app.inject({
+        method: 'GET',
+        url: '/login?audience=streetlifting-api&return_to=https%3A%2F%2Fevil.example%2Fisf-id',
+      });
+      expect(rejected.statusCode).toBe(400);
+    } finally {
+      if (previous === undefined) delete process.env.ISF_ID_RELYING_PARTIES;
+      else process.env.ISF_ID_RELYING_PARTIES = previous;
+      await app.close();
+    }
+  });
+
   it('issues a signed assertion for a trusted service request', async () => {
     const { app, issuer } = await testApp();
     try {

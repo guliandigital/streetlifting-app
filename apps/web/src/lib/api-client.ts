@@ -297,6 +297,15 @@ export const api = {
 
   me: (): Promise<MeResponse> => request<MeResponse>('/auth/me'),
 
+  isf: {
+    session: (token: string): Promise<LoginResponse> =>
+      request<LoginResponse>('/auth/isf/session', {
+        method: 'POST',
+        body: { token },
+        unauthenticated: true,
+      }),
+  },
+
   changePassword: (
     currentPassword: string,
     newPassword: string,

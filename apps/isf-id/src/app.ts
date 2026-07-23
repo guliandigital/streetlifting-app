@@ -3,6 +3,8 @@ import Fastify from 'fastify';
 import { z } from 'zod';
 import type { IsfIdIssuer } from './issuer.js';
 import { registerIsfIdAuthentication } from './auth.js';
+import { registerBrowserLogin } from './browser-login.js';
+import { relyingPartiesFromEnv } from './relying-parties.js';
 
 const LaunchBody = z
   .object({
@@ -26,6 +28,7 @@ export function buildIsfIdApp(issuer: IsfIdIssuer, serviceToken: string) {
   });
 
   app.get('/health', async () => ({ status: 'ok', service: 'isf-id' }));
+  registerBrowserLogin(app, relyingPartiesFromEnv());
   registerIsfIdAuthentication(app, issuer);
   app.get('/.well-known/jwks.json', async (_req, reply) => {
     reply.header('cache-control', 'public, max-age=300, must-revalidate');

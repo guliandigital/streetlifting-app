@@ -6,11 +6,16 @@ WEB_ROOT="${STREETLIFTING_WEB_ROOT:-/var/www/streetlifting.app}"
 REPO_URL="${STREETLIFTING_REPO_URL:-https://github.com/guliandigital/streetlifting-app.git}"
 BRANCH="${STREETLIFTING_BRANCH:-main}"
 API_SERVICE="${STREETLIFTING_API_SERVICE:-streetlifting-api}"
+ISF_ID_SERVICE="${STREETLIFTING_ISF_ID_SERVICE:-isf-id}"
 API_PORT="${STREETLIFTING_API_PORT:-3000}"
+ISF_ID_PORT="${STREETLIFTING_ISF_ID_PORT:-3100}"
 SKIP_MIGRATIONS="${STREETLIFTING_SKIP_MIGRATIONS:-0}"
 
 if [[ "${API_SERVICE}" != *.service ]]; then
   API_SERVICE="${API_SERVICE}.service"
+fi
+if [[ "${ISF_ID_SERVICE}" != *.service ]]; then
+  ISF_ID_SERVICE="${ISF_ID_SERVICE}.service"
 fi
 
 if command -v sudo >/dev/null 2>&1; then
@@ -54,6 +59,7 @@ fi
 pnpm build:packages
 pnpm --filter=@streetlifting/api build
 pnpm --filter=@streetlifting/web build
+pnpm --filter=@streetlifting/isf-id build
 
 if [[ ! -d "apps/web/dist" ]]; then
   echo "apps/web/dist was not produced" >&2
@@ -74,6 +80,13 @@ else
   echo "WARNING: ${API_SERVICE} was not found in systemd; API process was not restarted" >&2
 fi
 
+if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files "${ISF_ID_SERVICE}" >/dev/null 2>&1; then
+  ${SUDO} systemctl restart "${ISF_ID_SERVICE}"
+  ${SUDO} systemctl --no-pager --full status "${ISF_ID_SERVICE}" || true
+else
+  echo "WARNING: ${ISF_ID_SERVICE} was not found in systemd; ISF ID process was not restarted" >&2
+fi
+
 for attempt in {1..30}; do
   if curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null; then
     break
@@ -84,4 +97,17 @@ for attempt in {1..30}; do
   fi
   sleep 1
 done
+
+if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files "${ISF_ID_SERVICE}" >/dev/null 2>&1; then
+  for attempt in {1..30}; do
+    if curl -fsS "http://127.0.0.1:${ISF_ID_PORT}/health" >/dev/null; then
+      break
+    fi
+    if [[ "${attempt}" == "30" ]]; then
+      echo "ISF ID health check failed after ${attempt} attempts" >&2
+      exit 1
+    fi
+    sleep 1
+  done
+fi
 echo "OK: deployed ${BRANCH} to ${APP_DIR}, web root ${WEB_ROOT}, API port ${API_PORT}"

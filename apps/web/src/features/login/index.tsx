@@ -60,6 +60,11 @@ export default function LoginFeature() {
           <CardDescription>{t('login.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent>
+          <Button asChild variant="outline" className="w-full mb-4">
+            <a href="https://id.streetlifting.app/login?audience=streetlifting-api&amp;return_to=https%3A%2F%2Fstreetlifting.app%2Fisf-id">
+              Continue with ISF ID
+            </a>
+          </Button>
           <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">{t('login.email')}</Label>

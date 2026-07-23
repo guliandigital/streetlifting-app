@@ -7,6 +7,9 @@ import { LazyModule } from './lib/lazy-module.js';
 const LoginFeature = () => (
   <LazyModule module="login" loader={() => import('./features/login/index.js')} />
 );
+const IsfIdCallbackFeature = () => (
+  <LazyModule module="isf-id" loader={() => import('./features/isf-id/callback.js')} />
+);
 const ProfileFeature = () => (
   <LazyModule module="profile" loader={() => import('./features/profile/index.js')} />
 );
@@ -222,6 +225,12 @@ const loginRoute = createRoute({
     if (user) throw redirect({ to: defaultAuthenticatedRoute(user) });
   },
   component: LoginFeature,
+});
+
+const isfIdCallbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/isf-id',
+  component: IsfIdCallbackFeature,
 });
 
 const meRoute = createRoute({
@@ -504,6 +513,7 @@ const healthRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  isfIdCallbackRoute,
   meRoute,
   federationsListRoute,
   federationNewRoute,
