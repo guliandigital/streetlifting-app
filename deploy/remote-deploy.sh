@@ -54,6 +54,12 @@ pnpm --filter=@streetlifting/api db:generate
 
 if [[ "${SKIP_MIGRATIONS}" != "1" ]]; then
   pnpm release:migrate
+  if [[ -r /etc/isf-id.env ]]; then
+    ${SUDO} bash -lc "cd '${APP_DIR}/apps/isf-id' && set -a && . /etc/isf-id.env && set +a && pnpm db:deploy"
+  else
+    echo "Missing /etc/isf-id.env required for ISF ID migrations" >&2
+    exit 1
+  fi
 fi
 
 pnpm build:packages

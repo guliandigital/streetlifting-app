@@ -16,7 +16,7 @@
     "build:packages": "pnpm --filter=@streetlifting/domain build",
     "build": "turbo run build",
     "release:check": "pnpm build:packages && pnpm --filter=@streetlifting/api db:generate && pnpm --filter=@streetlifting/api db:validate && pnpm --filter=@streetlifting/isf-id db:generate && pnpm --filter=@streetlifting/isf-id db:validate && pnpm lint && pnpm typecheck && pnpm test && pnpm --filter=@streetlifting/api build && pnpm --filter=@streetlifting/web build && pnpm --filter=@streetlifting/isf-id build",
-    "release:migrate": "pnpm --filter=@streetlifting/api db:deploy && pnpm --filter=@streetlifting/isf-id db:deploy",
+    "release:migrate": "pnpm --filter=@streetlifting/api db:deploy",
     "release:seed": "pnpm --filter=@streetlifting/api seed:launch",
     "release:smoke": "pnpm --filter=@streetlifting/api smoke:pilot",
     "release:smoke:isf": "pnpm --filter=@streetlifting/api smoke:isf",
