@@ -22,9 +22,9 @@ function assertionFromHash(): string | null {
 export default function IsfIdCallbackFeature() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  const [assertion] = useState(assertionFromHash);
 
   useEffect(() => {
-    const assertion = assertionFromHash();
     // The assertion is a one-time credential. Remove it from browser history
     // before making any API request, so it cannot leak through copied URLs.
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
@@ -63,7 +63,7 @@ export default function IsfIdCallbackFeature() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [assertion, navigate]);
 
   return (
     <div className="max-w-sm mx-auto mt-16 px-6">
