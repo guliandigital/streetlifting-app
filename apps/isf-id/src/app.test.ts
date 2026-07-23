@@ -92,4 +92,19 @@ describe('ISF ID internal launch endpoint', () => {
       await app.close();
     }
   });
+
+  it('clears the host-only browser session cookie on central logout', async () => {
+    const { app } = await testApp();
+    try {
+      const response = await app.inject({ method: 'POST', url: '/auth/session/logout' });
+      expect(response.statusCode).toBe(204);
+      expect(response.headers['set-cookie']).toContain('__Host-isf_id_session=;');
+      expect(response.headers['set-cookie']).toContain('Max-Age=0');
+      expect(response.headers['set-cookie']).toContain('HttpOnly');
+      expect(response.headers['set-cookie']).toContain('Secure');
+      expect(response.headers['set-cookie']).toContain('SameSite=Lax');
+    } finally {
+      await app.close();
+    }
+  });
 });
