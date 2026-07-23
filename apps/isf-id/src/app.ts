@@ -21,7 +21,7 @@ export function buildIsfIdApp(issuer: IsfIdIssuer, serviceToken: string) {
 
   const app = Fastify({
     logger: {
-      redact: ['req.headers.authorization', 'req.body.email'],
+      redact: ['req.headers.authorization', 'req.headers.cookie', 'req.body.email'],
     },
     bodyLimit: 16 * 1024,
     trustProxy: true,

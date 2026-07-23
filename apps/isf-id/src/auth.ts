@@ -10,6 +10,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 const START_RATE_LIMIT = { max: 3, windowMs: 60_000 };
 const VERIFY_RATE_LIMIT = { max: 5, windowMs: 60_000 };
+const SESSION_COOKIE = '__Host-isf_id_session';
 
 const StartBody = z
   .object({
@@ -48,9 +49,18 @@ function sessionHash(token: string): string {
   return hmac(requiredSecret('ISF_ID_SESSION_SECRET'), token);
 }
 
-function tokenFromRequest(req: FastifyRequest): string | null {
+export function tokenFromRequest(req: Pick<FastifyRequest, 'headers'>): string | null {
   const value = req.headers.authorization;
-  return value?.startsWith('Bearer ') ? value.slice('Bearer '.length).trim() || null : null;
+  if (value?.startsWith('Bearer ')) return value.slice('Bearer '.length).trim() || null;
+  const cookie = req.headers.cookie;
+  if (!cookie) return null;
+  for (const pair of cookie.split(';')) {
+    const [name, ...parts] = pair.trim().split('=');
+    if (name !== SESSION_COOKIE) continue;
+    const token = parts.join('=').trim();
+    return /^[A-Za-z0-9_-]{43}$/.test(token) ? token : null;
+  }
+  return null;
 }
 
 export function createRateGuard() {
@@ -68,7 +78,7 @@ export function createRateGuard() {
   };
 }
 
-async function currentAccount(req: FastifyRequest) {
+async function currentSession(req: FastifyRequest) {
   const token = tokenFromRequest(req);
   if (!token) return null;
   const session = await prisma.identitySession.findUnique({
@@ -82,7 +92,25 @@ async function currentAccount(req: FastifyRequest) {
     session.account.status !== 'active'
   )
     return null;
-  return session.account;
+  return session;
+}
+
+async function currentAccount(req: FastifyRequest) {
+  return (await currentSession(req))?.account ?? null;
+}
+
+function setSessionCookie(reply: FastifyReply, token: string): void {
+  reply.header(
+    'set-cookie',
+    `${SESSION_COOKIE}=${token}; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}; Path=/; HttpOnly; Secure; SameSite=Lax`,
+  );
+}
+
+function clearSessionCookie(reply: FastifyReply): void {
+  reply.header(
+    'set-cookie',
+    `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`,
+  );
 }
 
 async function requireAccount(req: FastifyRequest, reply: FastifyReply) {
@@ -237,6 +265,10 @@ export function registerIsfIdAuthentication(app: FastifyInstance, issuer: IsfIdI
           where: { id: existing.id },
           data: { emailVerifiedAt: now },
         });
+      await tx.identitySession.updateMany({
+        where: { accountId: identity.id, revokedAt: null },
+        data: { revokedAt: now },
+      });
       await tx.identitySession.create({
         data: {
           accountId: identity.id,
@@ -246,11 +278,22 @@ export function registerIsfIdAuthentication(app: FastifyInstance, issuer: IsfIdI
       });
       return identity;
     });
+    setSessionCookie(reply, opaque);
     return reply.send({
-      accessToken: opaque,
       expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
       account: { id: account.id, email: account.email, displayName: account.displayName },
     });
+  });
+
+  app.post('/auth/session/logout', async (req, reply) => {
+    const session = await currentSession(req);
+    if (session)
+      await prisma.identitySession.update({
+        where: { id: session.id },
+        data: { revokedAt: new Date() },
+      });
+    clearSessionCookie(reply);
+    return reply.code(204).send();
   });
 
   app.get('/auth/me', async (req, reply) => {

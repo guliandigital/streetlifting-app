@@ -51,6 +51,8 @@ describe('ISF ID internal launch endpoint', () => {
       expect(accepted.statusCode).toBe(200);
       expect(accepted.headers['cache-control']).toBe('no-store');
       expect(accepted.body).toContain('ISF ID');
+      expect(accepted.body).toContain("credentials:'same-origin'");
+      expect(accepted.body).not.toContain('sessionStorage');
 
       const rejected = await app.inject({
         method: 'GET',
