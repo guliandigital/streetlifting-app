@@ -51,6 +51,7 @@ git pull --ff-only origin "${BRANCH}"
 corepack enable >/dev/null 2>&1 || true
 pnpm install --frozen-lockfile
 pnpm --filter=@streetlifting/api db:generate
+pnpm --filter=@streetlifting/isf-id db:generate
 
 if [[ "${SKIP_MIGRATIONS}" != "1" ]]; then
   pnpm release:migrate
