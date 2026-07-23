@@ -13,7 +13,7 @@ async function testApp() {
     issuer: 'https://id.isf.example',
     keyId: 'isf-id-test-1',
     privateKeyPem,
-    allowedAudiences: ['streetlifting-api'],
+    allowedAudiences: ['streetlifting-api', 'streetlifting-pro'],
     assertionTtlSeconds: 120,
   });
   return { app: buildIsfIdApp(issuer, serviceToken), issuer };
@@ -41,7 +41,10 @@ describe('ISF ID internal launch endpoint', () => {
 
   it('only renders browser login for an explicit relying-party return URL', async () => {
     const previous = process.env.ISF_ID_RELYING_PARTIES;
-    process.env.ISF_ID_RELYING_PARTIES = 'streetlifting-api=https://streetlifting.example/isf-id';
+    process.env.ISF_ID_RELYING_PARTIES = [
+      'streetlifting-api=https://streetlifting.example/isf-id',
+      'streetlifting-pro=https://streetlifting.pro/isf-id/callback/',
+    ].join(',');
     const { app } = await testApp();
     try {
       const accepted = await app.inject({
@@ -53,6 +56,12 @@ describe('ISF ID internal launch endpoint', () => {
       expect(accepted.body).toContain('ISF ID');
       expect(accepted.body).toContain("credentials:'same-origin'");
       expect(accepted.body).not.toContain('sessionStorage');
+
+      const federationSite = await app.inject({
+        method: 'GET',
+        url: '/login?audience=streetlifting-pro&return_to=https%3A%2F%2Fstreetlifting.pro%2Fisf-id%2Fcallback%2F',
+      });
+      expect(federationSite.statusCode).toBe(200);
 
       const rejected = await app.inject({
         method: 'GET',
