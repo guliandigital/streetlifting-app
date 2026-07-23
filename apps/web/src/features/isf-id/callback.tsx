@@ -40,13 +40,13 @@ export default function IsfIdCallbackFeature() {
         if (cancelled) return;
         clearPendingIsfAssertion();
         useAuthStore.getState().setSession(session.user, session.accessToken, session.refreshToken);
-        try {
-          const me = await api.me();
-          if (!cancelled) useAuthStore.getState().setUser(me.user);
-        } catch {
-          // The Passport can safely load the lightweight user if enrichment is delayed.
-        }
-        if (!cancelled) await navigate({ to: '/me', replace: true });
+        void api
+          .me()
+          .then((me) => useAuthStore.getState().setUser(me.user))
+          .catch(() => {
+            // The Passport can safely load the lightweight user if enrichment is delayed.
+          });
+        await navigate({ to: '/me', replace: true });
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiClientError && err.code === 'isf_identity_link_required') {
