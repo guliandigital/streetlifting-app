@@ -15,12 +15,46 @@ import {
   verifyIsfIdAssertion,
   type VerifiedIsfIdAssertion,
 } from '../lib/auth/isf-id.js';
+import { readCabinetOverview } from './cabinet.js';
 
 const IsfSessionBody = z
   .object({
     token: z.string().min(1).max(16_384),
   })
   .strict();
+const federationPassportActionBody = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('profile.update'),
+    displayName: z.string().trim().min(1).max(120).optional(),
+    phone: z.string().trim().min(3).max(40).nullable().optional(),
+    telegramHandle: z.string().trim().min(2).max(64).nullable().optional(),
+  }),
+  z.object({
+    action: z.literal('privacy.update'),
+    privacyMode: z.enum(['public_results', 'hidden']),
+  }),
+  z.object({ action: z.literal('consent.revoke'), consentId: z.string().uuid() }),
+  z.object({
+    action: z.literal('request.submit'),
+    federationId: z.string().uuid(),
+    kind: z.enum(['official_profile', 'official_credential', 'sport_rank']),
+    payload: z.record(z.unknown()),
+    supportingAttachmentId: z.string().uuid().nullable().optional(),
+  }),
+  z.object({ action: z.literal('request.cancel'), requestId: z.string().uuid() }),
+  z.object({
+    action: z.literal('attachment.upload'),
+    filename: z.string().trim().min(1).max(180),
+    mimeType: z.string().trim().min(1).max(120),
+    contentBase64: z
+      .string()
+      .min(1)
+      .max(7 * 1024 * 1024),
+    kind: z.enum(['certificate_pdf', 'misc']).default('misc'),
+  }),
+]);
+
+type FederationPassportAction = z.infer<typeof federationPassportActionBody>;
 
 class IsfIdentityLinkRequiredError extends Error {
   constructor() {
@@ -99,6 +133,87 @@ function sendAssertionError(reply: FastifyReply, requestId: string, err: unknown
   });
 }
 
+function internalPassportAction(action: FederationPassportAction): {
+  method: 'PATCH' | 'POST';
+  url: string;
+  payload: Record<string, unknown>;
+} {
+  switch (action.action) {
+    case 'profile.update':
+      return {
+        method: 'PATCH',
+        url: '/passport/profile',
+        payload: {
+          ...(action.displayName !== undefined ? { displayName: action.displayName } : {}),
+          ...(action.phone !== undefined ? { phone: action.phone } : {}),
+          ...(action.telegramHandle !== undefined ? { telegramHandle: action.telegramHandle } : {}),
+        },
+      };
+    case 'privacy.update':
+      return {
+        method: 'PATCH',
+        url: '/passport/privacy',
+        payload: { privacyMode: action.privacyMode },
+      };
+    case 'consent.revoke':
+      return { method: 'POST', url: `/passport/consents/${action.consentId}/revoke`, payload: {} };
+    case 'request.submit':
+      return {
+        method: 'POST',
+        url: '/passport/requests',
+        payload: {
+          federationId: action.federationId,
+          kind: action.kind,
+          payload: action.payload,
+          ...(action.supportingAttachmentId !== undefined
+            ? { supportingAttachmentId: action.supportingAttachmentId }
+            : {}),
+        },
+      };
+    case 'request.cancel':
+      return { method: 'POST', url: `/passport/requests/${action.requestId}/cancel`, payload: {} };
+    case 'attachment.upload':
+      return {
+        method: 'POST',
+        url: '/passport/attachments',
+        payload: {
+          filename: action.filename,
+          mimeType: action.mimeType,
+          contentBase64: action.contentBase64,
+          kind: action.kind,
+        },
+      };
+  }
+  throw new Error('Unsupported federation passport action');
+}
+
+async function resolveIsfIdentity(assertion: VerifiedIsfIdAssertion, req: FastifyRequest) {
+  return prisma.$transaction(async (tx) => {
+    const linked = await tx.user.findUnique({ where: { isfSubjectId: assertion.subjectId } });
+    const emailOwner = linked
+      ? null
+      : await tx.user.findFirst({
+          where: { email: { equals: assertion.email, mode: 'insensitive' } },
+        });
+
+    if (!linked && emailOwner) throw new IsfIdentityLinkRequiredError();
+
+    const localUser =
+      linked ??
+      (await tx.user.create({
+        data: {
+          email: assertion.email,
+          displayName: assertion.displayName,
+          isEmailVerified: true,
+          isfSubjectId: assertion.subjectId,
+        },
+      }));
+
+    await consumeAssertion(assertion, req, localUser.id, tx);
+    return localUser;
+  });
+}
+
 export const isfIdAuthPlugin: FeaturePlugin = {
   name: 'isf-id-auth',
   register: async (app) => {
@@ -139,32 +254,7 @@ export const isfIdAuthPlugin: FeaturePlugin = {
         }
 
         try {
-          const user = await prisma.$transaction(async (tx) => {
-            const linked = await tx.user.findUnique({
-              where: { isfSubjectId: assertion.subjectId },
-            });
-            const emailOwner = linked
-              ? null
-              : await tx.user.findFirst({
-                  where: { email: { equals: assertion.email, mode: 'insensitive' } },
-                });
-
-            if (!linked && emailOwner) throw new IsfIdentityLinkRequiredError();
-
-            const localUser =
-              linked ??
-              (await tx.user.create({
-                data: {
-                  email: assertion.email,
-                  displayName: assertion.displayName,
-                  isEmailVerified: true,
-                  isfSubjectId: assertion.subjectId,
-                },
-              }));
-
-            await consumeAssertion(assertion, req, localUser.id, tx);
-            return localUser;
-          });
+          const user = await resolveIsfIdentity(assertion, req);
 
           const tokens = await issueLocalSession(user.id, req);
           return reply.send({
@@ -200,6 +290,217 @@ export const isfIdAuthPlugin: FeaturePlugin = {
               error: {
                 code: 'isf_identity_conflict',
                 message: 'ISF ID identity is already linked',
+                requestId: req.requestId,
+              },
+            });
+          }
+          throw err;
+        }
+      },
+    );
+
+    app.get(
+      '/federation/passport/overview',
+      { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+      async (req, reply) => {
+        const authorization = req.headers.authorization;
+        const token = authorization?.startsWith('Bearer ')
+          ? authorization.slice('Bearer '.length).trim()
+          : '';
+        if (!token) {
+          return reply.code(401).send({
+            error: {
+              code: 'unauthorized',
+              message: 'Authentication required',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        let assertion: VerifiedIsfIdAssertion;
+        try {
+          assertion = await verifyIsfIdAssertion(token);
+        } catch (err) {
+          return sendAssertionError(reply, req.requestId, err);
+        }
+
+        try {
+          const user = await resolveIsfIdentity(assertion, req);
+          return reply.send({
+            overview: await readCabinetOverview(user),
+            syncedAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          if (err instanceof IsfIdentityLinkRequiredError) {
+            return reply.code(409).send({
+              error: {
+                code: 'isf_identity_link_required',
+                message: err.message,
+                requestId: req.requestId,
+              },
+            });
+          }
+          if (err instanceof IsfAssertionReusedError) {
+            return reply.code(409).send({
+              error: {
+                code: 'isf_assertion_reused',
+                message: err.message,
+                requestId: req.requestId,
+              },
+            });
+          }
+          throw err;
+        }
+      },
+    );
+
+    app.post(
+      '/federation/passport/action',
+      { config: { rateLimit: { max: 10, timeWindow: '1 minute' } }, bodyLimit: 7 * 1024 * 1024 },
+      async (req, reply) => {
+        const parsed = federationPassportActionBody.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        const authorization = req.headers.authorization;
+        const token = authorization?.startsWith('Bearer ')
+          ? authorization.slice('Bearer '.length).trim()
+          : '';
+        if (!token) {
+          return reply.code(401).send({
+            error: {
+              code: 'unauthorized',
+              message: 'Authentication required',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        let assertion: VerifiedIsfIdAssertion;
+        try {
+          assertion = await verifyIsfIdAssertion(token);
+        } catch (err) {
+          return sendAssertionError(reply, req.requestId, err);
+        }
+
+        try {
+          const user = await resolveIsfIdentity(assertion, req);
+          const action = internalPassportAction(parsed.data);
+          const accessToken = await signAccessToken(user.id);
+          const delegated = await app.inject({
+            method: action.method,
+            url: action.url,
+            headers: {
+              'authorization': `Bearer ${accessToken}`,
+              'content-type': 'application/json',
+              'user-agent': 'ISF Passport relying party',
+            },
+            payload: action.payload,
+          });
+          const body = delegated.json();
+          if (delegated.statusCode >= 400) return reply.code(delegated.statusCode).send(body);
+          return reply.code(delegated.statusCode).send({
+            result: body,
+            overview: await readCabinetOverview(user),
+            syncedAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          if (err instanceof IsfIdentityLinkRequiredError) {
+            return reply.code(409).send({
+              error: {
+                code: 'isf_identity_link_required',
+                message: err.message,
+                requestId: req.requestId,
+              },
+            });
+          }
+          if (err instanceof IsfAssertionReusedError) {
+            return reply.code(409).send({
+              error: {
+                code: 'isf_assertion_reused',
+                message: err.message,
+                requestId: req.requestId,
+              },
+            });
+          }
+          throw err;
+        }
+      },
+    );
+
+    app.get<{ Params: { id: string } }>(
+      '/federation/passport/attachments/:id/download',
+      { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+      async (req, reply) => {
+        if (!z.string().uuid().safeParse(req.params.id).success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: 'Invalid attachment id',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const authorization = req.headers.authorization;
+        const token = authorization?.startsWith('Bearer ')
+          ? authorization.slice('Bearer '.length).trim()
+          : '';
+        if (!token) {
+          return reply.code(401).send({
+            error: {
+              code: 'unauthorized',
+              message: 'Authentication required',
+              requestId: req.requestId,
+            },
+          });
+        }
+        let assertion: VerifiedIsfIdAssertion;
+        try {
+          assertion = await verifyIsfIdAssertion(token);
+        } catch (err) {
+          return sendAssertionError(reply, req.requestId, err);
+        }
+
+        try {
+          const user = await resolveIsfIdentity(assertion, req);
+          const accessToken = await signAccessToken(user.id);
+          const delegated = await app.inject({
+            method: 'GET',
+            url: `/passport/attachments/${req.params.id}/download`,
+            headers: {
+              'authorization': `Bearer ${accessToken}`,
+              'user-agent': 'ISF Passport relying party',
+            },
+          });
+          if (delegated.statusCode >= 400)
+            return reply.code(delegated.statusCode).send(delegated.json());
+          const contentType = delegated.headers['content-type'];
+          const disposition = delegated.headers['content-disposition'];
+          if (contentType) reply.header('Content-Type', contentType);
+          if (disposition) reply.header('Content-Disposition', disposition);
+          reply.header('Cache-Control', 'private, no-store');
+          return reply.code(delegated.statusCode).send(delegated.rawPayload);
+        } catch (err) {
+          if (err instanceof IsfIdentityLinkRequiredError) {
+            return reply.code(409).send({
+              error: {
+                code: 'isf_identity_link_required',
+                message: err.message,
+                requestId: req.requestId,
+              },
+            });
+          }
+          if (err instanceof IsfAssertionReusedError) {
+            return reply.code(409).send({
+              error: {
+                code: 'isf_assertion_reused',
+                message: err.message,
                 requestId: req.requestId,
               },
             });

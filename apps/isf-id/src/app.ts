@@ -28,8 +28,9 @@ export function buildIsfIdApp(issuer: IsfIdIssuer, serviceToken: string) {
   });
 
   app.get('/health', async () => ({ status: 'ok', service: 'isf-id' }));
-  registerBrowserLogin(app, relyingPartiesFromEnv());
-  registerIsfIdAuthentication(app, issuer);
+  const relyingParties = relyingPartiesFromEnv();
+  registerBrowserLogin(app, relyingParties);
+  registerIsfIdAuthentication(app, issuer, relyingParties);
   app.get('/.well-known/jwks.json', async (_req, reply) => {
     reply.header('cache-control', 'public, max-age=300, must-revalidate');
     return issuer.jwks();

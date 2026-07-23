@@ -43,7 +43,7 @@ describe('ISF ID internal launch endpoint', () => {
     const previous = process.env.ISF_ID_RELYING_PARTIES;
     process.env.ISF_ID_RELYING_PARTIES = [
       'streetlifting-api=https://streetlifting.example/isf-id',
-      'streetlifting-pro=https://streetlifting.pro/isf-id/callback/',
+      'streetlifting-pro=https://streetlifting.pro/passport/callback/',
     ].join(',');
     const { app } = await testApp();
     try {
@@ -59,13 +59,39 @@ describe('ISF ID internal launch endpoint', () => {
 
       const federationSite = await app.inject({
         method: 'GET',
-        url: '/login?audience=streetlifting-pro&return_to=https%3A%2F%2Fstreetlifting.pro%2Fisf-id%2Fcallback%2F',
+        url: '/login?audience=streetlifting-pro&return_to=https%3A%2F%2Fstreetlifting.pro%2Fpassport%2Fcallback%2F',
       });
       expect(federationSite.statusCode).toBe(200);
 
       const rejected = await app.inject({
         method: 'GET',
         url: '/login?audience=streetlifting-api&return_to=https%3A%2F%2Fevil.example%2Fisf-id',
+      });
+      expect(rejected.statusCode).toBe(400);
+    } finally {
+      if (previous === undefined) delete process.env.ISF_ID_RELYING_PARTIES;
+      else process.env.ISF_ID_RELYING_PARTIES = previous;
+      await app.close();
+    }
+  });
+
+  it('starts PKCE authorization only for the registered federation callback', async () => {
+    const previous = process.env.ISF_ID_RELYING_PARTIES;
+    process.env.ISF_ID_RELYING_PARTIES =
+      'streetlifting-pro=https://streetlifting.pro/passport/callback/';
+    const { app } = await testApp();
+    const query =
+      'response_type=code&client_id=streetlifting-pro&redirect_uri=https%3A%2F%2Fstreetlifting.pro%2Fpassport%2Fcallback%2F&state=passport-state-123&code_challenge=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&code_challenge_method=S256';
+    try {
+      const accepted = await app.inject({ method: 'GET', url: `/oauth/authorize?${query}` });
+      expect(accepted.statusCode).toBe(200);
+      expect(accepted.headers['cache-control']).toBe('no-store');
+      expect(accepted.body).toContain('authorizationUrl');
+      expect(accepted.body).toContain('/oauth/authorize?');
+
+      const rejected = await app.inject({
+        method: 'GET',
+        url: `/oauth/authorize?${query.replace('streetlifting.pro', 'evil.example')}`,
       });
       expect(rejected.statusCode).toBe(400);
     } finally {

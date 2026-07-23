@@ -10,6 +10,9 @@ const prismaMock = vi.hoisted(() => ({
   judgeAssignment: { findMany: vi.fn() },
   officialProfile: { findUnique: vi.fn() },
   competitionTeamMember: { findMany: vi.fn() },
+  passportReviewRequest: { findMany: vi.fn() },
+  attachment: { findMany: vi.fn() },
+  federation: { findMany: vi.fn() },
 }));
 
 vi.mock('../lib/db.js', () => ({ prisma: prismaMock }));
@@ -46,6 +49,9 @@ describe('cabinet overview', () => {
     prismaMock.judgeAssignment.findMany.mockResolvedValue([]);
     prismaMock.officialProfile.findUnique.mockResolvedValue(null);
     prismaMock.competitionTeamMember.findMany.mockResolvedValue([]);
+    prismaMock.passportReviewRequest.findMany.mockResolvedValue([]);
+    prismaMock.attachment.findMany.mockResolvedValue([]);
+    prismaMock.federation.findMany.mockResolvedValue([]);
   });
 
   it('requires an authenticated user', async () => {
@@ -67,6 +73,7 @@ describe('cabinet overview', () => {
       _count: { nominations: 3, records: 1 },
       nominations: [],
       records: [],
+      sportRankAwards: [],
     });
     prismaMock.judge.findUnique.mockResolvedValue({
       id: '00000000-0000-0000-0000-000000000004',

@@ -18,6 +18,7 @@ model IdentityAccount {
   createdAt       DateTime @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @db.Timestamptz(6)
   sessions        IdentitySession[]
+  authorizationCodes IdentityAuthorizationCode[]
 
   @@map("identity_account")
 }
@@ -33,6 +34,23 @@ model IdentitySession {
 
   @@index([accountId, expiresAt])
   @@map("identity_session")
+}
+
+model IdentityAuthorizationCode {
+  id            String   @id @default(uuid()) @db.Uuid
+  accountId     String   @db.Uuid
+  codeHash      String   @unique @db.Char(64)
+  clientId      String
+  redirectUri   String
+  codeChallenge String
+  expiresAt     DateTime @db.Timestamptz(6)
+  usedAt        DateTime? @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  account       IdentityAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, expiresAt])
+  @@index([expiresAt])
+  @@map("identity_authorization_code")
 }
 
 model LoginChallenge {

@@ -1,12 +1,15 @@
-import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
 import { prisma } from './db.js';
 import type { IsfIdIssuer } from './issuer.js';
+import { browserLoginCsp, renderBrowserLoginPage } from './browser-login.js';
+import { findRelyingParty, type IsfIdRelyingParty } from './relying-parties.js';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AUTHORIZATION_CODE_TTL_MS = 90 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 const START_RATE_LIMIT = { max: 3, windowMs: 60_000 };
 const VERIFY_RATE_LIMIT = { max: 5, windowMs: 60_000 };
@@ -26,6 +29,28 @@ const VerifyBody = z
   })
   .strict();
 const LaunchBody = z.object({ audience: z.string().trim().min(1).max(255) }).strict();
+const AuthorizeQuery = z
+  .object({
+    response_type: z.literal('code'),
+    client_id: z.string().trim().min(1).max(255),
+    redirect_uri: z.string().trim().url().max(2048),
+    state: z
+      .string()
+      .regex(/^[A-Za-z0-9._~-]{8,512}$/)
+      .optional(),
+    code_challenge: z.string().regex(/^[A-Za-z0-9_-]{43,128}$/),
+    code_challenge_method: z.literal('S256'),
+  })
+  .strict();
+const TokenBody = z
+  .object({
+    grant_type: z.literal('authorization_code'),
+    client_id: z.string().trim().min(1).max(255),
+    redirect_uri: z.string().trim().url().max(2048),
+    code: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+    code_verifier: z.string().regex(/^[A-Za-z0-9._~-]{43,128}$/),
+  })
+  .strict();
 
 function normalizedEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -47,6 +72,14 @@ function challengeHash(email: string, code: string): string {
 
 function sessionHash(token: string): string {
   return hmac(requiredSecret('ISF_ID_SESSION_SECRET'), token);
+}
+
+function authorizationCodeHash(code: string): string {
+  return hmac(requiredSecret('ISF_ID_AUTHORIZATION_CODE_SECRET'), code);
+}
+
+function codeChallenge(verifier: string): string {
+  return createHash('sha256').update(verifier).digest('base64url');
 }
 
 export function tokenFromRequest(req: Pick<FastifyRequest, 'headers'>): string | null {
@@ -95,7 +128,7 @@ async function currentSession(req: FastifyRequest) {
   return session;
 }
 
-async function currentAccount(req: FastifyRequest) {
+export async function currentAccount(req: FastifyRequest) {
   return (await currentSession(req))?.account ?? null;
 }
 
@@ -177,7 +210,70 @@ async function sendCode(email: string, code: string): Promise<void> {
   await transporter.sendMail(message);
 }
 
-export function registerIsfIdAuthentication(app: FastifyInstance, issuer: IsfIdIssuer): void {
+function oauthParty(
+  relyingParties: readonly IsfIdRelyingParty[],
+  input: z.infer<typeof AuthorizeQuery> | z.infer<typeof TokenBody>,
+): IsfIdRelyingParty | null {
+  return findRelyingParty(relyingParties, input.client_id, input.redirect_uri);
+}
+
+function oauthAuthorizePath(input: z.infer<typeof AuthorizeQuery>): string {
+  const query = new URLSearchParams({
+    response_type: input.response_type,
+    client_id: input.client_id,
+    redirect_uri: input.redirect_uri,
+    ...(input.state ? { state: input.state } : {}),
+    code_challenge: input.code_challenge,
+    code_challenge_method: input.code_challenge_method,
+  });
+  return `/oauth/authorize?${query.toString()}`;
+}
+
+async function createAuthorizationCode(
+  accountId: string,
+  request: z.infer<typeof AuthorizeQuery>,
+): Promise<string> {
+  const code = randomBytes(32).toString('base64url');
+  await prisma.identityAuthorizationCode.create({
+    data: {
+      accountId,
+      codeHash: authorizationCodeHash(code),
+      clientId: request.client_id,
+      redirectUri: request.redirect_uri,
+      codeChallenge: request.code_challenge,
+      expiresAt: new Date(Date.now() + AUTHORIZATION_CODE_TTL_MS),
+    },
+  });
+  return code;
+}
+
+function oauthRedirect(request: z.infer<typeof AuthorizeQuery>, code: string): string {
+  const destination = new URL(request.redirect_uri);
+  destination.searchParams.set('code', code);
+  if (request.state) destination.searchParams.set('state', request.state);
+  return destination.toString();
+}
+
+function sendBrowserLoginPage(
+  reply: FastifyReply,
+  party: IsfIdRelyingParty,
+  authorizationUrl: string,
+) {
+  const nonce = randomBytes(16).toString('base64');
+  reply
+    .header('cache-control', 'no-store')
+    .header('referrer-policy', 'no-referrer')
+    .header('x-content-type-options', 'nosniff')
+    .header('content-security-policy', browserLoginCsp(nonce))
+    .type('text/html; charset=utf-8');
+  return reply.send(renderBrowserLoginPage(party, nonce, authorizationUrl));
+}
+
+export function registerIsfIdAuthentication(
+  app: FastifyInstance,
+  issuer: IsfIdIssuer,
+  relyingParties: readonly IsfIdRelyingParty[],
+): void {
   const allowRequest = createRateGuard();
   app.post('/auth/email/start', async (req, reply) => {
     const parsed = StartBody.safeParse(req.body);
@@ -307,6 +403,81 @@ export function registerIsfIdAuthentication(app: FastifyInstance, issuer: IsfIdI
         emailVerifiedAt: account.emailVerifiedAt?.toISOString() ?? null,
       },
     };
+  });
+
+  app.get('/oauth/authorize', async (req, reply) => {
+    const parsed = AuthorizeQuery.safeParse(req.query);
+    if (!parsed.success) {
+      return reply.code(400).type('text/plain; charset=utf-8').send('Unknown ISF ID OAuth client.');
+    }
+    const request = parsed.data;
+    const party = oauthParty(relyingParties, request);
+    if (!party)
+      return reply.code(400).type('text/plain; charset=utf-8').send('Unknown ISF ID OAuth client.');
+
+    const account = await currentAccount(req);
+    if (!account) {
+      return sendBrowserLoginPage(reply, party, oauthAuthorizePath(request));
+    }
+
+    const code = await createAuthorizationCode(account.id, request);
+    return reply.redirect(oauthRedirect(request, code), 302);
+  });
+
+  app.post('/oauth/token', async (req, reply) => {
+    const parsed = TokenBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: 'invalid_client', message: 'Unknown client' } });
+    }
+    const request = parsed.data;
+    const party = oauthParty(relyingParties, request);
+    if (!party)
+      return reply.code(400).send({ error: { code: 'invalid_client', message: 'Unknown client' } });
+
+    const now = new Date();
+    const code = await prisma.identityAuthorizationCode.findUnique({
+      where: { codeHash: authorizationCodeHash(request.code) },
+      include: { account: true },
+    });
+    if (
+      !code ||
+      code.usedAt ||
+      code.expiresAt <= now ||
+      code.clientId !== request.client_id ||
+      code.redirectUri !== request.redirect_uri ||
+      code.codeChallenge !== codeChallenge(request.code_verifier)
+    ) {
+      return reply
+        .code(400)
+        .send({ error: { code: 'invalid_grant', message: 'Invalid code grant' } });
+    }
+
+    const consumed = await prisma.identityAuthorizationCode.updateMany({
+      where: { id: code.id, usedAt: null, expiresAt: { gt: now } },
+      data: { usedAt: now },
+    });
+    if (consumed.count !== 1) {
+      return reply
+        .code(400)
+        .send({ error: { code: 'invalid_grant', message: 'Code already used' } });
+    }
+
+    const token = await issuer.issueLaunchAssertion({
+      subjectId: code.account.id,
+      email: code.account.email,
+      displayName: code.account.displayName,
+      audience: 'streetlifting-api',
+    });
+    return reply.send({
+      access_token: token,
+      token_type: 'Bearer',
+      expires_in: Math.floor(AUTHORIZATION_CODE_TTL_MS / 1000),
+      account: {
+        id: code.account.id,
+        email: code.account.email,
+        displayName: code.account.displayName,
+      },
+    });
   });
 
   app.post('/sso/launch', async (req, reply) => {

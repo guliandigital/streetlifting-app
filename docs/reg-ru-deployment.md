@@ -159,7 +159,7 @@ sudo nano /etc/isf-id.env
 Set distinct strong values for `DATABASE_URL`, `ISF_ID_ISSUER_SERVICE_TOKEN`,
 `ISF_ID_CHALLENGE_SECRET`, and `ISF_ID_SESSION_SECRET`. Set
 `ISF_ID_ALLOWED_AUDIENCES=streetlifting-api,streetlifting-pro` and
-`ISF_ID_RELYING_PARTIES=streetlifting-api=https://streetlifting.app/isf-id,streetlifting-pro=https://streetlifting.pro/isf-id/callback/`
+`ISF_ID_RELYING_PARTIES=streetlifting-api=https://streetlifting.app/isf-id,streetlifting-pro=https://streetlifting.pro/passport/callback/`
 to enable the public browser launch endpoints. Each further relying party must use an explicit
 audience and exact HTTPS return URL. Configure either a real internal
 mailer endpoint or SMTP before exposing email login. VK Workspace uses
