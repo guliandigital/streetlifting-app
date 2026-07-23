@@ -15,8 +15,9 @@ import {
 import { useAuth } from '../../lib/auth/hooks.js';
 import { defaultAuthenticatedRoute } from '../../lib/auth/default-route.js';
 import { useAuthStore } from '../../lib/auth/store.js';
-import { ApiClientError } from '../../lib/api-client.js';
+import { api, ApiClientError } from '../../lib/api-client.js';
 import { moduleLogger } from '../../lib/logger.js';
+import { clearPendingIsfAssertion, pendingIsfAssertion } from '../isf-id/pending-assertion.js';
 
 const log = moduleLogger('login');
 
@@ -35,6 +36,12 @@ export default function LoginFeature() {
     setBusy(true);
     try {
       await login(email, password);
+      const pendingAssertion = pendingIsfAssertion();
+      if (pendingAssertion) {
+        await api.isf.link(pendingAssertion);
+        clearPendingIsfAssertion();
+        toast.success('ISF ID linked to this Passport.');
+      }
       log.info('login succeeded');
       const user = useAuthStore.getState().user;
       await navigate({ to: search.redirect ?? defaultAuthenticatedRoute(user) });

@@ -328,6 +328,8 @@ export const api = {
         body: { token },
         unauthenticated: true,
       }),
+    link: (token: string): Promise<{ user: LoginResponse['user'] }> =>
+      request('/auth/isf/link', { method: 'POST', body: { token } }),
   },
 
   integrations: {

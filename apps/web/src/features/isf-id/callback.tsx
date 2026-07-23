@@ -10,6 +10,7 @@ import {
 } from '@streetlifting/ui';
 import { api, ApiClientError } from '../../lib/api-client.js';
 import { useAuthStore } from '../../lib/auth/store.js';
+import { clearPendingIsfAssertion, savePendingIsfAssertion } from './pending-assertion.js';
 
 const ASSERTION_HASH_KEY = 'isf_assertion';
 
@@ -37,6 +38,7 @@ export default function IsfIdCallbackFeature() {
       try {
         const session = await api.isf.session(assertion);
         if (cancelled) return;
+        clearPendingIsfAssertion();
         useAuthStore.getState().setSession(session.user, session.accessToken, session.refreshToken);
         try {
           const me = await api.me();
@@ -48,11 +50,13 @@ export default function IsfIdCallbackFeature() {
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiClientError && err.code === 'isf_identity_link_required') {
+          savePendingIsfAssertion(assertion);
           setError(
-            'This email already has a Passport account. Sign in with its password once to link ISF ID.',
+            'This email already has a Passport account. Sign in with its password once; ISF ID will be linked automatically.',
           );
           return;
         }
+        clearPendingIsfAssertion();
         setError('ISF ID sign-in was not accepted. Please start again.');
       }
     })();
