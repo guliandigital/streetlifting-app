@@ -1,5 +1,4 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { resolve4 } from 'node:dns/promises';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
@@ -136,10 +135,10 @@ async function sendCode(email: string, code: string): Promise<void> {
     (process.env.ISF_ID_SMTP_SECURE ?? '').trim().toLowerCase(),
   );
   const port = Number(process.env.ISF_ID_SMTP_PORT ?? (secure ? 465 : 587));
-  const smtpAddress = (await resolve4(host))[0];
-  if (!smtpAddress) throw new Error('ISF ID SMTP host has no IPv4 address');
   const transporter = nodemailer.createTransport({
-    host: smtpAddress,
+    // Do not replace the hostname with an IP address: SMTP TLS certificates
+    // are issued for the configured hostname.
+    host,
     port: Number.isFinite(port) && port > 0 ? port : secure ? 465 : 587,
     secure,
     auth: { user, pass },
