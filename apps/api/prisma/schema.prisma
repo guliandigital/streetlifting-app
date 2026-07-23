@@ -357,6 +357,8 @@ model Federation {
   roleAssignments   RoleAssignment[]
   records           Record[]
   supportTickets    SupportTicket[]
+  protocolKeys      FederationProtocolKey[]
+  finalProtocolImports FinalProtocolImport[]
 
   @@map("federation")
 }
@@ -539,6 +541,7 @@ model Competition {
   plateSets                 PlateSet[]
   roleAssignments           RoleAssignment[]
   teamMembers               CompetitionTeamMember[]
+  finalProtocolImports      FinalProtocolImport[]
 
   @@unique([federationId, code])
   @@index([federationId, status])
@@ -1035,6 +1038,52 @@ model ApiServiceClient {
 
   @@index([tokenHash])
   @@map("api_service_client")
+}
+
+/// Active federation keys accepted for signed final protocols from Streetlifting OS.
+model FederationProtocolKey {
+  id                  String   @id @default(uuid()) @db.Uuid
+  federationId        String   @db.Uuid
+  keyId               String   @unique
+  publicKeyPem        String
+  sanctioningCertId   String?
+  isActive            Boolean  @default(true)
+  validFrom           DateTime? @db.Timestamptz(6)
+  validUntil          DateTime? @db.Timestamptz(6)
+  revokedAt           DateTime? @db.Timestamptz(6)
+  createdAt           DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
+
+  federation          Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  finalProtocolImports FinalProtocolImport[]
+
+  @@index([federationId, isActive])
+  @@map("federation_protocol_key")
+}
+
+/// Immutable, verified source envelope. Projection into competition results is a
+/// separate review workflow; this boundary never creates identities by name.
+model FinalProtocolImport {
+  id                  String   @id @default(uuid()) @db.Uuid
+  protocolId          String   @db.Uuid
+  revision            Int
+  supersedesProtocolId String? @db.Uuid
+  competitionId       String   @db.Uuid
+  federationId        String   @db.Uuid
+  keyId               String   @db.Uuid
+  sanctioningCertId   String
+  payloadHash         String   @db.Char(64)
+  payload             Json
+  receivedAt          DateTime @default(now()) @db.Timestamptz(6)
+
+  competition Competition           @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  federation  Federation            @relation(fields: [federationId], references: [id], onDelete: Restrict)
+  key         FederationProtocolKey @relation(fields: [keyId], references: [id], onDelete: Restrict)
+
+  @@unique([protocolId, revision])
+  @@index([competitionId, receivedAt])
+  @@index([supersedesProtocolId])
+  @@map("final_protocol_import")
 }
 
 model SyncOutbox {

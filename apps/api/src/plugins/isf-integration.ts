@@ -4,6 +4,7 @@ import {
   presets,
   type IsfPublicResultsStatus,
 } from '@streetlifting/domain';
+import { createHash, createPublicKey, verify } from 'node:crypto';
 import { z } from 'zod';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma, Prisma } from '../lib/db.js';
@@ -22,7 +23,13 @@ import { assertNoForbiddenExportKeys } from '../lib/privacy-allowlist.js';
 
 const READ_SCOPES = ['isf:read', 'openstreetlifting:read'] as const;
 const WEBHOOK_SCOPES = ['isf:webhook'] as const;
-const SERVICE_SCOPES = ['isf:read', 'isf:webhook', 'openstreetlifting:read'] as const;
+const PROTOCOL_WRITE_SCOPES = ['isf:protocol:write'] as const;
+const SERVICE_SCOPES = [
+  'isf:read',
+  'isf:webhook',
+  'openstreetlifting:read',
+  'isf:protocol:write',
+] as const;
 
 const ServiceClientCreate = z.object({
   code: z
@@ -38,6 +45,42 @@ const ServiceClientCreate = z.object({
 const StandardsQuery = z.object({
   rulebook: z.string().min(1).max(64).default('ISF-v5.1'),
 });
+
+const ProtocolKeyCreate = z
+  .object({
+    federationId: z.string().uuid(),
+    keyId: z.string().min(3).max(120),
+    publicKeyPem: z.string().min(80).max(10_000),
+    sanctioningCertId: z.string().min(1).max(160).optional(),
+    validFrom: z.string().datetime().optional(),
+    validUntil: z.string().datetime().optional(),
+  })
+  .strict();
+
+const FinalProtocolEnvelope = z
+  .object({
+    protocol: z
+      .object({
+        schemaVersion: z.literal('isf.final-protocol/v1'),
+        protocolId: z.string().uuid(),
+        revision: z.number().int().positive(),
+        supersedesProtocolId: z.string().uuid().nullable(),
+        competitionId: z.string().uuid(),
+        federationCode: z.string().min(1).max(64),
+        issuedAt: z.string().datetime(),
+      })
+      .passthrough(),
+    payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+    signature: z
+      .object({
+        algorithm: z.literal('ed25519'),
+        federationKeyId: z.string().min(3).max(120),
+        sanctioningCertId: z.string().min(1).max(160),
+        value: z.string().min(16).max(20_000),
+      })
+      .strict(),
+  })
+  .strict();
 
 interface Cursor {
   updatedAt: string;
@@ -401,6 +444,48 @@ function uniqueById<T extends { id: string }>(items: T[]): T[] {
   });
 }
 
+function canonicalProtocolJson(value: unknown): string {
+  if (
+    value === null ||
+    typeof value === 'boolean' ||
+    typeof value === 'number' ||
+    typeof value === 'string'
+  ) {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalProtocolJson).join(',')}]`;
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .filter((key) => record[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalProtocolJson(record[key])}`)
+      .join(',')}}`;
+  }
+  throw new Error(`Unsupported protocol value: ${typeof value}`);
+}
+
+function protocolHash(protocol: unknown): string {
+  return createHash('sha256').update(canonicalProtocolJson(protocol)).digest('hex');
+}
+
+function protocolSignatureIsValid(
+  protocol: unknown,
+  signature: string,
+  publicKeyPem: string,
+): boolean {
+  try {
+    return verify(
+      null,
+      Buffer.from(canonicalProtocolJson(protocol), 'utf8'),
+      createPublicKey(publicKeyPem),
+      Buffer.from(signature, 'base64'),
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const isfIntegrationPlugin: FeaturePlugin = {
   name: 'isf-integration',
   register: async (app) => {
@@ -529,6 +614,231 @@ export const isfIntegrationPlugin: FeaturePlugin = {
             }),
         );
         return { client: publicServiceClient(revoked) };
+      },
+    );
+
+    app.post(
+      '/integrations/isf/protocol-keys',
+      { preHandler: requireRole('platform_admin') },
+      async (req, reply) => {
+        const parsed = ProtocolKeyCreate.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        const federation = await prisma.federation.findUnique({
+          where: { id: parsed.data.federationId },
+          select: { id: true },
+        });
+        if (!federation)
+          return reply.code(404).send({
+            error: {
+              code: 'federation_not_found',
+              message: 'Federation not found',
+              requestId: req.requestId,
+            },
+          });
+        try {
+          const key = await audit.withAudit(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'isf.protocol_key.created',
+              scopeFederationId: federation.id,
+              scopeCompetitionId: null,
+              targetType: 'federation_protocol_key',
+              targetId: '00000000-0000-0000-0000-000000000000',
+              before: null,
+              after: {
+                federationId: federation.id,
+                keyId: parsed.data.keyId,
+                sanctioningCertId: parsed.data.sanctioningCertId ?? null,
+              },
+              requestId: req.requestId,
+            },
+            (tx) =>
+              tx.federationProtocolKey.create({
+                data: {
+                  federationId: federation.id,
+                  keyId: parsed.data.keyId,
+                  publicKeyPem: parsed.data.publicKeyPem,
+                  sanctioningCertId: parsed.data.sanctioningCertId ?? null,
+                  validFrom: parsed.data.validFrom ? new Date(parsed.data.validFrom) : null,
+                  validUntil: parsed.data.validUntil ? new Date(parsed.data.validUntil) : null,
+                },
+              }),
+          );
+          return reply.code(201).send({
+            key: {
+              id: key.id,
+              keyId: key.keyId,
+              federationId: key.federationId,
+              isActive: key.isActive,
+            },
+          });
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+            return reply.code(409).send({
+              error: {
+                code: 'key_id_taken',
+                message: 'Key ID already exists',
+                requestId: req.requestId,
+              },
+            });
+          throw error;
+        }
+      },
+    );
+
+    app.post(
+      '/isf/v1/protocols/final',
+      { config: { rateLimit: false }, preHandler: requireServiceClient(PROTOCOL_WRITE_SCOPES) },
+      async (req, reply) => {
+        const parsed = FinalProtocolEnvelope.safeParse(req.body);
+        if (!parsed.success)
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        const envelope = parsed.data;
+        if (protocolHash(envelope.protocol) !== envelope.payloadHash)
+          return reply.code(400).send({
+            error: {
+              code: 'payload_hash_invalid',
+              message: 'Payload hash does not match canonical protocol',
+              requestId: req.requestId,
+            },
+          });
+        const key = await prisma.federationProtocolKey.findUnique({
+          where: { keyId: envelope.signature.federationKeyId },
+          include: { federation: { select: { id: true, code: true } } },
+        });
+        const now = new Date();
+        if (
+          !key ||
+          !key.isActive ||
+          key.revokedAt ||
+          (key.validFrom && key.validFrom > now) ||
+          (key.validUntil && key.validUntil < now) ||
+          key.federation.code !== envelope.protocol.federationCode ||
+          (key.sanctioningCertId && key.sanctioningCertId !== envelope.signature.sanctioningCertId)
+        ) {
+          return reply.code(403).send({
+            error: {
+              code: 'untrusted_protocol_key',
+              message: 'Protocol key is not trusted for this federation',
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (
+          !protocolSignatureIsValid(envelope.protocol, envelope.signature.value, key.publicKeyPem)
+        )
+          return reply.code(400).send({
+            error: {
+              code: 'signature_invalid',
+              message: 'Protocol signature is invalid',
+              requestId: req.requestId,
+            },
+          });
+        const competition = await prisma.competition.findUnique({
+          where: { id: envelope.protocol.competitionId },
+          select: { id: true, federationId: true },
+        });
+        if (!competition || competition.federationId !== key.federationId)
+          return reply.code(409).send({
+            error: {
+              code: 'competition_scope_mismatch',
+              message: 'Protocol competition does not belong to the signing federation',
+              requestId: req.requestId,
+            },
+          });
+        const existing = await prisma.finalProtocolImport.findUnique({
+          where: {
+            protocolId_revision: {
+              protocolId: envelope.protocol.protocolId,
+              revision: envelope.protocol.revision,
+            },
+          },
+        });
+        if (existing) {
+          if (existing.payloadHash === envelope.payloadHash)
+            return { status: 'already_accepted', importId: existing.id };
+          return reply.code(409).send({
+            error: {
+              code: 'protocol_revision_conflict',
+              message: 'Protocol revision was already accepted with a different hash',
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (envelope.protocol.revision > 1 && !envelope.protocol.supersedesProtocolId)
+          return reply.code(400).send({
+            error: {
+              code: 'correction_predecessor_required',
+              message: 'Correction must identify its accepted predecessor',
+              requestId: req.requestId,
+            },
+          });
+        if (envelope.protocol.supersedesProtocolId) {
+          const predecessor = await prisma.finalProtocolImport.findFirst({
+            where: {
+              protocolId: envelope.protocol.supersedesProtocolId,
+              competitionId: competition.id,
+            },
+            select: { id: true },
+          });
+          if (!predecessor)
+            return reply.code(409).send({
+              error: {
+                code: 'protocol_predecessor_not_found',
+                message: 'Referenced predecessor was not accepted',
+                requestId: req.requestId,
+              },
+            });
+        }
+        const imported = await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: null,
+            action: 'isf.final_protocol.accepted',
+            scopeFederationId: key.federationId,
+            scopeCompetitionId: competition.id,
+            targetType: 'final_protocol_import',
+            targetId: '00000000-0000-0000-0000-000000000000',
+            before: null,
+            after: {
+              protocolId: envelope.protocol.protocolId,
+              revision: envelope.protocol.revision,
+              payloadHash: envelope.payloadHash,
+              federationKeyId: key.keyId,
+            },
+            requestId: req.requestId,
+          },
+          (tx) =>
+            tx.finalProtocolImport.create({
+              data: {
+                protocolId: envelope.protocol.protocolId,
+                revision: envelope.protocol.revision,
+                supersedesProtocolId: envelope.protocol.supersedesProtocolId,
+                competitionId: competition.id,
+                federationId: key.federationId,
+                keyId: key.id,
+                sanctioningCertId: envelope.signature.sanctioningCertId,
+                payloadHash: envelope.payloadHash,
+                payload: envelope as Prisma.InputJsonValue,
+              },
+            }),
+        );
+        return reply.code(202).send({ status: 'accepted', importId: imported.id });
       },
     );
 
