@@ -13,6 +13,7 @@ const prismaMock = vi.hoisted(() => ({
   passportReviewRequest: { findMany: vi.fn() },
   attachment: { findMany: vi.fn() },
   federation: { findMany: vi.fn() },
+  roleAssignment: { findMany: vi.fn() },
 }));
 
 vi.mock('../lib/db.js', () => ({ prisma: prismaMock }));
@@ -29,6 +30,7 @@ const user = {
     },
   ],
 };
+const managedFederationId = '00000000-0000-0000-0000-000000000002';
 
 async function buildApp(authenticated = true) {
   const app = Fastify({ logger: false });
@@ -52,6 +54,7 @@ describe('cabinet overview', () => {
     prismaMock.passportReviewRequest.findMany.mockResolvedValue([]);
     prismaMock.attachment.findMany.mockResolvedValue([]);
     prismaMock.federation.findMany.mockResolvedValue([]);
+    prismaMock.roleAssignment.findMany.mockResolvedValue([]);
   });
 
   it('requires an authenticated user', async () => {
@@ -120,6 +123,46 @@ describe('cabinet overview', () => {
           affiliationStatus: 'national_member',
           affiliationBody: { in: ['isf', 'eusf'] },
         },
+      }),
+    );
+    await app.close();
+  });
+
+  it('includes pending review requests only for federations the user manages', async () => {
+    prismaMock.federation.findMany.mockResolvedValue([
+      {
+        id: managedFederationId,
+        code: 'ISF-RU',
+        nameRu: 'Федерация стритлифтинга России',
+        nameEn: 'Federation of Streetlifting Russia',
+        countryCode: 'RU',
+        affiliationBody: 'isf',
+      },
+    ]);
+    prismaMock.roleAssignment.findMany.mockResolvedValue(user.roles);
+    prismaMock.passportReviewRequest.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: '00000000-0000-0000-0000-000000000005',
+        federationId: managedFederationId,
+        kind: 'official_profile',
+        payload: { message: 'Please review' },
+        submittedAt: new Date('2026-07-24T00:00:00.000Z'),
+        applicant: { displayName: 'ISF Applicant', email: 'applicant@example.test' },
+        supportingAttachment: null,
+      },
+    ]);
+
+    const app = await buildApp();
+    const response = await app.inject({ method: 'GET', url: '/cabinet/overview' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().management).toMatchObject({
+      federations: [{ id: managedFederationId }],
+      requests: [{ kind: 'official_profile', applicant: { email: 'applicant@example.test' } }],
+    });
+    expect(prismaMock.passportReviewRequest.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { federationId: { in: [managedFederationId] }, status: 'pending' },
       }),
     );
     await app.close();

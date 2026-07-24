@@ -34,6 +34,7 @@ export async function readCabinetOverview(user: CabinetOverviewActor) {
     reviewRequests,
     attachments,
     federations,
+    roleAssignments,
   ] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
@@ -293,7 +294,47 @@ export async function readCabinetOverview(user: CabinetOverviewActor) {
         affiliationBody: true,
       },
     }),
+    prisma.roleAssignment.findMany({
+      where: { userId: user.id, revokedAt: null },
+      select: { role: true, federationId: true },
+    }),
   ]);
+
+  const isPlatformAdmin = roleAssignments.some(
+    (assignment) => assignment.role === 'platform_admin',
+  );
+  const managedFederationIds = new Set(
+    isPlatformAdmin
+      ? federations.map((federation) => federation.id)
+      : roleAssignments
+          .filter(
+            (assignment) =>
+              (assignment.role === 'federation_admin' || assignment.role === 'secretary') &&
+              assignment.federationId,
+          )
+          .map((assignment) => assignment.federationId as string),
+  );
+  const managedFederations = federations.filter((federation) =>
+    managedFederationIds.has(federation.id),
+  );
+  const managementRequests = managedFederationIds.size
+    ? await prisma.passportReviewRequest.findMany({
+        where: { federationId: { in: [...managedFederationIds] }, status: 'pending' },
+        orderBy: { submittedAt: 'asc' },
+        take: 100,
+        select: {
+          id: true,
+          federationId: true,
+          kind: true,
+          payload: true,
+          submittedAt: true,
+          supportingAttachment: {
+            select: { id: true, filename: true, mimeType: true, sizeBytes: true, uploadedAt: true },
+          },
+          applicant: { select: { displayName: true, email: true } },
+        },
+      })
+    : [];
 
   return {
     identity: {
@@ -375,6 +416,22 @@ export async function readCabinetOverview(user: CabinetOverviewActor) {
       uploadedAt: attachment.uploadedAt.toISOString(),
     })),
     federations,
+    management: managedFederations.length
+      ? {
+          federations: managedFederations,
+          requests: managementRequests.map((request) => ({
+            ...request,
+            submittedAt: request.submittedAt.toISOString(),
+            supportingAttachment: request.supportingAttachment
+              ? {
+                  ...request.supportingAttachment,
+                  sizeBytes: request.supportingAttachment.sizeBytes.toString(),
+                  uploadedAt: request.supportingAttachment.uploadedAt.toISOString(),
+                }
+              : null,
+          })),
+        }
+      : null,
   };
 }
 

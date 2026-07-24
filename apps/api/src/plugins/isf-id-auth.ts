@@ -43,6 +43,13 @@ const federationPassportActionBody = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('request.cancel'), requestId: z.string().uuid() }),
   z.object({
+    action: z.literal('request.review'),
+    requestId: z.string().uuid(),
+    status: z.enum(['approved', 'rejected']),
+    reviewNote: z.string().trim().max(1000).optional(),
+    resolution: z.record(z.unknown()).optional(),
+  }),
+  z.object({
     action: z.literal('attachment.upload'),
     filename: z.string().trim().min(1).max(180),
     mimeType: z.string().trim().min(1).max(120),
@@ -172,6 +179,16 @@ function internalPassportAction(action: FederationPassportAction): {
       };
     case 'request.cancel':
       return { method: 'POST', url: `/passport/requests/${action.requestId}/cancel`, payload: {} };
+    case 'request.review':
+      return {
+        method: 'POST',
+        url: `/passport/requests/${action.requestId}/review`,
+        payload: {
+          status: action.status,
+          ...(action.reviewNote !== undefined ? { reviewNote: action.reviewNote } : {}),
+          ...(action.resolution !== undefined ? { resolution: action.resolution } : {}),
+        },
+      };
     case 'attachment.upload':
       return {
         method: 'POST',
