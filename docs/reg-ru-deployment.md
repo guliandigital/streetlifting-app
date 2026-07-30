@@ -91,6 +91,8 @@ Install nginx:
 ```bash
 sudo cp deploy/nginx/streetlifting.app.conf /etc/nginx/sites-available/streetlifting.app
 sudo ln -sfn /etc/nginx/sites-available/streetlifting.app /etc/nginx/sites-enabled/streetlifting.app
+sudo cp deploy/nginx/api.streetlifting.app.conf /etc/nginx/sites-available/api.streetlifting.app
+sudo ln -sfn /etc/nginx/sites-available/api.streetlifting.app /etc/nginx/sites-enabled/api.streetlifting.app
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -100,6 +102,7 @@ Install TLS certificate if it is not already present:
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d streetlifting.app -d www.streetlifting.app
+sudo certbot --nginx -d api.streetlifting.app
 ```
 
 ## Local deploy from Windows
@@ -146,7 +149,7 @@ ISF ID is a separate service and database. Do not add its tables or signing key 
 `streetlifting-api` or its environment file.
 
 Before enabling `ISF_ID_ENABLED=true` in `/etc/streetlifting-api.env`, provision the
-`id.streetlifting.app` DNS record and TLS certificate, then install the dedicated
+`id.streetlifting.app` and `api.streetlifting.app` DNS records and TLS certificates, then install the dedicated
 environment file and private signing key:
 
 ```bash
@@ -181,8 +184,11 @@ enabling the relying party:
 sudo cp deploy/systemd/isf-id.service /etc/systemd/system/isf-id.service
 sudo cp deploy/nginx/id.streetlifting.app.conf /etc/nginx/sites-available/id.streetlifting.app
 sudo ln -sfn /etc/nginx/sites-available/id.streetlifting.app /etc/nginx/sites-enabled/id.streetlifting.app
+sudo cp deploy/nginx/api.streetlifting.app.conf /etc/nginx/sites-available/api.streetlifting.app
+sudo ln -sfn /etc/nginx/sites-available/api.streetlifting.app /etc/nginx/sites-enabled/api.streetlifting.app
 sudo nginx -t && sudo systemctl daemon-reload
 sudo certbot --nginx -d id.streetlifting.app
+sudo certbot --nginx -d api.streetlifting.app
 sudo systemctl enable --now isf-id
 curl -fsS https://id.streetlifting.app/health
 curl -fsS https://id.streetlifting.app/.well-known/jwks.json

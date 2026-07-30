@@ -23,6 +23,7 @@ export interface IsfIdIssuerConfig {
 }
 
 export interface IsfIdIssuer {
+  readonly assertionTtlSeconds: number;
   jwks(): { keys: JWK[] };
   issueLaunchAssertion(input: z.input<typeof LaunchInput>): Promise<string>;
 }
@@ -67,6 +68,7 @@ export async function createIsfIdIssuer(config: IsfIdIssuerConfig): Promise<IsfI
   const jwk: JWK = { ...publicJwk, kid: config.keyId, use: 'sig', alg: 'RS256' };
 
   return {
+    assertionTtlSeconds: config.assertionTtlSeconds,
     jwks: () => ({ keys: [jwk] }),
     issueLaunchAssertion: async (input) => {
       const parsed = LaunchInput.parse(input);

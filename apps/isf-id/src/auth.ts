@@ -471,7 +471,7 @@ export function registerIsfIdAuthentication(
     return reply.send({
       access_token: token,
       token_type: 'Bearer',
-      expires_in: Math.floor(AUTHORIZATION_CODE_TTL_MS / 1000),
+      expires_in: issuer.assertionTtlSeconds,
       account: {
         id: code.account.id,
         email: code.account.email,
