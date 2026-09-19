@@ -318,6 +318,7 @@ try {
       nameRu: 'Другая федерация',
       nameEn: 'Other Federation',
       countryCode: 'AM',
+      billingTariffKopecksPerNomination: 0,
       securityKey: randomUUID(),
     },
   });
