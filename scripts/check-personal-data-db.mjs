@@ -107,6 +107,9 @@ try {
     run(binary('createdb'), [name]);
   }
   migrate('streetlifting_e2e_fresh', schema);
+  run(process.execPath, [tsx, join(api, 'scripts/check-accounting-reconciliation-db.ts')], runDir, {
+    DATABASE_URL: databaseUrl('streetlifting_e2e_fresh'),
+  });
   run(process.execPath, [tsx, join(api, 'scripts/check-competition-concurrency-db.ts')], runDir, {
     DATABASE_URL: databaseUrl('streetlifting_e2e_fresh'),
   });

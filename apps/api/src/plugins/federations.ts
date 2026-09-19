@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { accountingReconciliation, ledgerTotals } from '../lib/accounting-reconciliation.js';
 import { z } from 'zod';
 import {
   FederationCreate,
@@ -95,13 +96,15 @@ const FederationAffiliationUpdateInput = z
  *  - federation_admin / accountant / etc. with federationId scope → that one
  */
 function visibleFederationIds(
-  user: { roles: Array<{ role: string; federationId: string | null }> } | null,
+  user: {
+    roles: Array<{ role: string; federationId: string | null; competitionId: string | null }>;
+  } | null,
 ): { all: true } | { ids: string[] } {
   if (!user) return { ids: [] };
   if (user.roles.some((r) => r.role === 'platform_admin')) return { all: true };
   const ids = new Set<string>();
   for (const r of user.roles) {
-    if (r.federationId) ids.add(r.federationId);
+    if (r.federationId && !r.competitionId) ids.add(r.federationId);
   }
   return { ids: [...ids] };
 }
@@ -247,7 +250,7 @@ export const federationsPlugin: FeaturePlugin = {
           });
         }
 
-        const [receipts, writeoffs, competitions, peerFederations] = await Promise.all([
+        const [receipts, writeoffs, competitions, peerFederations, balance] = await Promise.all([
           prisma.receipt.findMany({
             where: { federationId: req.params.id },
             orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
@@ -278,11 +281,11 @@ export const federationsPlugin: FeaturePlugin = {
               },
             },
           }),
+          prisma.$transaction((tx) => ledgerTotals(tx, req.params.id), {
+            isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+          }),
         ]);
 
-        const receivedNominations = receipts.reduce((sum, item) => sum + item.nominationsCount, 0);
-        const consumedNominations = writeoffs.reduce((sum, item) => sum + item.nominationsCount, 0);
-        const receivedAmountKopecks = receipts.reduce((sum, item) => sum + item.amountKopecks, 0n);
         const regionalComparison = peerFederations.map((item) => ({
           federationId: item.id,
           code: item.code,
@@ -298,15 +301,55 @@ export const federationsPlugin: FeaturePlugin = {
           receipts,
           writeoffs,
           competitions,
-          balance: {
-            receivedNominations,
-            consumedNominations,
-            remainingNominations: receivedNominations - consumedNominations,
-            receivedAmountKopecks,
-          },
+          balance,
           telegramSubscriptionCode: federation.securityKey.replace(/-/g, '').slice(0, 10),
           regionalComparison,
         };
+      },
+    );
+
+    app.get<{ Params: { id: string } }>(
+      '/federations/:id/accounting-reconciliation',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        reply.header('cache-control', 'private, no-store');
+        if (!canManageFederation(req.user, req.params.id, ['federation_admin', 'accountant']))
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'Federation accounting role required',
+              requestId: req.requestId,
+            },
+          });
+        const query = z
+          .object({
+            limit: z.coerce.number().int().min(1).max(100).default(25),
+            offset: z.coerce.number().int().min(0).max(1000000).default(0),
+          })
+          .strict()
+          .safeParse(req.query);
+        if (!query.success)
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: query.error.message,
+              requestId: req.requestId,
+            },
+          });
+        if (
+          !(await prisma.federation.findUnique({
+            where: { id: req.params.id },
+            select: { id: true },
+          }))
+        )
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Federation not found',
+              requestId: req.requestId,
+            },
+          });
+        return accountingReconciliation(req.params.id, query.data.limit, query.data.offset);
       },
     );
 

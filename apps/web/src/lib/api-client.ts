@@ -40,6 +40,7 @@ import { moduleLogger } from './logger.js';
 import type { Federation } from './federations-api.js';
 import type {
   FederationAuditEntryDto,
+  AccountingReconciliationResponse,
   FederationAttachmentDto,
   FederationChapterDto,
   FederationDashboardResponse,
@@ -460,6 +461,8 @@ export const api = {
     get: (id: string): Promise<{ federation: Federation }> => request(`/federations/${id}`),
     dashboard: (id: string): Promise<FederationDashboardResponse> =>
       request(`/federations/${id}/dashboard`),
+    accountingReconciliation: (id: string, offset = 0): Promise<AccountingReconciliationResponse> =>
+      request(`/federations/${id}/accounting-reconciliation?limit=25&offset=${offset}`),
     audit: (id: string): Promise<{ audit: FederationAuditEntryDto[] }> =>
       request(`/federations/${id}/audit`),
     create: (data: FederationCreate): Promise<{ federation: Federation }> =>

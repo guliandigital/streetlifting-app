@@ -342,4 +342,13 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   expect((await snapshotDownload).suggestedFilename()).toBe(
     `competition-${competitionId}-snapshot-r1.json`,
   );
+  await page.goto(`/federations/${federationId}`);
+  await expect(page.getByTestId('accounting-reconciliation')).toBeVisible();
+  await expect(page.getByTestId('reconciliation-totals')).toContainText(
+    'с решёнными попытками — 1',
+  );
+  await expect(page.getByTestId('reconciliation-totals')).toContainText('завершено — 1');
+  await expect(page.getByTestId('reconciliation-totals')).toContainText(
+    'списано по документам — 0',
+  );
 });
