@@ -6,9 +6,11 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 
+import { probeApiHealth } from '../lib/api-health.js';
+
 interface RttSample {
   at: number;
-  ms: number;
+  ms: number | null;
 }
 
 function rttQuality(ms: number): { tone: 'green' | 'yellow' | 'red'; label: string } {
@@ -23,37 +25,38 @@ function ConnectionStatusBar() {
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
 
     async function ping() {
       const started = performance.now();
+      let ms: number | null = null;
       try {
-        await fetch('/api/healthz', { method: 'HEAD', cache: 'no-store' });
+        await probeApiHealth(controller.signal);
+        ms = Math.round(performance.now() - started);
       } catch {
-        // Network failure — record a high latency placeholder so the bar still moves.
-        if (!cancelled) {
-          setSamples((s) => [{ at: Date.now(), ms: 999 }, ...s].slice(0, 4));
-        }
-        timer = setTimeout(ping, 5000);
-        return;
+        // HTTP failures and timeouts are unavailable, not latency samples.
       }
-      const elapsed = Math.round(performance.now() - started);
-      if (!cancelled) {
-        setSamples((s) => [{ at: Date.now(), ms: elapsed }, ...s].slice(0, 4));
-      }
+      if (cancelled) return;
+      setSamples((previous) => [{ at: Date.now(), ms }, ...previous].slice(0, 4));
       timer = setTimeout(ping, 4000);
     }
 
     void ping();
     return () => {
       cancelled = true;
+      controller.abort();
       if (timer) clearTimeout(timer);
     };
   }, []);
 
   if (samples.length === 0) return null;
 
-  const avg = Math.round(samples.reduce((s, x) => s + x.ms, 0) / samples.length);
-  const avgQuality = rttQuality(avg);
+  const available = samples.filter((sample) => sample.ms !== null);
+  const avg = available.length
+    ? Math.round(available.reduce((sum, sample) => sum + (sample.ms ?? 0), 0) / available.length)
+    : null;
+  const avgQuality =
+    samples[0]?.ms === null ? { tone: 'red', label: 'недоступен' } : rttQuality(avg ?? 0);
 
   return (
     <aside className="pt-status-bar" aria-label="Качество связи с сервером">
@@ -61,10 +64,15 @@ function ConnectionStatusBar() {
         <tbody>
           <tr className={`pt-status-row pt-status-row-${avgQuality.tone}`}>
             <td>Среднее значение качества связи с сервером</td>
-            <td className="tabular-nums">[{avg}мс]</td>
+            <td className="tabular-nums">
+              {samples[0]?.ms === null ? 'Сервер недоступен' : `${avg} мс`}
+            </td>
           </tr>
           {samples.map((sample, i) => {
-            const q = rttQuality(sample.ms);
+            const q =
+              sample.ms === null
+                ? { tone: 'red', label: 'сервер недоступен' }
+                : rttQuality(sample.ms);
             return (
               <tr key={`${sample.at}-${i}`} className={`pt-status-row pt-status-row-${q.tone}`}>
                 <td>
@@ -79,7 +87,7 @@ function ConnectionStatusBar() {
                   . Задержка
                 </td>
                 <td className="tabular-nums">
-                  [{sample.ms}мс] - {q.label}
+                  {sample.ms === null ? '—' : `${sample.ms} мс`} - {q.label}
                 </td>
               </tr>
             );
