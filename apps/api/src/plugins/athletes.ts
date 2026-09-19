@@ -1,3 +1,4 @@
+import { CompetitionConflict } from '../lib/competition-lifecycle.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -497,7 +498,49 @@ export const athletesPlugin: FeaturePlugin = {
             before: { ...before, dateOfBirth: before.dateOfBirth?.toISOString() ?? null },
             after: parsed.data,
           },
-          (tx) => tx.athlete.update({ where: { id: req.params.id }, data: updateData }),
+          async (tx) => {
+            await tx.$queryRaw`SELECT id FROM athlete WHERE id = ${req.params.id}::uuid FOR UPDATE`;
+            const current = await tx.athlete.findUniqueOrThrow({ where: { id: req.params.id } });
+            if (current.updatedAt.getTime() !== before.updatedAt.getTime()) {
+              throw new CompetitionConflict(
+                'athlete_changed',
+                'Athlete changed; reload before retrying',
+              );
+            }
+            const identityKeys = [
+              'firstName',
+              'lastName',
+              'middleName',
+              'gender',
+              'countryCode',
+              'birthYear',
+              'dateOfBirth',
+            ] as const;
+            const changesIdentity = identityKeys.some((key) => {
+              const value = updateData[key];
+              if (value === undefined) return false;
+              const old =
+                key === 'birthYear'
+                  ? (current.birthYear ?? current.dateOfBirth?.getUTCFullYear() ?? null)
+                  : current[key];
+              return (
+                (value instanceof Date ? value.toISOString() : value) !==
+                (old instanceof Date ? old.toISOString() : old)
+              );
+            });
+            if (
+              changesIdentity &&
+              (await tx.nomination.count({
+                where: { athleteId: current.id, isMandatePassed: true },
+              })) > 0
+            ) {
+              throw new CompetitionConflict(
+                'athlete_has_approved_nominations',
+                'Revoke active mandate approvals before changing identity data; finalized protocols require a correction workflow',
+              );
+            }
+            return tx.athlete.update({ where: { id: req.params.id }, data: updateData });
+          },
         );
         return { athlete: updated };
       },

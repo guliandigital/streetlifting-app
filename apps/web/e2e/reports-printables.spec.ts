@@ -210,6 +210,11 @@ test('reports page exposes only wired print actions as active buttons', async ({
 }) => {
   const setup = await createReportCompetition(request);
   await installFreshAuth(page);
+  await page.goto(`/competitions/${setup.competitionId}`);
+  await expect(page.getByTestId('competition-readiness')).toBeVisible();
+  await expect(page.getByTestId('competition-readiness')).toContainText(
+    'Без веса: 0. Без допуска: 0.',
+  );
   await page.goto(`/competitions/${setup.competitionId}/reports`);
   await expect(page.getByText('Отчеты, печатные формы')).toBeVisible();
 

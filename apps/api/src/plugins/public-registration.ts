@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { PublicCompetitionRegistrationCreate } from '@streetlifting/domain';
+import { PublicCompetitionRegistrationCreate, admissionIssue } from '@streetlifting/domain';
 import type { CompetitionStatus } from '@prisma/client';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma, Prisma } from '../lib/db.js';
@@ -419,6 +419,32 @@ export const publicRegistrationPlugin: FeaturePlugin = {
               clubName: optionalText(data.athlete.clubName) ?? null,
               federationCardNumber: optionalText(data.athlete.federationCardNumber) ?? null,
             } satisfies Prisma.AthleteUncheckedCreateInput;
+
+            const currentDivision = await tx.division.findUnique({ where: { id: division.id } });
+            if (!currentDivision || currentDivision.competitionId !== competition.id)
+              throw new CompetitionConflict(
+                'division_out_of_scope',
+                'Division is not in competition',
+              );
+            const eligibilityIssue = admissionIssue({
+              rulebook: currentCompetition.rulebook,
+              startDate: currentCompetition.startDate.toISOString(),
+              endDate: currentCompetition.endDate.toISOString(),
+              athlete: { ...athleteData, dateOfBirth: athleteData.dateOfBirth.toISOString() },
+              division: {
+                gender: currentDivision.gender,
+                ageMin: currentDivision.ageMin,
+                ageMax: currentDivision.ageMax,
+              },
+              bodyWeight: null,
+              weightClass: { weightMin: null, weightMax: null },
+              requireWeighIn: false,
+            });
+            if (eligibilityIssue)
+              throw new CompetitionConflict(
+                eligibilityIssue,
+                'Registration eligibility requirements are not satisfied',
+              );
 
             const athleteIdentityWhere = {
               lastName: { equals: athleteData.lastName, mode: 'insensitive' },

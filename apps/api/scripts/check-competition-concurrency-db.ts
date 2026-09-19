@@ -31,6 +31,8 @@ app.setErrorHandler((err: Error & { statusCode?: number; code?: string }, req, r
 });
 await app.register(competitionOpsPlugin.register);
 await app.register(competitionsPlugin.register);
+const { athletesPlugin } = await import('../src/plugins/athletes.js');
+await app.register(athletesPlugin.register);
 const suffix = randomUUID();
 try {
   const federation = await db.federation.create({
@@ -159,6 +161,56 @@ try {
       headers: headers[index]!,
       payload: { call },
     });
+  // These assertions use the real admission checks, not mocked athlete data.
+  await db.nomination.update({ where: { id: nomination.id }, data: { bodyWeightAtWeighIn: null } });
+  assert.equal((await write()).json().error.code, 'weigh_in_required');
+  await db.nomination.update({ where: { id: nomination.id }, data: { bodyWeightAtWeighIn: 75 } });
+  await db.division.update({ where: { id: division.id }, data: { gender: 'F' } });
+  assert.equal((await write()).json().error.code, 'division_gender_mismatch');
+  await db.division.update({ where: { id: division.id }, data: { gender: 'M', ageMin: 40 } });
+  assert.equal((await write()).json().error.code, 'division_age_mismatch');
+  await db.division.update({ where: { id: division.id }, data: { ageMin: null } });
+  await db.competition.update({
+    where: { id: competition.id },
+    data: { status: 'registration_closed' },
+  });
+  assert.equal((await write()).json().error.code, 'competition_not_in_progress');
+  await db.competition.update({ where: { id: competition.id }, data: { status: 'in_progress' } });
+  await db.nomination.update({ where: { id: nomination.id }, data: { status: 'withdrawn' } });
+  assert.equal((await write()).json().error.code, 'nomination_not_ready');
+  await db.nomination.update({ where: { id: nomination.id }, data: { status: 'weighed_in' } });
+  const identityEdit = await app.inject({
+    method: 'PATCH',
+    url: `/athletes/${athlete.id}`,
+    headers: headers[0]!,
+    payload: { gender: 'F' },
+  });
+  assert.equal(identityEdit.statusCode, 409, identityEdit.body);
+  assert.equal(identityEdit.json().error.code, 'athlete_has_approved_nominations');
+  assert.equal((await db.athlete.findUniqueOrThrow({ where: { id: athlete.id } })).gender, 'M');
+  // Either the profile edit wins or approval wins, never an approval for changed identity.
+  await db.nomination.update({ where: { id: nomination.id }, data: { isMandatePassed: false } });
+  const admissionRace = await Promise.all([
+    app.inject({
+      method: 'PATCH',
+      url: `/nominations/${nomination.id}`,
+      headers: headers[0]!,
+      payload: { isMandatePassed: true },
+    }),
+    app.inject({
+      method: 'PATCH',
+      url: `/athletes/${athlete.id}`,
+      headers: headers[0]!,
+      payload: { gender: 'F' },
+    }),
+  ]);
+  for (const response of admissionRace)
+    assert([200, 409].includes(response.statusCode), response.body);
+  const racedAthlete = await db.athlete.findUniqueOrThrow({ where: { id: athlete.id } });
+  const racedNomination = await db.nomination.findUniqueOrThrow({ where: { id: nomination.id } });
+  assert(!(racedNomination.isMandatePassed && racedAthlete.gender === 'F'));
+  await db.athlete.update({ where: { id: athlete.id }, data: { gender: 'M' } });
+  await db.nomination.update({ where: { id: nomination.id }, data: { isMandatePassed: true } });
   const called = await write();
   assert.equal(called.statusCode, 200, called.body);
   // Different authenticated users on concurrent real DB connections; the third vote must survive majority completion.

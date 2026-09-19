@@ -14,6 +14,9 @@ const db = vi.hoisted(() => ({
   division: { findUnique: vi.fn() },
   $transaction: vi.fn(),
 }));
+vi.mock('../lib/nomination-admission.js', () => ({
+  assertNominationAdmission: vi.fn(async () => ({ status: 'in_progress' })),
+}));
 vi.mock('../lib/audit.js', () => ({ fromRequest: vi.fn(() => ({})), record: vi.fn() }));
 vi.mock('../lib/db.js', async () => ({
   prisma: db,
@@ -28,6 +31,7 @@ beforeEach(() => {
   db.nomination.findUnique.mockResolvedValue({
     id: nominationId,
     athleteId: 'athlete',
+    status: 'on_platform',
     isMandatePassed: true,
     competition: { id: competitionId, federationId, status: 'in_progress' },
     discipline: { attemptCount: 3, components: [{ id: componentId, attemptCount: 1 }] },

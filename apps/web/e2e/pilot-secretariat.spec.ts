@@ -1,5 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { installFreshAuth } from './helpers/auth.js';
+import {
+  apiUrl,
+  authHeaders,
+  confirmOrganizer,
+  installFreshAuth,
+  loginViaApi,
+} from './helpers/auth.js';
 
 test.beforeEach(async ({ page }) => {
   await installFreshAuth(page);
@@ -33,7 +39,7 @@ async function clickAndWaitForApi(
     ),
     click(),
   ]);
-  expect(response.ok()).toBe(true);
+  expect(response.ok(), await response.text()).toBe(true);
 }
 
 async function nominationRow(page: Page, athleteLastName: string): Promise<Locator> {
@@ -42,7 +48,9 @@ async function nominationRow(page: Page, athleteLastName: string): Promise<Locat
   return row;
 }
 
-test('pilot secretary create/edit flow after persisted auth state', async ({ page }) => {
+test('pilot secretary create/edit flow after persisted auth state', async ({ page, request }) => {
+  const auth = await loginViaApi(request);
+  const headers = authHeaders(auth.accessToken);
   const suffix = Date.now().toString(36).slice(-7).toUpperCase();
   const federationCode = `PW${suffix}`;
   const competitionCode = `PWE2E${suffix}`;
@@ -68,6 +76,7 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   await fillText(page, '#venue', 'E2E Hall');
   await fillText(page, '#entryFeeRub', '1500');
   const competitionId = await submitAndReadId(page, 'competitions');
+  await confirmOrganizer(request, auth.accessToken, competitionId, auth.user.id);
 
   await page.goto('/athletes/new');
   await fillText(page, '#lastName', athleteLastName);
@@ -214,18 +223,57 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   await row.getByTestId('nomination-row-paid-amount').fill('1500');
   await row.getByTestId('nomination-row-payment-method').selectOption('cash');
   await row.getByTestId('nomination-row-mandate').check();
+  await row.getByTestId('nomination-row-status').selectOption('weighed_in');
   await clickAndWaitForApi(page, 'PATCH', `/nominations/`, () =>
     row.getByTestId('nomination-row-save').click(),
   );
 
+  const started = await request.patch(apiUrl(`/competitions/${competitionId}`), {
+    headers,
+    data: { status: 'in_progress' },
+  });
+  expect(started.ok(), await started.text()).toBe(true);
   await page.getByTestId('ops-tab-attempts').click();
   const attemptRow = page.getByTestId('attempt-row').filter({ hasText: athleteLastName });
   await expect(attemptRow).toBeVisible();
   await attemptRow.getByTestId('attempt-weight').fill('30');
   await attemptRow.getByTestId('attempt-result').selectOption('good_lift');
+  // Lose the HTTP response after PostgreSQL committed, then retry through the UI.
+  let commitStatus = 0;
+  let committedAttemptId = '';
+  let lost!: () => void;
+  const responseLost = new Promise<void>((resolve) => {
+    lost = resolve;
+  });
+  await page.route(
+    `**/api/nominations/${nominationId}/attempts/**`,
+    async (route) => {
+      const response = await route.fetch();
+      commitStatus = response.status();
+      committedAttemptId =
+        ((await response.json()) as { attempt?: { id: string } }).attempt?.id ?? '';
+      await route.abort('connectionreset');
+      lost();
+    },
+    { times: 1 },
+  );
+  await attemptRow.getByTestId('attempt-save').click();
+  await responseLost;
+  expect(commitStatus).toBe(200);
+  expect(committedAttemptId).not.toBe('');
+  await expect(attemptRow.getByTestId('attempt-save')).toBeEnabled();
+  await expect(attemptRow.getByTestId('attempt-weight')).toHaveValue('30');
   await clickAndWaitForApi(page, 'PUT', `/nominations/`, () =>
     attemptRow.getByTestId('attempt-save').click(),
   );
+  const recovered = await request.get(apiUrl(`/competitions/${competitionId}/ops`), { headers });
+  expect(recovered.ok(), await recovered.text()).toBe(true);
+  const recoveredBody = (await recovered.json()) as {
+    nominations: Array<{ id: string; attempts: Array<{ id: string }> }>;
+  };
+  const savedAttempts = recoveredBody.nominations.find((n) => n.id === nominationId)!.attempts;
+  expect(savedAttempts).toHaveLength(1);
+  expect(savedAttempts[0]!.id).toBe(committedAttemptId);
   await expect(attemptRow.getByTestId('attempt-summary')).toContainText('30');
 
   await page.getByTestId('ops-tab-scoreboard').click();
