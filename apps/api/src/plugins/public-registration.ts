@@ -7,6 +7,7 @@ import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { validateUuidParams } from '../lib/params.js';
 import { publishCompetitionLiveUpdate } from '../lib/live-updates.js';
+import { buildConsentTexts } from '../lib/consent-texts.js';
 
 const log = moduleLogger('public-registration');
 
@@ -16,11 +17,27 @@ const CLOSED_STATUSES = [
   'archived',
 ] satisfies CompetitionStatus[];
 const CLOSED_STATUS_SET = new Set<string>(CLOSED_STATUSES);
-const CONSENT_TEXT_VERSION = '2026-05-11.v1';
-const CONSENT_TEXTS = {
-  data_processing: 'I consent to personal data processing for participation in the competition.',
-  public_results: 'I consent to publication of my competition results on public result pages.',
-  photo_publication: 'I consent to publication of my athlete photo and event media materials.',
+// Consent texts are built per federation/competition in lib/consent-texts.ts
+// so the athlete sees the operator's requisites and we store exactly that text.
+const consentFederationSelect = {
+  id: true,
+  code: true,
+  nameRu: true,
+  nameEn: true,
+  contactEmail: true,
+  contactPhone: true,
+  pdOperatorName: true,
+  pdOperatorAddress: true,
+  pdOperatorContact: true,
+  privacyPolicyUrl: true,
+} as const;
+// The confirmed organizer is the person responsible for consent collection and
+// data handling at the event; registration is not available without one.
+const confirmedOrganizerSelect = {
+  where: { role: 'organizer' as const, status: 'confirmed' as const },
+  select: { memberNameSnapshot: true },
+  orderBy: { confirmedAt: 'asc' as const },
+  take: 1,
 } as const;
 
 class PublicRegistrationError extends Error {
@@ -38,12 +55,16 @@ function registrationAvailability(competition: {
   status: CompetitionStatus;
   isOnlineRegistrationOpen: boolean;
   registrationDeadline: Date | null;
+  teamMembers: ReadonlyArray<unknown>;
 }): { isAvailable: boolean; reason: string | null } {
   if (!competition.isOnlineRegistrationOpen) return { isAvailable: false, reason: 'closed' };
   if (CLOSED_STATUS_SET.has(competition.status))
     return { isAvailable: false, reason: competition.status };
   if (competition.registrationDeadline && competition.registrationDeadline.getTime() < Date.now()) {
     return { isAvailable: false, reason: 'deadline_passed' };
+  }
+  if (competition.teamMembers.length === 0) {
+    return { isAvailable: false, reason: 'organizer_required' };
   }
   return { isAvailable: true, reason: null };
 }
@@ -176,9 +197,8 @@ export const publicRegistrationPlugin: FeaturePlugin = {
               status: true,
               entryFeeKopecks: true,
               isOnlineRegistrationOpen: true,
-              federation: {
-                select: { id: true, code: true, nameRu: true, nameEn: true },
-              },
+              federation: { select: consentFederationSelect },
+              teamMembers: confirmedOrganizerSelect,
               divisions: {
                 orderBy: [{ gender: 'asc' }, { code: 'asc' }],
                 include: { weightClasses: { orderBy: { order: 'asc' } } },
@@ -210,7 +230,29 @@ export const publicRegistrationPlugin: FeaturePlugin = {
         }
 
         const availability = registrationAvailability(competition);
-        return { competition, disciplines, registration: availability };
+        const { teamMembers, ...publicCompetition } = competition;
+        const consents = buildConsentTexts(
+          {
+            federation: competition.federation,
+            competition: { nameRu: competition.nameRu, nameEn: competition.nameEn },
+            organizerName: teamMembers[0]?.memberNameSnapshot ?? null,
+          },
+          'ru',
+        );
+        return {
+          competition: {
+            ...publicCompetition,
+            federation: {
+              id: competition.federation.id,
+              code: competition.federation.code,
+              nameRu: competition.federation.nameRu,
+              nameEn: competition.federation.nameEn,
+            },
+          },
+          disciplines,
+          registration: availability,
+          consents,
+        };
       },
     );
 
@@ -240,10 +282,13 @@ export const publicRegistrationPlugin: FeaturePlugin = {
             id: true,
             federationId: true,
             nameRu: true,
+            nameEn: true,
             status: true,
             isOnlineRegistrationOpen: true,
             registrationDeadline: true,
             entryFeeKopecks: true,
+            federation: { select: consentFederationSelect },
+            teamMembers: confirmedOrganizerSelect,
           },
         });
         if (!competition) {
@@ -262,6 +307,21 @@ export const publicRegistrationPlugin: FeaturePlugin = {
             error: {
               code: 'registration_closed',
               message: 'Online registration is closed',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const consents = buildConsentTexts({
+          federation: competition.federation,
+          competition: { nameRu: competition.nameRu, nameEn: competition.nameEn },
+          organizerName: competition.teamMembers[0]?.memberNameSnapshot ?? null,
+        });
+        if (data.consentSnapshotHash !== consents.snapshotHash) {
+          return reply.code(409).send({
+            error: {
+              code: 'consent_changed',
+              message: 'Consent details have changed. Reload and accept the current texts.',
               requestId: req.requestId,
             },
           });
@@ -432,9 +492,9 @@ export const publicRegistrationPlugin: FeaturePlugin = {
                   scope: 'data_processing',
                   athleteId: athlete.id,
                   federationId: competition.federationId,
-                  textShown: CONSENT_TEXTS.data_processing,
+                  textShown: consents.texts.dataProcessing,
                   locale: 'ru',
-                  textVersion: CONSENT_TEXT_VERSION,
+                  textVersion: consents.textVersion,
                   grantedFromIp,
                   grantedFromUserAgent,
                 },
@@ -444,9 +504,9 @@ export const publicRegistrationPlugin: FeaturePlugin = {
                         scope: 'public_results' as const,
                         athleteId: athlete.id,
                         federationId: competition.federationId,
-                        textShown: CONSENT_TEXTS.public_results,
+                        textShown: consents.texts.publicResults,
                         locale: 'ru',
-                        textVersion: CONSENT_TEXT_VERSION,
+                        textVersion: consents.textVersion,
                         grantedFromIp,
                         grantedFromUserAgent,
                       },
@@ -458,9 +518,9 @@ export const publicRegistrationPlugin: FeaturePlugin = {
                         scope: 'photo_publication' as const,
                         athleteId: athlete.id,
                         federationId: competition.federationId,
-                        textShown: CONSENT_TEXTS.photo_publication,
+                        textShown: consents.texts.photoPublication,
                         locale: 'ru',
-                        textVersion: CONSENT_TEXT_VERSION,
+                        textVersion: consents.textVersion,
                         grantedFromIp,
                         grantedFromUserAgent,
                       },

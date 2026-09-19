@@ -123,6 +123,30 @@ export default function AthleteDetailFeature() {
   const [clubName, setClubName] = useState('');
   const [coachName, setCoachName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
+  const [photoPreview, setPhotoPreview] = useState<{ key: string; url: string } | null>(null);
+  const photoKey = JSON.stringify([id, data?.athlete.updatedAt, user?.id, user?.roles]);
+  const hasPhoto = Boolean(data?.athlete.photoUrl);
+
+  useEffect(() => {
+    setPhotoPreview(null);
+    if (!hasPhoto || !user) return;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    void api.athletes
+      .downloadPhoto(id)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPhotoPreview({ key: photoKey, url: objectUrl });
+      })
+      .catch(() => {
+        // Missing or inaccessible photos must not fall back to an unauthenticated URL.
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [id, hasPhoto, photoKey, user]);
 
   useEffect(() => {
     if (!data) return;
@@ -328,15 +352,15 @@ export default function AthleteDetailFeature() {
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
             <WorkspacePanel className="p-3 space-y-3">
               <WorkspaceSectionTitle>Фото</WorkspaceSectionTitle>
-              {a.photoUrl ? (
+              {photoPreview?.key === photoKey ? (
                 <img
-                  src={`${a.photoUrl}?v=${encodeURIComponent(a.updatedAt)}`}
+                  src={photoPreview.url}
                   alt={fullName}
                   className="aspect-square w-full object-cover border border-[var(--pt-border)]"
                 />
               ) : (
                 <div className="aspect-square w-full border border-[var(--pt-border)] bg-[var(--color-muted)] flex items-center justify-center pt-muted text-xs text-center px-2">
-                  Фото не загружено
+                  {a.photoUrl ? 'Фото недоступно' : 'Фото не загружено'}
                 </div>
               )}
               {canEdit ? (

@@ -1,5 +1,11 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { apiUrl, authHeaders, installFreshAuth, loginViaApi } from './helpers/auth.js';
+import {
+  apiUrl,
+  authHeaders,
+  confirmOrganizer,
+  installFreshAuth,
+  loginViaApi,
+} from './helpers/auth.js';
 
 interface CompetitionSetup {
   competitionId: string;
@@ -71,6 +77,7 @@ async function createLaunchCompetition(request: APIRequestContext): Promise<Comp
   expect(competitionResponse.ok(), await competitionResponse.text()).toBe(true);
   const competitionBody = (await competitionResponse.json()) as { competition: { id: string } };
 
+  await confirmOrganizer(request, auth.accessToken, competitionBody.competition.id, auth.user.id);
   const setupResponse = await request.post(
     apiUrl(`/competitions/${competitionBody.competition.id}/setup/default`),
     { headers, data: {} },

@@ -60,3 +60,6 @@ Streetlifting_app_logo_pack.zip
 _logo_pack_unpack/
 city-master.zip
 reference screenshots/
+
+.vercel
+.env*.local

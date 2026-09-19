@@ -14,6 +14,7 @@ export const PublicCompetitionRegistrationCreate = z
     contactPhone: OptionalContact,
     contactEmail: z.string().trim().email().max(160).optional(),
     consentDataProcessing: z.literal(true),
+    consentSnapshotHash: z.string().regex(/^[a-f0-9]{64}$/),
     consentPublicResults: z.boolean().default(false),
     consentPhotoPublication: z.boolean().default(false),
     notes: z.string().trim().max(1000).optional(),

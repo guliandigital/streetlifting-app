@@ -114,7 +114,7 @@ jobs:
         env:
           POSTGRES_USER: streetlifting
           POSTGRES_PASSWORD: streetlifting
-          POSTGRES_DB: streetlifting
+          POSTGRES_DB: streetlifting_e2e_ci
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U streetlifting"
@@ -123,6 +123,7 @@ jobs:
           --health-retries 10
     env:
       CI: '1'
+      DATABASE_URL: postgresql://streetlifting:streetlifting@localhost:5432/streetlifting_e2e_ci?schema=public
       ROOT_EMAIL: root@e2e.local
       ROOT_PASSWORD: E2eRootPassword-2026
     steps:
@@ -154,6 +155,11 @@ jobs:
           ROOT_EMAIL=${ROOT_EMAIL}
           ROOT_PASSWORD=${ROOT_PASSWORD}
           EOF
+      - name: Check personal-data flows with real database and storage
+        working-directory: apps/api
+        env:
+          PD_DB_E2E: '1'
+        run: pnpm exec tsx scripts/check-personal-data-db.ts
       - run: pnpm e2e:web
       - name: Upload Playwright report
         if: failure()

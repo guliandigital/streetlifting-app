@@ -657,7 +657,29 @@ await requestJson<{ setup: { divisions: number; weightClasses: number } }>(
   {},
   auth,
 );
+// Public registration requires a confirmed organizer (152-ФЗ responsibility split).
+const publicNoOrganizer = await requestJson<{
+  registration: { isAvailable: boolean; reason: string | null };
+}>('GET', `/public/competitions/${publicCompetition.id}/registration`);
+assert(
+  publicNoOrganizer.registration.reason === 'organizer_required',
+  'public registration opened without a confirmed organizer',
+);
+const smokeMe = await requestJson<{ user: { id: string } }>('GET', '/auth/me', undefined, auth);
+const organizerInvite = await requestJson<{ teamMember: { id: string } }>(
+  'POST',
+  `/competitions/${publicCompetition.id}/team-members`,
+  { userId: smokeMe.user.id, role: 'organizer' },
+  auth,
+);
+await requestJson<{ teamMember: { status: string } }>(
+  'POST',
+  `/competition-team-members/${organizerInvite.teamMember.id}/respond`,
+  { status: 'confirmed' },
+  auth,
+);
 const publicDetails = await requestJson<{
+  consents: { snapshotHash: string };
   competition: {
     divisions: Array<{
       id: string;
@@ -685,6 +707,7 @@ const publicDuplicatePayload = {
   weightClassId: publicWeightClass.id,
   contactEmail: `public-duplicate-${suffix.toLowerCase()}@streetlifting.test`,
   consentDataProcessing: true,
+  consentSnapshotHash: publicDetails.consents.snapshotHash,
   consentPublicResults: true,
 };
 const publicDuplicateResults = await Promise.all(

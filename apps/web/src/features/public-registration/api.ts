@@ -63,6 +63,26 @@ export interface PublicRegistrationDiscipline {
   format: string;
 }
 
+export interface PublicRegistrationConsents {
+  snapshotHash: string;
+  textVersion: string;
+  locale: 'ru' | 'en';
+  operatorConfigured: boolean;
+  operator: {
+    name: string;
+    address: string | null;
+    contact: string | null;
+    privacyPolicyUrl: string | null;
+    processor: string;
+    organizerName: string | null;
+  };
+  texts: {
+    dataProcessing: string;
+    publicResults: string;
+    photoPublication: string;
+  };
+}
+
 export interface PublicRegistrationDetails {
   competition: PublicRegistrationCompetition;
   disciplines: PublicRegistrationDiscipline[];
@@ -70,6 +90,8 @@ export interface PublicRegistrationDetails {
     isAvailable: boolean;
     reason: string | null;
   };
+  /** Server-built consent texts naming the federation as the operator. */
+  consents?: PublicRegistrationConsents;
 }
 
 export interface PublicFederationRegistrationList {

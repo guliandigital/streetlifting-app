@@ -19,6 +19,7 @@ import type { Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
+import { LIVE_OPS_READ_ROLES, isPlatformAdmin } from '../lib/auth/authorization-matrix.js';
 import { validateUuidParams } from '../lib/params.js';
 
 const PRESET_BY_DISCIPLINE_CODE = new Map(presets.ISF_V51_DISCIPLINES.map((p) => [p.code, p]));
@@ -596,7 +597,10 @@ export const athletesPlugin: FeaturePlugin = {
             deletedAt: null,
           },
         });
-        if (!attachment) {
+        // Photos must use the consent-aware /photo endpoint, even when the
+        // caller knows an attachment id from an older documents response.
+        if (!attachment || attachment.kind === 'athlete_photo') {
+          reply.header('Cache-Control', 'private, no-store');
           return reply.code(404).send({
             error: { code: 'not_found', message: 'Attachment not found', requestId: req.requestId },
           });
@@ -785,38 +789,105 @@ export const athletesPlugin: FeaturePlugin = {
       },
     );
 
-    // ─── Photo download (public, no auth — <img> can't send Bearer) ───
-    app.get<{ Params: { id: string } }>('/athletes/:id/photo', async (req, reply) => {
-      const photo = await prisma.attachment.findFirst({
-        where: {
-          athleteId: req.params.id,
-          kind: 'athlete_photo',
-          deletedAt: null,
-        },
-        orderBy: { uploadedAt: 'desc' },
-      });
-      if (!photo) {
-        return reply.code(404).send({
-          error: { code: 'not_found', message: 'Photo not found', requestId: req.requestId },
+    // Public photos require consent in the requested federation. Private
+    // workspace previews use authenticated fetch instead of a bare <img> URL.
+    app.get<{ Params: { id: string }; Querystring: { federationId?: string } }>(
+      '/athletes/:id/photo',
+      async (req, reply) => {
+        reply.header('Cache-Control', 'private, no-store');
+        reply.header('Vary', 'Authorization');
+        if (req.headers.authorization && !req.user) {
+          return reply.code(401).send({
+            error: {
+              code: 'unauthorized',
+              message: 'Authentication required',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const query = z.object({ federationId: z.string().uuid().optional() }).safeParse(req.query);
+        if (!query.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: 'Invalid federation',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const athlete = await prisma.athlete.findUnique({
+          where: { id: req.params.id },
+          select: { id: true, userId: true, privacyMode: true },
         });
-      }
-
-      const content = await storage.get(photo.storagePath).catch((err: unknown) => {
-        log.error({ err, photoId: photo.id }, 'photo file read failed');
-        return null;
-      });
-      if (!content) {
-        return reply.code(404).send({
-          error: {
-            code: 'file_missing',
-            message: 'Photo file is missing from storage',
-            requestId: req.requestId,
+        let allowed = Boolean(
+          athlete && req.user && (athlete.userId === req.user.id || isPlatformAdmin(req.user)),
+        );
+        if (athlete && req.user && !allowed) {
+          const scopes = req.user.roles
+            .filter((assignment) => LIVE_OPS_READ_ROLES.some((role) => role === assignment.role))
+            .flatMap((assignment) => [
+              ...(assignment.federationId ? [{ federationId: assignment.federationId }] : []),
+              ...(assignment.competitionId ? [{ id: assignment.competitionId }] : []),
+            ]);
+          if (scopes.length > 0) {
+            allowed = Boolean(
+              await prisma.nomination.findFirst({
+                where: { athleteId: athlete.id, competition: { OR: scopes } },
+                select: { id: true },
+              }),
+            );
+          }
+        }
+        if (athlete && !allowed && athlete.privacyMode !== 'hidden') {
+          const federationId = query.data.federationId ?? null;
+          allowed = Boolean(
+            await prisma.consent.findFirst({
+              where: {
+                athleteId: athlete.id,
+                scope: 'photo_publication',
+                revokedAt: null,
+                federationId,
+                ...(federationId ? { federation: { isPublicResultsClosed: false } } : {}),
+              },
+              select: { id: true },
+            }),
+          );
+        }
+        if (!allowed) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Photo not found', requestId: req.requestId },
+          });
+        }
+        const photo = await prisma.attachment.findFirst({
+          where: {
+            athleteId: req.params.id,
+            kind: 'athlete_photo',
+            deletedAt: null,
           },
+          orderBy: { uploadedAt: 'desc' },
         });
-      }
-      reply.header('Content-Type', photo.mimeType);
-      reply.header('Cache-Control', 'private, max-age=300');
-      return reply.send(content);
-    });
+        if (!photo) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Photo not found', requestId: req.requestId },
+          });
+        }
+
+        const content = await storage.get(photo.storagePath).catch((err: unknown) => {
+          log.error({ err, photoId: photo.id }, 'photo file read failed');
+          return null;
+        });
+        if (!content) {
+          return reply.code(404).send({
+            error: {
+              code: 'file_missing',
+              message: 'Photo file is missing from storage',
+              requestId: req.requestId,
+            },
+          });
+        }
+        reply.header('Content-Type', photo.mimeType);
+        return reply.send(content);
+      },
+    );
   },
 };

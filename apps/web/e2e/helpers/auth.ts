@@ -33,7 +33,7 @@ function requireEnv(name: string): string {
   return value;
 }
 
-loadEnvFile(resolve(apiDir, '.env'));
+if (process.env.E2E_ISOLATED !== '1') loadEnvFile(resolve(apiDir, '.env'));
 
 export async function loginViaApi(request: APIRequestContext): Promise<{
   accessToken: string;
@@ -87,7 +87,7 @@ export async function installFreshAuth(page: Page): Promise<void> {
       window.localStorage.removeItem('streetlifting.e2e.user.v1');
       window.sessionStorage.setItem(refreshKey, authSession.refreshToken);
       window.sessionStorage.setItem(e2eSessionKey, JSON.stringify(authSession));
-      window.localStorage.setItem('i18nextLng', 'ru');
+      window.localStorage.setItem('streetlifting.locale.v1', 'ru');
     },
     {
       e2eSessionKey: E2E_SESSION_KEY,
@@ -102,4 +102,29 @@ export async function installFreshAuth(page: Page): Promise<void> {
   await page.goto('/federations');
   await expect(page).toHaveURL(/\/federations(?:[/?#]|$)/);
   await expect(page.locator('a[href="/login"]')).toHaveCount(0);
+}
+
+/**
+ * Public registration and the in_progress status require a confirmed
+ * organizer (the person responsible for personal-data handling at the event).
+ * Invite the signed-in user as organizer and confirm the invitation.
+ */
+export async function confirmOrganizer(
+  request: APIRequestContext,
+  accessToken: string,
+  competitionId: string,
+  userId: string,
+): Promise<void> {
+  const headers = authHeaders(accessToken);
+  const invite = await request.post(apiUrl(`/competitions/${competitionId}/team-members`), {
+    headers,
+    data: { userId, role: 'organizer' },
+  });
+  expect(invite.ok(), await invite.text()).toBe(true);
+  const { teamMember } = (await invite.json()) as { teamMember: { id: string } };
+  const respond = await request.post(apiUrl(`/competition-team-members/${teamMember.id}/respond`), {
+    headers,
+    data: { status: 'confirmed' },
+  });
+  expect(respond.ok(), await respond.text()).toBe(true);
 }

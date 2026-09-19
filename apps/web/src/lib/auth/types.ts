@@ -13,6 +13,21 @@ export interface AuthUser {
     federationId: string | null;
     competitionId: string | null;
   }>;
+  /**
+   * Role grants that stay inactive until the person accepts the
+   * confidentiality acknowledgment (152-ФЗ art. 7). Empty for most users.
+   */
+  pendingAcknowledgments?: Array<{
+    roleAssignmentId: string;
+    role: string;
+    federationId: string | null;
+    competitionId: string | null;
+  }>;
+}
+
+export interface AccessAcknowledgmentResponse {
+  textVersion: string;
+  texts: { ru: string; en: string };
 }
 
 export interface LoginResponse {

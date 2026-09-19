@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { ACCESS_ACKNOWLEDGMENT_VERSION } from '../lib/access-acknowledgment.js';
 import websocket from '@fastify/websocket';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -81,7 +82,16 @@ describe('competition live updates', () => {
       id: '00000000-0000-4000-8000-000000000001',
       email: 'judge@example.test',
       displayName: 'Judge',
-      roleAssignments: [{ role: 'judge', federationId: null, competitionId }],
+      roleAssignments: [
+        {
+          id: '00000000-0000-4000-8000-000000000301',
+          role: 'judge',
+          federationId: null,
+          competitionId,
+          acknowledgedAt: new Date(),
+          acknowledgedTextVersion: ACCESS_ACKNOWLEDGMENT_VERSION,
+        },
+      ],
     });
     prismaMock.competition.findUnique.mockResolvedValue({
       id: competitionId,
@@ -159,9 +169,12 @@ describe('competition live updates', () => {
       displayName: 'Other judge',
       roleAssignments: [
         {
+          id: '00000000-0000-4000-8000-000000000302',
           role: 'judge',
           federationId: null,
           competitionId: '00000000-0000-4000-8000-000000000202',
+          acknowledgedAt: new Date(),
+          acknowledgedTextVersion: ACCESS_ACKNOWLEDGMENT_VERSION,
         },
       ],
     });

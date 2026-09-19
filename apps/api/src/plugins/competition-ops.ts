@@ -2516,7 +2516,30 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
-        return publicScoreboardPayload(payload);
+        reply.header('Cache-Control', 'private, no-store');
+        const photoConsents = await prisma.consent.findMany({
+          where: {
+            athleteId: { in: payload.nominations.map((nomination) => nomination.athlete.id) },
+            federationId: payload.competition.federationId,
+            scope: 'photo_publication',
+            revokedAt: null,
+          },
+          select: { athleteId: true },
+        });
+        const photoAthletes = new Set(photoConsents.map((consent) => consent.athleteId));
+        return publicScoreboardPayload({
+          ...payload,
+          nominations: payload.nominations.map((nomination) => ({
+            ...nomination,
+            athlete: {
+              ...nomination.athlete,
+              photoUrl:
+                nomination.athlete.photoUrl && photoAthletes.has(nomination.athlete.id)
+                  ? `/api/athletes/${nomination.athlete.id}/photo?federationId=${payload.competition.federationId}`
+                  : null,
+            },
+          })),
+        });
       },
     );
 

@@ -26,6 +26,11 @@ export interface Federation {
   securityKey: string;
   isPublicResultsClosed: boolean;
   notificationsDisabled: boolean;
+  /** Personal-data operator requisites shown in consent texts (152-ФЗ). */
+  pdOperatorName: string | null;
+  pdOperatorAddress: string | null;
+  pdOperatorContact: string | null;
+  privacyPolicyUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }

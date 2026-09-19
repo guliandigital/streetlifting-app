@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma } from '../lib/db.js';
 import * as audit from '../lib/audit.js';
@@ -49,45 +50,49 @@ export const passportIdentityLinksPlugin: FeaturePlugin = {
           return reply.code(404).send({
             error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
           });
-        const link = await audit.withAudit(
-          {
-            ...audit.fromRequest(req),
-            actorUserId: req.user!.id,
-            action: 'passport.external_identity.verified',
-            scopeFederationId: null,
-            scopeCompetitionId: null,
-            targetType: 'external_identity_link',
-            targetId: 'pending',
-            before: null,
-            after: parsed.data,
-          },
-          (tx) =>
-            tx.externalIdentityLink.upsert({
-              where: {
-                system_entityType_externalId: {
-                  system: parsed.data.system,
-                  entityType: 'athlete',
-                  externalId: parsed.data.externalId,
-                },
-              },
-              create: {
+        const entry: audit.AuditEntryFor = {
+          ...audit.fromRequest(req),
+          actorUserId: req.user!.id,
+          action: 'passport.external_identity.verified',
+          scopeFederationId: null,
+          scopeCompetitionId: null,
+          targetType: 'external_identity_link',
+          targetId: randomUUID(),
+          before: null,
+          after: parsed.data,
+        };
+        const link = await audit.withAudit(entry, async (tx) => {
+          const result = await tx.externalIdentityLink.upsert({
+            where: {
+              system_entityType_externalId: {
                 system: parsed.data.system,
                 entityType: 'athlete',
-                localEntityId: athlete.id,
                 externalId: parsed.data.externalId,
-                confidence: 1,
-                status: 'verified',
-                verifiedAt: new Date(),
               },
-              update: {
-                localEntityId: athlete.id,
-                confidence: 1,
-                status: 'verified',
-                verifiedAt: new Date(),
-                rejectedAt: null,
-              },
-            }),
-        );
+            },
+            create: {
+              id: entry.targetId,
+              system: parsed.data.system,
+              entityType: 'athlete',
+              localEntityId: athlete.id,
+              externalId: parsed.data.externalId,
+              confidence: 1,
+              status: 'verified',
+              verifiedAt: new Date(),
+            },
+            update: {
+              localEntityId: athlete.id,
+              confidence: 1,
+              status: 'verified',
+              verifiedAt: new Date(),
+              rejectedAt: null,
+            },
+          });
+          // Upsert may return an existing row. withAudit records this entry
+          // after the callback, inside the same transaction.
+          entry.targetId = result.id;
+          return result;
+        });
         return reply.code(201).send({ link });
       },
     );

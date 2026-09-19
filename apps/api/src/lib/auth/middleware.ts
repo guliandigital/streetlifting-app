@@ -2,6 +2,10 @@ import type { FastifyRequest, FastifyReply, preHandlerHookHandler } from 'fastif
 import { prisma } from '../db.js';
 import { verifyAccessToken } from './tokens.js';
 import type { Role } from '@prisma/client';
+import {
+  ACCESS_ACKNOWLEDGMENT_VERSION,
+  roleRequiresAcknowledgment,
+} from '../access-acknowledgment.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -9,19 +13,30 @@ declare module 'fastify' {
   }
 }
 
+export interface PendingRoleAcknowledgment {
+  roleAssignmentId: string;
+  role: Role;
+  federationId: string | null;
+  competitionId: string | null;
+}
+
 export interface AuthenticatedUser {
   id: string;
   email: string;
   displayName: string;
   /**
-   * Role assignments materialized at request time. Tokens never carry roles
-   * so a revocation takes effect on the next request, not the next login.
+   * Active role assignments materialized at request time. Tokens never carry
+   * roles so a revocation takes effect on the next request, not the next
+   * login. Roles that touch other people's personal data are listed only
+   * after the holder accepted the confidentiality acknowledgment (152-ФЗ
+   * art. 7); until then they appear in `pendingAcknowledgments` instead.
    */
   roles: Array<{
     role: Role;
     federationId: string | null;
     competitionId: string | null;
   }>;
+  pendingAcknowledgments?: PendingRoleAcknowledgment[];
 }
 
 /**
@@ -41,17 +56,48 @@ export async function authenticateAccessToken(
     include: {
       roleAssignments: {
         where: { revokedAt: null },
-        select: { role: true, federationId: true, competitionId: true },
+        select: {
+          id: true,
+          role: true,
+          federationId: true,
+          competitionId: true,
+          acknowledgedAt: true,
+          acknowledgedTextVersion: true,
+        },
       },
     },
   });
   if (!user) return null;
 
+  const roles: AuthenticatedUser['roles'] = [];
+  const pendingAcknowledgments: PendingRoleAcknowledgment[] = [];
+  for (const assignment of user.roleAssignments) {
+    const acknowledged =
+      !roleRequiresAcknowledgment(assignment.role) ||
+      (assignment.acknowledgedAt !== null &&
+        assignment.acknowledgedTextVersion === ACCESS_ACKNOWLEDGMENT_VERSION);
+    if (acknowledged) {
+      roles.push({
+        role: assignment.role,
+        federationId: assignment.federationId,
+        competitionId: assignment.competitionId,
+      });
+    } else {
+      pendingAcknowledgments.push({
+        roleAssignmentId: assignment.id,
+        role: assignment.role,
+        federationId: assignment.federationId,
+        competitionId: assignment.competitionId,
+      });
+    }
+  }
+
   return {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
-    roles: user.roleAssignments,
+    roles,
+    pendingAcknowledgments,
   };
 }
 

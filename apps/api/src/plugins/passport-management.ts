@@ -342,6 +342,7 @@ export const passportManagementPlugin: FeaturePlugin = {
         const storagePath = storageKey('passport', req.user!.id, `${randomUUID()}-${filename}`);
         await storage.put(storagePath, content, parsed.data.mimeType);
         try {
+          const attachmentId = randomUUID();
           const attachment = await audit.withAudit(
             {
               ...audit.fromRequest(req),
@@ -350,7 +351,7 @@ export const passportManagementPlugin: FeaturePlugin = {
               scopeFederationId: null,
               scopeCompetitionId: null,
               targetType: 'attachment',
-              targetId: 'pending',
+              targetId: attachmentId,
               before: null,
               after: {
                 kind: parsed.data.kind,
@@ -362,6 +363,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             (tx) =>
               tx.attachment.create({
                 data: {
+                  id: attachmentId,
                   kind: parsed.data.kind,
                   uploadedByUserId: req.user!.id,
                   filename,
@@ -574,6 +576,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             requestId: req.requestId,
           },
         });
+      const requestId = randomUUID();
       const request = await audit.withAudit(
         {
           ...audit.fromRequest(req),
@@ -582,7 +585,7 @@ export const passportManagementPlugin: FeaturePlugin = {
           scopeFederationId: parsed.data.federationId,
           scopeCompetitionId: null,
           targetType: 'passport_review_request',
-          targetId: 'pending',
+          targetId: requestId,
           before: null,
           after: parsed.data,
         },
@@ -590,6 +593,7 @@ export const passportManagementPlugin: FeaturePlugin = {
           tx.passportReviewRequest.create({
             data: defined({
               ...parsed.data,
+              id: requestId,
               applicantUserId: req.user!.id,
             }) as Prisma.PassportReviewRequestUncheckedCreateInput,
           }),
@@ -801,6 +805,7 @@ export const passportManagementPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
+        const credentialId = randomUUID();
         const credential = await audit.withAudit(
           {
             ...audit.fromRequest(req),
@@ -809,7 +814,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             scopeFederationId: parsed.data.issuedByFederationId,
             scopeCompetitionId: null,
             targetType: 'official_credential',
-            targetId: 'pending',
+            targetId: credentialId,
             before: null,
             after: parsed.data,
           },
@@ -817,6 +822,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             tx.officialCredential.create({
               data: defined({
                 ...parsed.data,
+                id: credentialId,
                 officialProfileId: profile.id,
               }) as Prisma.OfficialCredentialUncheckedCreateInput,
             }),
@@ -849,6 +855,7 @@ export const passportManagementPlugin: FeaturePlugin = {
           return reply.code(404).send({
             error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
           });
+        const rankId = randomUUID();
         const rank = await audit.withAudit(
           {
             ...audit.fromRequest(req),
@@ -857,7 +864,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             scopeFederationId: parsed.data.issuedByFederationId,
             scopeCompetitionId: null,
             targetType: 'sport_rank_award',
-            targetId: 'pending',
+            targetId: rankId,
             before: null,
             after: parsed.data,
           },
@@ -865,6 +872,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             tx.sportRankAward.create({
               data: defined({
                 ...parsed.data,
+                id: rankId,
                 athleteId: athlete.id,
               }) as Prisma.SportRankAwardUncheckedCreateInput,
             }),
@@ -998,6 +1006,7 @@ export const passportManagementPlugin: FeaturePlugin = {
           });
         const judgeAssignmentId =
           parsed.data.judgeAssignmentId ?? (assignments.length === 1 ? assignments[0]!.id : null);
+        const teamMemberId = randomUUID();
         const teamMember = await audit.withAudit(
           {
             ...audit.fromRequest(req),
@@ -1006,7 +1015,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             scopeFederationId: competition.federationId,
             scopeCompetitionId: competition.id,
             targetType: 'competition_team_member',
-            targetId: 'pending',
+            targetId: teamMemberId,
             before: null,
             after: parsed.data,
           },
@@ -1014,6 +1023,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             tx.competitionTeamMember.create({
               data: defined({
                 ...parsed.data,
+                id: teamMemberId,
                 judgeAssignmentId,
                 competitionId: competition.id,
                 memberNameSnapshot: memberUser.displayName,

@@ -6,6 +6,7 @@ import path from 'node:path';
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:3000';
 
 export default defineConfig({
+  ...(process.env.E2E_ISOLATED === '1' ? { envDir: false as const } : {}),
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

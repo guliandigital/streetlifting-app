@@ -21,6 +21,7 @@
     "release:smoke": "pnpm --filter=@streetlifting/api smoke:pilot",
     "release:smoke:isf": "pnpm --filter=@streetlifting/api smoke:isf",
     "e2e:web": "pnpm --filter=@streetlifting/web e2e",
+    "check:personal-data:db": "node scripts/check-personal-data-db.mjs",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml,css,html}\"",

@@ -17,6 +17,8 @@ const prismaMock = vi.hoisted(() => ({
     findMany: vi.fn(),
     findUnique: vi.fn(),
   },
+  competitionTeamMember: { count: vi.fn() },
+  consent: { findMany: vi.fn() },
   division: {
     findMany: vi.fn(),
   },
@@ -118,6 +120,23 @@ async function withApp(work: (app: FastifyInstance) => Promise<void>): Promise<v
 }
 
 describe('API route authorization', () => {
+  it('requires a confirmed organizer before starting a competition', async () => {
+    prismaMock.competition.findUnique.mockResolvedValue({ ...opsCompetition, status: 'draft' });
+    prismaMock.competitionTeamMember.count.mockResolvedValue(0);
+    await withApp(async (app) => {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/competitions/${competitionA}`,
+        headers: authHeaders('federation_admin', { federationId: federationA }),
+        payload: { status: 'in_progress' },
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json().error.code).toBe('organizer_required');
+      expect(prismaMock.competitionTeamMember.count).toHaveBeenCalledWith({
+        where: { competitionId: competitionA, role: 'organizer', status: 'confirmed' },
+      });
+    });
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     prismaMock.federation.findMany.mockResolvedValue([]);
@@ -126,6 +145,7 @@ describe('API route authorization', () => {
     prismaMock.competition.count.mockResolvedValue(0);
     prismaMock.competition.findUnique.mockResolvedValue(opsCompetition);
     prismaMock.division.findMany.mockResolvedValue([]);
+    prismaMock.consent.findMany.mockResolvedValue([]);
     prismaMock.platform.findMany.mockResolvedValue([]);
     prismaMock.judgeAssignment.findMany.mockResolvedValue([]);
     prismaMock.nomination.findMany.mockResolvedValue([]);
@@ -260,6 +280,62 @@ describe('API route authorization', () => {
         code: 'public_results_closed',
         message: 'Public results are closed',
       });
+    });
+  });
+
+  it.each(['missing', 'allowed', 'hidden'])('public scoreboard photo consent: %s', async (mode) => {
+    const athleteId = '00000000-0000-4000-8000-000000000501';
+    prismaMock.nomination.findMany.mockResolvedValue([
+      {
+        id: 'nomination',
+        entryNumber: 1,
+        bodyWeightAtWeighIn: null,
+        paidAmountKopecks: 0n,
+        paymentStatus: 'unpaid',
+        status: 'registered',
+        athlete: {
+          id: athleteId,
+          lastName: 'Test',
+          firstName: 'Athlete',
+          middleName: null,
+          dateOfBirth: new Date('1990-01-01'),
+          privacyMode: mode === 'hidden' ? 'hidden' : 'public_results',
+          photoUrl: `/api/athletes/${athleteId}/photo`,
+          clubName: null,
+        },
+        discipline: {
+          id: 'discipline',
+          code: 'test',
+          nameRu: 'Test',
+          nameEn: 'Test',
+          components: [],
+        },
+        division: { id: 'division', nameRu: 'Test', nameEn: 'Test' },
+        weightClass: { id: 'weight', nameRu: 'Test', nameEn: 'Test' },
+        declaredWeightClass: null,
+        platform: null,
+        flight: null,
+        group: null,
+        attempts: [],
+      },
+    ]);
+    prismaMock.consent.findMany.mockResolvedValue(mode === 'missing' ? [] : [{ athleteId }]);
+    await withApp(async (app) => {
+      const response = await app.inject({ url: `/public/competitions/${competitionA}/scoreboard` });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json().nominations[0].athlete.photoUrl).toBe(
+        mode === 'allowed' ? `/api/athletes/${athleteId}/photo?federationId=${federationA}` : null,
+      );
+      expect(prismaMock.consent.findMany).toHaveBeenCalledWith({
+        where: {
+          athleteId: { in: [athleteId] },
+          federationId: federationA,
+          scope: 'photo_publication',
+          revokedAt: null,
+        },
+        select: { athleteId: true },
+      });
+      expect(response.headers['cache-control']).toBe('private, no-store');
     });
   });
 });

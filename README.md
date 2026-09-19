@@ -61,6 +61,8 @@ pnpm e2e:web
 
 ## Production
 
+Project state and continuation notes: [Knowledge base](docs/knowledge-base.md).
+
 Deploys happen on push to `main` through the linked Vercel projects. Setup, environment variables,
 domains and the release checklist are in [docs/vercel-deployment.md](docs/vercel-deployment.md).
 
