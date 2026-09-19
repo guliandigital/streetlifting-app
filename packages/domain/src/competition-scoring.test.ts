@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateNominationPlaces,
   calculateNominationScore,
+  hasCompleteAttemptSet,
   type ScoringNomination,
 } from './competition-scoring.js';
 
@@ -16,6 +17,54 @@ const baseNomination: ScoringNomination = {
   components: [{ id: 'pu', attemptCount: 3, fixedWeightKg: null }],
   attempts: [],
 };
+
+describe('complete attempt protocol', () => {
+  const protocol = {
+    discipline: { attemptCount: 3 },
+    components: [
+      { id: 'pull', attemptCount: 1 },
+      { id: 'dip', attemptCount: 1 },
+    ],
+    attempts: [
+      { componentId: 'pull', attemptNumber: 1, result: 'good_lift' },
+      { componentId: 'dip', attemptNumber: 1, result: 'no_lift' },
+    ],
+  };
+  it('accepts a completed protocol even with an unsuccessful component', () => {
+    expect(hasCompleteAttemptSet(protocol)).toBe(true);
+  });
+  it('does not mistake duplicate or excess slots for the missing component', () => {
+    expect(
+      hasCompleteAttemptSet({
+        ...protocol,
+        attempts: [protocol.attempts[0]!, protocol.attempts[0]!],
+      }),
+    ).toBe(false);
+    expect(
+      hasCompleteAttemptSet({
+        ...protocol,
+        attempts: [protocol.attempts[0]!, { ...protocol.attempts[0]!, attemptNumber: 2 }],
+      }),
+    ).toBe(false);
+  });
+  it('rejects undecided attempts', () => {
+    expect(
+      hasCompleteAttemptSet({
+        ...protocol,
+        attempts: [protocol.attempts[0]!, { ...protocol.attempts[1]!, result: 'pending' }],
+      }),
+    ).toBe(false);
+  });
+  it('handles disciplines without components and explicit withdrawals', () => {
+    expect(
+      hasCompleteAttemptSet({
+        discipline: { attemptCount: 1 },
+        components: [],
+        attempts: [{ componentId: null, attemptNumber: 1, result: 'withdrawn' }],
+      }),
+    ).toBe(true);
+  });
+});
 
 describe('competition scoring', () => {
   it('uses the best successful weight for max-weight disciplines', () => {

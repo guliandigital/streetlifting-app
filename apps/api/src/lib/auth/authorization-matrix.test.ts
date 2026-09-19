@@ -45,6 +45,19 @@ function can(
 }
 
 describe('authorization matrix', () => {
+  it('does not expand a competition assignment to every tournament in its federation', () => {
+    const scoped = actor('secretary', {
+      federationId: federationA,
+      competitionId: competitionA.id,
+    });
+    expect(can(scoped, 'competition.ops.readFull', competitionA)).toBe(true);
+    expect(can(scoped, 'competition.ops.readFull', { ...competitionA, id: competitionB.id })).toBe(
+      false,
+    );
+    expect(
+      can(scoped, 'competition.ops.readFull', { ...competitionA, federationId: federationB }),
+    ).toBe(false);
+  });
   it('declares unique action keys', () => {
     const keys = AUTHORIZATION_MATRIX.map((entry) => entry.key);
     expect(new Set(keys).size).toBe(keys.length);

@@ -29,10 +29,42 @@ const prismaMock = vi.hoisted(() => ({
     findMany: vi.fn(),
   },
   nomination: {
+    count: vi.fn(),
     findMany: vi.fn(),
     findUnique: vi.fn(),
   },
 }));
+
+it('requires finalization before archiving an active tournament', async () => {
+  prismaMock.competition.findUnique.mockResolvedValue({ ...opsCompetition, status: 'in_progress' });
+  await withApp(async (app) => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/competitions/${competitionA}`,
+      headers: authHeaders('platform_admin'),
+      payload: { status: 'archived' },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe('competition_not_finalized');
+  });
+});
+it('rejects finalization when finished statuses hide an incomplete protocol', async () => {
+  prismaMock.competition.findUnique.mockResolvedValue({ ...opsCompetition, status: 'in_progress' });
+  prismaMock.nomination.count.mockResolvedValue(0);
+  prismaMock.nomination.findMany.mockResolvedValue([
+    { discipline: { attemptCount: 3, components: [] }, attempts: [] },
+  ]);
+  await withApp(async (app) => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/competitions/${competitionA}`,
+      headers: authHeaders('platform_admin'),
+      payload: { status: 'finalized' },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe('competition_protocol_incomplete');
+  });
+});
 
 vi.mock('../db.js', async () => {
   const { Prisma } = await vi.importActual('@prisma/client');
@@ -120,6 +152,48 @@ async function withApp(work: (app: FastifyInstance) => Promise<void>): Promise<v
 }
 
 describe('API route authorization', () => {
+  it('does not grant federation accounting writes from a competition-only role', async () => {
+    await withApp(async (app) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/federations/${federationA}/writeoffs`,
+        headers: authHeaders('accountant', {
+          federationId: federationA,
+          competitionId: competitionA,
+        }),
+        payload: {},
+      });
+      expect(response.statusCode).toBe(403);
+    });
+  });
+  it('denies ops and detail access to another tournament in the assigned federation', async () => {
+    await withApp(async (app) => {
+      const headers = authHeaders('secretary', {
+        federationId: federationA,
+        competitionId: '00000000-0000-4000-8000-000000000199',
+      });
+      for (const suffix of ['', '/ops', '/live-ops']) {
+        expect(
+          (await app.inject({ url: `/competitions/${competitionA}${suffix}`, headers })).statusCode,
+        ).toBe(403);
+      }
+    });
+  });
+  it('intersects federation and competition filters in the list query', async () => {
+    await withApp(async (app) => {
+      const response = await app.inject({
+        url: '/competitions',
+        headers: authHeaders('secretary', {
+          federationId: federationA,
+          competitionId: competitionA,
+        }),
+      });
+      expect(response.statusCode).toBe(200);
+      expect(prismaMock.competition.findMany.mock.calls[0]![0].where.OR).toEqual([
+        { federationId: federationA, id: competitionA },
+      ]);
+    });
+  });
   it('requires a confirmed organizer before starting a competition', async () => {
     prismaMock.competition.findUnique.mockResolvedValue({ ...opsCompetition, status: 'draft' });
     prismaMock.competitionTeamMember.count.mockResolvedValue(0);

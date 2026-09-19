@@ -242,4 +242,7 @@ test('reports page exposes only wired print actions as active buttons', async ({
   await expect(
     page.getByRole('button', { name: 'Печать кодов быстрой авторизации в телеграм' }),
   ).toBeDisabled();
+  await page.goto(`/competitions/${setup.competitionId}/certificates`);
+  await expect(page.getByText(/предварительные результаты, турнир не завершён/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Печать / PDF', exact: true })).toBeDisabled();
 });

@@ -46,6 +46,31 @@ export interface NominationPlaces {
   placeOverall: number | null;
 }
 
+/** A complete protocol has exactly one decided attempt in every required slot. */
+export function hasCompleteAttemptSet(nomination: {
+  discipline: { attemptCount: number };
+  components: Array<{ id: string; attemptCount: number }>;
+  attempts: Array<{ componentId: string | null; attemptNumber: number; result: string }>;
+}): boolean {
+  const components = nomination.components.length
+    ? nomination.components
+    : [{ id: null, attemptCount: nomination.discipline.attemptCount }];
+  const expected = new Set(
+    components.flatMap((component) =>
+      Array.from({ length: component.attemptCount }, (_, index) => `${component.id}:${index + 1}`),
+    ),
+  );
+  if (!expected.size || nomination.attempts.length !== expected.size) return false;
+  for (const attempt of nomination.attempts) {
+    if (
+      !['good_lift', 'no_lift', 'withdrawn'].includes(attempt.result) ||
+      !expected.delete(`${attempt.componentId}:${attempt.attemptNumber}`)
+    )
+      return false;
+  }
+  return expected.size === 0;
+}
+
 function successfulAttempts(attempts: ScoringAttempt[]): ScoringAttempt[] {
   return attempts.filter((attempt) => attempt.result === 'good_lift');
 }
