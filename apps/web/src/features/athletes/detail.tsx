@@ -120,6 +120,9 @@ export default function AthleteDetailFeature() {
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
   const [city, setCity] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [birthYear, setBirthYear] = useState('');
+  const [countryCode, setCountryCode] = useState('');
   const [clubName, setClubName] = useState('');
   const [coachName, setCoachName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
@@ -154,6 +157,9 @@ export default function AthleteDetailFeature() {
     setFirstName(data.athlete.firstName);
     setMiddleName(data.athlete.middleName ?? '');
     setCity(data.athlete.city ?? '');
+    setDateOfBirth(data.athlete.dateOfBirth?.slice(0, 10) ?? '');
+    setBirthYear(data.athlete.birthYear == null ? '' : String(data.athlete.birthYear));
+    setCountryCode(data.athlete.countryCode ?? '');
     setClubName(data.athlete.clubName ?? '');
     setCoachName(data.athlete.coachName ?? '');
     setCardNumber(data.athlete.federationCardNumber ?? '');
@@ -175,7 +181,9 @@ export default function AthleteDetailFeature() {
   const regionRow = a.regionCode
     ? regionsData?.regions.find((r) => r.codeIso === a.regionCode)
     : undefined;
-  const countryLabel = countryRow ? `${countryRow.nameRu} (${countryRow.codeIso2})` : a.countryCode;
+  const countryLabel = countryRow
+    ? `${countryRow.nameRu} (${countryRow.codeIso2})`
+    : (a.countryCode ?? '—');
   const regionLabel = regionRow ? regionRow.nameRu : a.regionCode;
 
   async function saveProfile(e: FormEvent) {
@@ -186,6 +194,14 @@ export default function AthleteDetailFeature() {
         firstName: firstName.trim(),
         middleName: middleName.trim() || undefined,
         city: city.trim() || undefined,
+        dateOfBirth: dateOfBirth || null,
+        birthYear: dateOfBirth
+          ? Number(dateOfBirth.slice(0, 4))
+          : birthYear
+            ? Number(birthYear)
+            : null,
+        countryCode: countryCode || null,
+        ...(countryCode !== a.countryCode && { regionCode: '' }),
         clubName: clubName.trim() || undefined,
         coachName: coachName.trim() || undefined,
         federationCardNumber: cardNumber.trim() || undefined,
@@ -410,7 +426,7 @@ export default function AthleteDetailFeature() {
                     <Field label="Отчество" value={a.middleName} />
                     <Field
                       label={t('athletes.fields.dob')}
-                      value={`${formatDateOfBirth(a.dateOfBirth)} (${age} ${t('athletes.yearsShort')})`}
+                      value={`${formatDateOfBirth(a.dateOfBirth, undefined, a.birthYear)}${age == null ? '' : ` (${age} ${t('athletes.yearsShort')})`}`}
                     />
                     <Field
                       label={t('athletes.fields.gender')}
@@ -465,6 +481,39 @@ export default function AthleteDetailFeature() {
                       value={middleName}
                       onChange={(e) => setMiddleName(e.target.value)}
                     />
+                    <label htmlFor="dateOfBirth">{t('athletes.fields.dob')}</label>
+                    <input
+                      id="dateOfBirth"
+                      type="date"
+                      className="pt-field"
+                      value={dateOfBirth}
+                      onChange={(e) => setDateOfBirth(e.target.value)}
+                    />
+                    <label htmlFor="birthYear">{t('athletes.fields.birthYear')}</label>
+                    <input
+                      id="birthYear"
+                      type="number"
+                      min={1900}
+                      max={new Date().getFullYear()}
+                      className="pt-field"
+                      value={dateOfBirth ? dateOfBirth.slice(0, 4) : birthYear}
+                      disabled={Boolean(dateOfBirth)}
+                      onChange={(e) => setBirthYear(e.target.value)}
+                    />
+                    <label htmlFor="countryCode">{t('athletes.fields.country')}</label>
+                    <select
+                      id="countryCode"
+                      className="pt-field"
+                      value={countryCode}
+                      onChange={(e) => setCountryCode(e.target.value)}
+                    >
+                      <option value="">{t('athletes.fields.countryUnknown')}</option>
+                      {countriesData?.countries.map((country) => (
+                        <option key={country.id} value={country.codeIso2}>
+                          {country.nameRu} ({country.codeIso2})
+                        </option>
+                      ))}
+                    </select>
                     <label htmlFor="city">Город:</label>
                     <input
                       id="city"

@@ -153,7 +153,9 @@ export default function AthletesListFeature() {
                   </Link>
                   {a.middleName ? <span className="pt-muted"> {a.middleName}</span> : null}
                 </td>
-                <td className="text-center tabular-nums">{formatDateOfBirth(a.dateOfBirth)}</td>
+                <td className="text-center tabular-nums">
+                  {formatDateOfBirth(a.dateOfBirth, undefined, a.birthYear)}
+                </td>
                 <td className="text-center">{a.gender}</td>
                 <td className="font-mono text-xs text-center">{a.countryCode}</td>
                 <td className="font-mono text-xs">

@@ -179,6 +179,8 @@
     "cols": {
       "name": "Name",
       "dob": "Date of birth",
+      "birthYear": "Birth year (if full date is unknown)",
+      "countryUnknown": "Country unknown",
       "gender": "Gender",
       "country": "Country",
       "club": "Club"

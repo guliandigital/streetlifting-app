@@ -7,9 +7,10 @@ export interface AthleteDto {
   lastName: string;
   firstName: string;
   middleName: string | null;
-  dateOfBirth: string;
+  dateOfBirth: string | null;
+  birthYear?: number | null;
   gender: 'M' | 'F';
-  countryCode: string;
+  countryCode: string | null;
   regionCode: string | null;
   city: string | null;
   coachName: string | null;

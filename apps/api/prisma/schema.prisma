@@ -629,9 +629,10 @@ model Athlete {
   isfPersonId          String?
   publicProfileSlug    String?
   privacyMode          String       @default("public_results")
-  dateOfBirth          DateTime     @db.Date
+  dateOfBirth          DateTime?    @db.Date
+  birthYear            Int?
   gender               Gender
-  countryCode          String       @db.Char(2)
+  countryCode          String?      @db.Char(2)
   regionCode           String?
   city                 String?
   coachName            String?

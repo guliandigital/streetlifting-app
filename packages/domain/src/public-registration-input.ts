@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import { AthleteCreate } from './athlete-input.js';
+import { CompleteAthleteCreate } from './athlete-input.js';
 
 const Uuid = z.string().uuid();
 const OptionalContact = z.string().trim().min(3).max(120).optional();
 
 export const PublicCompetitionRegistrationCreate = z
   .object({
-    athlete: AthleteCreate,
+    athlete: CompleteAthleteCreate,
     disciplineId: Uuid,
     divisionId: Uuid,
     declaredWeightClassId: Uuid.optional(),

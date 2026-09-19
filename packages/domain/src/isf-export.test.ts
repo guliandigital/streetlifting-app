@@ -56,6 +56,7 @@ describe('ISF export contracts', () => {
     });
 
     expect(parsed).not.toHaveProperty('dateOfBirth');
+    expect(IsfPublicAthleteRef.parse({ ...parsed, countryCode: null }).countryCode).toBeNull();
   });
 
   it('validates sync events separately from export snapshots', () => {

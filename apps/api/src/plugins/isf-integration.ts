@@ -190,8 +190,12 @@ function displayName(athlete: {
   return [athlete.lastName, athlete.firstName, athlete.middleName].filter(Boolean).join(' ');
 }
 
-function birthYear(dateOfBirth: Date, privacyMode: string): number | null {
-  return privacyMode === 'hidden' ? null : dateOfBirth.getUTCFullYear();
+function birthYear(
+  dateOfBirth: Date | null,
+  privacyMode: string,
+  knownYear: number | null,
+): number | null {
+  return privacyMode === 'hidden' ? null : (dateOfBirth?.getUTCFullYear() ?? knownYear);
 }
 
 function encodeCursor(cursor: Cursor): string {
@@ -283,6 +287,7 @@ const athletePublicSelect = {
   firstName: true,
   middleName: true,
   dateOfBirth: true,
+  birthYear: true,
   gender: true,
   countryCode: true,
   regionCode: true,
@@ -301,7 +306,7 @@ function athleteRef(
     isfPersonId: athlete.isfPersonId,
     publicProfileSlug: athlete.publicProfileSlug,
     displayName: displayName(athlete),
-    birthYear: birthYear(athlete.dateOfBirth, athlete.privacyMode),
+    birthYear: birthYear(athlete.dateOfBirth, athlete.privacyMode, athlete.birthYear),
     ageGroup: null,
     sex: athlete.gender,
     countryCode: athlete.countryCode,

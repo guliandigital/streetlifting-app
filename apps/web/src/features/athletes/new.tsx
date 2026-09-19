@@ -16,8 +16,9 @@ export default function AthleteNewFeature() {
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  const [birthYear, setBirthYear] = useState('');
   const [gender, setGender] = useState<'M' | 'F'>('M');
-  const [countryCode, setCountryCode] = useState('RU');
+  const [countryCode, setCountryCode] = useState('');
   const [regionCode, setRegionCode] = useState('');
   const [city, setCity] = useState('');
   const [coachName, setCoachName] = useState('');
@@ -46,9 +47,14 @@ export default function AthleteNewFeature() {
         lastName: trimmed(lastName),
         firstName: trimmed(firstName),
         ...(middleName.trim() !== '' && { middleName: trimmed(middleName) }),
-        dateOfBirth,
+        dateOfBirth: dateOfBirth || null,
+        birthYear: dateOfBirth
+          ? Number(dateOfBirth.slice(0, 4))
+          : birthYear
+            ? Number(birthYear)
+            : null,
         gender,
-        countryCode: trimmed(countryCode).toUpperCase(),
+        countryCode: trimmed(countryCode).toUpperCase() || null,
         ...(regionCode.trim() !== '' && { regionCode: trimmed(regionCode) }),
         ...(city.trim() !== '' && { city: trimmed(city) }),
         ...(coachName.trim() !== '' && { coachName: trimmed(coachName) }),
@@ -106,7 +112,18 @@ export default function AthleteNewFeature() {
                   type="date"
                   value={dateOfBirth}
                   onChange={(e) => setDateOfBirth(e.target.value)}
-                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="birthYear">{t('athletes.fields.birthYear')}</Label>
+                <Input
+                  id="birthYear"
+                  type="number"
+                  min={1900}
+                  max={new Date().getFullYear()}
+                  value={dateOfBirth ? dateOfBirth.slice(0, 4) : birthYear}
+                  disabled={Boolean(dateOfBirth)}
+                  onChange={(e) => setBirthYear(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -132,8 +149,8 @@ export default function AthleteNewFeature() {
                     setCity('');
                   }}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  required
                 >
+                  <option value="">{t('athletes.fields.countryUnknown')}</option>
                   {countriesData?.countries.map((c) => (
                     <option key={c.id} value={c.codeIso2}>
                       {c.nameRu} ({c.codeIso2})

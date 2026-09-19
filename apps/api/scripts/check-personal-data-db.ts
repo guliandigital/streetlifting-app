@@ -21,6 +21,7 @@ const { signAccessToken } = await import('../src/lib/auth/tokens.js');
 const { attachUser } = await import('../src/lib/auth/middleware.js');
 const { registerRequestContext } = await import('../src/lib/request-context.js');
 const { authPlugin } = await import('../src/plugins/auth.js');
+const { competitionOpsPlugin } = await import('../src/plugins/competition-ops.js');
 const { athletesPlugin } = await import('../src/plugins/athletes.js');
 const { publicRegistrationPlugin } = await import('../src/plugins/public-registration.js');
 const { passportManagementPlugin } = await import('../src/plugins/passport-management.js');
@@ -36,6 +37,7 @@ app.addHook('preHandler', attachUser);
 for (const plugin of [
   authPlugin,
   athletesPlugin,
+  competitionOpsPlugin,
   publicRegistrationPlugin,
   passportManagementPlugin,
   passportIdentityLinksPlugin,
@@ -51,6 +53,12 @@ try {
     assert.equal(legacy.acknowledgedAt, null);
     assert.equal(legacy.acknowledgedTextVersion, null);
     assert.equal(legacy.role, 'secretary');
+    const legacyAthlete = await prisma.athlete.findUniqueOrThrow({
+      where: { id: '00000000-0000-4000-8000-000000000902' },
+    });
+    assert.equal(legacyAthlete.dateOfBirth?.toISOString().slice(0, 10), '1998-01-01');
+    assert.equal(legacyAthlete.countryCode, 'AM');
+    assert.equal(legacyAthlete.birthYear, null);
   }
   const suffix = randomUUID();
   const user = await prisma.user.create({
@@ -125,6 +133,60 @@ try {
   };
   const otherHeaders = { authorization: `Bearer ${await signAccessToken(other.id)}` };
   const adminHeaders = { authorization: `Bearer ${await signAccessToken(admin.id)}` };
+  const partial = await app.inject({
+    method: 'POST',
+    url: '/athletes',
+    headers: adminHeaders,
+    payload: { firstName: 'Year', lastName: `Only${suffix}`, gender: 'M', birthYear: 2006 },
+  });
+  assert.equal(partial.statusCode, 201, partial.body);
+  const partialAthlete = partial.json().athlete;
+  assert.equal(partialAthlete.dateOfBirth, null);
+  assert.equal(partialAthlete.countryCode, null);
+  assert.equal(partialAthlete.birthYear, 2006);
+  const patchPartial = (payload: object) =>
+    app.inject({
+      method: 'PATCH',
+      url: `/athletes/${partialAthlete.id}`,
+      headers: adminHeaders,
+      payload,
+    });
+  const nominationPayload = {
+    athleteId: partialAthlete.id,
+    disciplineId: discipline.id,
+    divisionId: division.id,
+    weightClassId: weight.id,
+    isMandatePassed: true,
+  };
+  const deniedMandate = await app.inject({
+    method: 'POST',
+    url: `/competitions/${competition.id}/nominations`,
+    headers: adminHeaders,
+    payload: nominationPayload,
+  });
+  assert.equal(deniedMandate.statusCode, 400, deniedMandate.body);
+  assert.equal(deniedMandate.json().error.code, 'athlete_profile_incomplete');
+  const completed = await patchPartial({ dateOfBirth: '2006-06-12', countryCode: 'am' });
+  assert.equal(completed.statusCode, 200, completed.body);
+  assert.equal(completed.json().athlete.countryCode, 'AM');
+  assert.equal((await patchPartial({ birthYear: 2005 })).statusCode, 400);
+  const cleared = await patchPartial({ dateOfBirth: null });
+  assert.equal(cleared.statusCode, 200, cleared.body);
+  assert.equal(cleared.json().athlete.birthYear, 2006);
+  await assert.rejects(
+    prisma.athlete.update({
+      where: { id: partialAthlete.id },
+      data: { dateOfBirth: new Date('2005-06-12'), birthYear: 2006 },
+    }),
+  );
+  const storedPartial = await prisma.athlete.findUniqueOrThrow({
+    where: { id: partialAthlete.id },
+  });
+  assert.equal(storedPartial.dateOfBirth, null);
+  assert.equal(storedPartial.birthYear, 2006);
+  console.log(
+    'PASS incomplete profiles: create, complete, preserve year, reject mismatch, mandate guard, DB constraint',
+  );
   const url = `/public/competitions/${competition.id}/registrations`;
   const getTexts = async () => {
     const result = await app.inject(`/public/competitions/${competition.id}/registration`);

@@ -374,9 +374,12 @@ export const athletesPlugin: FeaturePlugin = {
               lastName: data.lastName,
               firstName: data.firstName,
               ...(data.middleName !== undefined && { middleName: data.middleName }),
-              dateOfBirth: new Date(data.dateOfBirth),
+              dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+              birthYear: data.dateOfBirth
+                ? Number(data.dateOfBirth.slice(0, 4))
+                : (data.birthYear ?? null),
               gender: data.gender,
-              countryCode: data.countryCode.toUpperCase(),
+              countryCode: data.countryCode?.toUpperCase() ?? null,
               ...(data.regionCode !== undefined && { regionCode: data.regionCode }),
               ...(data.city !== undefined && { city: data.city }),
               ...(data.coachName !== undefined && { coachName: data.coachName }),
@@ -414,7 +417,29 @@ export const athletesPlugin: FeaturePlugin = {
           });
         }
 
-        const updateData = stripUndefined(parsed.data) as Prisma.AthleteUpdateInput;
+        const dateOfBirth =
+          parsed.data.dateOfBirth === undefined
+            ? (before.dateOfBirth?.toISOString().slice(0, 10) ?? null)
+            : parsed.data.dateOfBirth;
+        const birthYear =
+          parsed.data.birthYear !== undefined
+            ? parsed.data.birthYear
+            : dateOfBirth
+              ? Number(dateOfBirth.slice(0, 4))
+              : (before.birthYear ?? before.dateOfBirth?.getUTCFullYear() ?? null);
+        if (dateOfBirth && birthYear != null && Number(dateOfBirth.slice(0, 4)) !== birthYear) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: 'Birth year must match date of birth',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const updateData = {
+          ...stripUndefined(parsed.data),
+          birthYear,
+        } as Prisma.AthleteUpdateInput;
         // dateOfBirth comes in as a string; Prisma wants a Date
         if (typeof updateData.dateOfBirth === 'string') {
           updateData.dateOfBirth = new Date(updateData.dateOfBirth);
@@ -432,7 +457,7 @@ export const athletesPlugin: FeaturePlugin = {
             scopeCompetitionId: null,
             targetType: 'athlete',
             targetId: req.params.id,
-            before: { ...before, dateOfBirth: before.dateOfBirth.toISOString() },
+            before: { ...before, dateOfBirth: before.dateOfBirth?.toISOString() ?? null },
             after: parsed.data,
           },
           (tx) => tx.athlete.update({ where: { id: req.params.id }, data: updateData }),

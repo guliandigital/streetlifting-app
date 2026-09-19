@@ -104,7 +104,7 @@ export const IsfPublicAthleteRef = ExportStamped.extend({
   birthYear: z.number().int().min(1900).max(2100).nullable(),
   ageGroup: z.string().min(1).nullable(),
   sex: Gender,
-  countryCode: CountryCode,
+  countryCode: CountryCode.nullable(),
   regionCode: z.string().nullable(),
   city: z.string().nullable(),
   clubName: z.string().nullable(),
