@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastify",
+  "crons": [
+    {
+      "path": "/internal/cron/isf-outbox",
+      "schedule": "*/10 * * * *"
+    }
+  ]
+}

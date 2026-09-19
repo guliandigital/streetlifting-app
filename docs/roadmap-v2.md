@@ -16,8 +16,8 @@ Pilot launch boundary 2026-05-10:
 
 - [x] Production API runtime works with compiled workspace packages (`node dist/index.js`)
 - [x] Web production build served by nginx with `/api` reverse proxy
-- [ ] CI gates: install, Prisma generate/validate, lint, typecheck, test, build
-- [ ] Clean migration path on a fresh Postgres database
+- [x] CI gates: install, audit (prod), Prisma generate/validate (api + isf-id), lint, typecheck, test, build, fresh-database migrations, browser e2e
+- [x] Clean migration path on a fresh Postgres database (CI job `migrations`, incl. schema↔migrations drift check)
 - [x] Root/admin seed and reference-data seed documented and repeatable
 - [ ] Auth, roles, audit, request IDs, rate limits, CORS, Sentry hooks verified in staging
 - [x] Web smoke test: login, `/auth/me`, federations, athletes, judges, disciplines, references
@@ -51,9 +51,9 @@ Features must not import from each other. Shared shapes live in `packages/domain
 
 ### M1 — Foundations (Week 1–2)
 
-- [ ] Prisma schema generated from domain types; migrations against Postgres 16 on reg.ru
-- [ ] Auth: JWT + refresh, argon2 hashing, role assignments
-- [ ] Web shell: TanStack Router with role-aware route guards, login/logout, layout chrome
+- [ ] Prisma schema generated from domain types (schema is hand-maintained); migrations run against Neon Postgres 16 on Vercel (ADR-0013)
+- [x] Auth: JWT + refresh, argon2 hashing, role assignments
+- [x] Web shell: TanStack Router with role-aware route guards, login/logout, layout chrome
 - [ ] shadcn/ui base components installed: Button, Input, Select, Dialog, Sheet, Table, Toast, DataTable
 - [ ] Russian + English i18n scaffolding (i18next), brand-neutral color tokens
 - [ ] CI: typecheck + test on push to main + PRs
@@ -131,10 +131,10 @@ Features must not import from each other. Shared shapes live in `packages/domain
 
 ## Risks and mitigations
 
-| Risk                                                          | Mitigation                                                                                           |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Sync engine more complex than estimated                       | M5 is the single biggest milestone; budget extra week if event log gets messy                        |
-| Pilot federations resist switching from the previous workflow | Run M9 pilot with a friendly federation we already know; reference workflow parity is non-negotiable |
-| Tauri auto-update key rotation breaks v1.x users              | Re-using v1.4.1 pubkey in V2 (`AE2C…8968`) — old binaries already trust this signer                  |
-| reg.ru server can't handle broadcast fanout                   | Profile early in M5; if needed, move WS to Cloudflare or self-host in front of reg.ru                |
-| Russian regulatory changes (data localization)                | Already on RU infra; ИП Гулян А. Г. is RU resident; aligned with project legal memo                  |
+| Risk                                                          | Mitigation                                                                                                                                    |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sync engine more complex than estimated                       | M5 is the single biggest milestone; budget extra week if event log gets messy                                                                 |
+| Pilot federations resist switching from the previous workflow | Run M9 pilot with a friendly federation we already know; reference workflow parity is non-negotiable                                          |
+| Tauri auto-update key rotation breaks v1.x users              | Re-using v1.4.1 pubkey in V2 (`AE2C…8968`) — old binaries already trust this signer                                                           |
+| No WebSocket on Vercel functions                              | Tournament screens poll every 2 s (already the fallback); add a realtime service (Ably/Upstash) only if the pilot shows polling is not enough |
+| Russian regulatory changes (data localization)                | Hosting moved to Vercel/Neon (EU/US regions) — 152-ФЗ localization needs a legal review before storing RU citizens' personal data at scale    |

@@ -2,6 +2,10 @@
 
 This runbook is for the web-first launch path. Desktop/offline, mobile clients, server-side certificate PDFs, and awards automation stay deferred until the browser workflow is stable in a real pilot.
 
+Hosting, environment variables, domains and the per-release procedure live in
+[vercel-deployment.md](vercel-deployment.md). This document covers scope, seeding, smoke checks and
+the manual QA flow.
+
 ## Pilot scope
 
 Included in the first online pilot:
@@ -15,78 +19,33 @@ Included in the first online pilot:
 
 Explicitly not included in the first pilot:
 
-- public athlete self-registration and online payment provider;
+- online payment provider;
 - server-side PDF certificates, federation-specific certificate templates, awards ceremony deck;
 - desktop/offline Tauri, local SQLite, sync event log, auto-update publishing.
 
-Operational limitation: the first pilot is online-only. For tournament day, keep a manual paper/CSV fallback until offline sync is shipped.
+Operational limitations:
 
-## Required environment
+- the first pilot is online-only. For tournament day, keep a manual paper/CSV fallback until offline
+  sync is shipped;
+- tournament screens refresh by HTTP polling every 2 seconds (no WebSocket on Vercel).
 
-API process:
+## One-time provisioning
 
-- `NODE_ENV=production`
-- `PORT=3000`
-- `HOST=0.0.0.0`
-- `DATABASE_URL=postgresql://...`
-- `CORS_ORIGIN=https://<web-domain>`
-- `JWT_SECRET=<random 48+ bytes base64>`
-- `LOG_LEVEL=info`
-- `SENTRY_DSN=<optional>`
-
-One-time root seed:
-
-- `ROOT_EMAIL`
-- `ROOT_PASSWORD`
-- `ROOT_DISPLAY_NAME`
-
-Do not keep `ROOT_PASSWORD` in a long-lived env file after the first seed. Re-running `seed:root` rotates that account password.
-
-One-time federation user provisioning:
-
-- `FEDERATION_ID` or `FEDERATION_CODE`
-- `FEDERATION_USER_EMAIL`
-- `FEDERATION_USER_PASSWORD`
-- `FEDERATION_USER_DISPLAY_NAME`
-- `FEDERATION_USER_ROLE` (`federation_admin`, `secretary`, or `accountant`; defaults to `federation_admin`)
-
-Do not keep `FEDERATION_USER_PASSWORD` in a long-lived env file. Re-running `seed:federation-user` rotates that user's password and preserves existing non-revoked scoped roles.
-
-## Deployment sequence
-
-For reg.ru-specific SSH, nginx, systemd, and GitHub Actions setup, use [reg-ru-deployment.md](reg-ru-deployment.md). After one-time server setup, the normal deploy command from Windows is:
-
-```powershell
-.\scripts\deploy-reg-ru.ps1 -SshTarget streetlifting-prod -Branch main
-```
-
-1. Install dependencies with the locked workspace versions:
-
-   ```bash
-   pnpm install --frozen-lockfile
-   ```
-
-2. Validate, typecheck, test, and build:
-
-   ```bash
-   pnpm release:check
-   ```
-
-3. Apply database migrations:
-
-   ```bash
-   pnpm release:migrate
-   ```
-
-4. Seed launch reference data:
-
-   ```bash
-   pnpm release:seed
-   ```
-
-4a. Provision a federation-scoped login when a federation account should open its workspace directly:
+Root user and reference data are seeded from a workstation against the production **unpooled**
+database URL (copy it from the Neon integration in Vercel; never store it in a file):
 
 ```bash
+DATABASE_URL='<DATABASE_URL_UNPOOLED>' \
+ROOT_EMAIL=<email> ROOT_PASSWORD=<password> ROOT_DISPLAY_NAME='Platform Admin' \
+pnpm --filter=@streetlifting/api seed:launch
+```
+
+Re-running `seed:root` rotates that account password. Reference seeds are idempotent.
+
+Federation-scoped login, when a federation account should open its workspace directly:
+
+```bash
+DATABASE_URL='<DATABASE_URL_UNPOOLED>' \
 FEDERATION_CODE=<federation-code> \
 FEDERATION_USER_EMAIL=<federation-email> \
 FEDERATION_USER_PASSWORD=<temporary-password> \
@@ -94,95 +53,52 @@ FEDERATION_USER_DISPLAY_NAME=<display-name> \
 pnpm --filter=@streetlifting/api seed:federation-user
 ```
 
-5. Run the authenticated pilot smoke against the target API:
+`FEDERATION_USER_ROLE` accepts `federation_admin` (default), `secretary`, or `accountant`.
+Re-running rotates that user's password and preserves existing non-revoked scoped roles.
+
+## Release
+
+1. `pnpm release:check` locally or green CI on the pull request (lint, typecheck, tests, fresh-database
+   migrations, browser e2e).
+2. Merge to `main`. Vercel builds the three projects; the API and ISF ID builds apply pending
+   migrations before compiling. A failed migration fails the build and leaves the previous deployment
+   live.
+3. Smoke checks:
 
    ```bash
-   PILOT_SMOKE_API_URL=https://<web-domain>/api \
+   curl -fsS https://streetlifting.app/api/health
+   curl -fsS https://streetlifting.app/api/health/competitions
+   curl -fsS https://streetlifting.app/api/health/competition-ops
+   curl -fsS https://id.streetlifting.app/health
+   curl -fsSI https://streetlifting.app/sw.js | grep -Ei 'content-type|cache-control'
+   ISF_META_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' https://streetlifting.app/api/isf/v1/meta)
+   test "$ISF_META_STATUS" = "401"
+   ```
+
+4. Authenticated pilot smoke against production:
+
+   ```bash
+   PILOT_SMOKE_API_URL=https://streetlifting.app/api \
    PILOT_SMOKE_EMAIL=<root-or-secretary-email> \
    PILOT_SMOKE_PASSWORD=<password> \
    pnpm release:smoke
    ```
 
-   The smoke creates an isolated federation/competition/athlete/nomination, checks duplicate nomination rejection, draw, weigh-in/payment, component attempts, scoreboard, protocol CSV, and accounting CSV.
+   The smoke creates an isolated federation/competition/athlete/nomination, checks duplicate
+   nomination rejection, draw, weigh-in/payment, component attempts, scoreboard, protocol CSV, and
+   accounting CSV.
 
-6. Start the API:
-
-   ```bash
-   pnpm --filter=@streetlifting/api start
-   ```
-
-7. Serve `apps/web/dist` from nginx or another static host. Proxy `/api/*` to the API with the `/api` prefix stripped, matching Vite dev behavior.
-
-   Deploy the web build with deletion enabled so old hashed assets cannot remain addressable forever:
+5. Authenticated ISF smoke — prefer the GitHub Actions **ISF production smoke** workflow, which reads
+   `ISF_SMOKE_SERVICE_TOKEN` from the `production` environment secret. Locally:
 
    ```bash
-   rsync -avz --delete apps/web/dist/ deploy@<server>:/var/www/streetlifting.app/
+   ISF_SMOKE_API_URL=https://streetlifting.app/api \
+   ISF_SMOKE_SERVICE_TOKEN=<service-client-token> \
+   ISF_SMOKE_TENANT=ru \
+   pnpm release:smoke:isf
    ```
 
-   Keep service-worker cleanup files outside the SPA fallback. They intentionally unregister any old PWA/service worker from the legacy app and clear browser caches:
-
-   ```nginx
-   location = /sw.js {
-       add_header Cache-Control "no-store, no-cache, must-revalidate";
-       default_type application/javascript;
-       try_files $uri =404;
-   }
-
-   location = /service-worker.js {
-       add_header Cache-Control "no-store, no-cache, must-revalidate";
-       default_type application/javascript;
-       try_files $uri =404;
-   }
-
-   location = /registerSW.js {
-       add_header Cache-Control "no-store, no-cache, must-revalidate";
-       default_type application/javascript;
-       try_files $uri =404;
-   }
-
-   location /assets/ {
-       add_header Cache-Control "public, max-age=31536000, immutable";
-       try_files $uri =404;
-   }
-
-   location / {
-       try_files $uri $uri/ /index.html;
-   }
-   ```
-
-## Smoke checks
-
-Run these after deployment:
-
-```bash
-curl -fsS https://<web-domain>/api/health
-curl -fsS https://<web-domain>/api/health/competitions
-curl -fsS https://<web-domain>/api/health/competition-ops
-curl -fsSI https://<web-domain>/sw.js | grep -Ei 'content-type|cache-control'
-curl -fsSI https://<web-domain>/service-worker.js | grep -Ei 'content-type|cache-control'
-ISF_META_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' https://<web-domain>/api/isf/v1/meta)
-test "$ISF_META_STATUS" = "401"
-```
-
-Authenticated ISF smoke, when a service-client token is available through a secure channel:
-
-```bash
-ISF_SMOKE_API_URL=https://<web-domain>/api \
-ISF_SMOKE_SERVICE_TOKEN=<service-client-token> \
-ISF_SMOKE_TENANT=ru \
-pnpm release:smoke:isf
-```
-
-This validates the anonymous guard, browser-origin rejection, `/isf/v1/meta`,
-`/isf/v1/standards`, paginated competitions, and paginated records. Do not write the service token to
-repo files or long-lived shell history.
-
-For production, prefer the GitHub Actions `ISF production smoke` workflow. It reads
-`ISF_SMOKE_SERVICE_TOKEN` from the `production` environment secret, fails before the API smoke if the
-secret is missing, and keeps the token out of operator shells and logs. Use `allow_anonymous_only`
-only when the goal is to validate the public `401` guard without an issued service-client token.
-
-Manual web flow:
+## Manual web flow
 
 1. Log in as the seeded root user.
 2. Create a federation.
@@ -199,13 +115,13 @@ Manual web flow:
 13. Open the print-friendly protocol and use browser print preview for PDF output.
 14. Export protocol CSV/XLSX and accounting CSV/XLSX.
 
-Post-login E2E QA flow:
+## Post-login E2E QA flow
 
-1. Create/update the Playwright auth state automatically, when QA credentials are available:
+1. Create the Playwright auth state automatically, when QA credentials are available:
 
    ```bash
-   E2E_API_URL=https://<web-domain>/api \
-   E2E_WEB_URL=https://<web-domain> \
+   E2E_API_URL=https://streetlifting.app/api \
+   E2E_WEB_URL=https://streetlifting.app \
    E2E_EMAIL=<root-or-secretary-email> \
    E2E_PASSWORD=<password> \
    pnpm --filter=@streetlifting/web e2e:auth
@@ -214,20 +130,24 @@ Post-login E2E QA flow:
    Or save it after a manual browser login:
 
    ```bash
-   E2E_WEB_URL=https://<web-domain> \
-   pnpm --filter=@streetlifting/web e2e:auth:manual
+   E2E_WEB_URL=https://streetlifting.app pnpm --filter=@streetlifting/web e2e:auth:manual
    ```
 
 2. Run the browser QA flow with the saved `apps/web/e2e/.auth/secretary.json` state:
 
    ```bash
-   E2E_API_URL=https://<web-domain>/api \
-   E2E_WEB_URL=https://<web-domain> \
+   E2E_API_URL=https://streetlifting.app/api \
+   E2E_WEB_URL=https://streetlifting.app \
    E2E_SKIP_WEB_SERVER=1 \
    pnpm e2e:web
    ```
 
-3. The spec covers federation creation, competition creation, athlete creation, default setup, nomination creation, draw, mandate/payment/weigh-in, attempt save, scoreboard, operator/judge surfaces, print protocol, and CSV/XLSX downloads.
+## Rollback
+
+- Vercel → Deployments → _Promote to Production_ on the previous deployment restores code
+  instantly.
+- Code rollback is safe if the release applied no migration. After a migration, rollback must follow
+  Prisma migration policy for the exact migration set. Do not manually edit production tables.
 
 ## Post-pilot work
 
@@ -238,9 +158,3 @@ Do not block the first web pilot on these items:
 - awards ceremony automation;
 - offline desktop/Tauri with SQLite and sync;
 - installer signing and auto-update publishing for V2 desktop builds.
-
-## Rollback notes
-
-- Code rollback is safe if no migration has been applied.
-- After `release:migrate`, rollback must follow Prisma migration policy for the exact migration set. Do not manually edit production tables.
-- Reference seeds are idempotent except `seed:root`, which intentionally rotates the root password.

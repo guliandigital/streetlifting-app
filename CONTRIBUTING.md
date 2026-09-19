@@ -4,7 +4,7 @@
 
 - **Node 20** (use `nvm use` — `.nvmrc` pins it)
 - **pnpm 9+** (`corepack enable && corepack prepare pnpm@9 --activate`)
-- **Docker Desktop** (for local Postgres + Redis via `docker compose`)
+- **Vercel CLI** (`pnpm add -g vercel`) — pulls the Neon development database URL; no Docker needed
 - **gitleaks** (pre-commit secret scanner used by lefthook):
   - Windows: `winget install gitleaks` or `scoop install gitleaks`
   - macOS: `brew install gitleaks`
@@ -18,14 +18,15 @@ git clone https://github.com/guliandigital/streetlifting-app.git
 cd streetlifting-app
 
 pnpm install                              # also installs lefthook git hooks via `prepare`
-docker compose up -d                      # Postgres + Redis on localhost
-cp apps/api/.env.example apps/api/.env
+vercel link --cwd apps/api                # once: amobit / streetlifting-api
+vercel env pull apps/api/.env --environment=development --cwd apps/api   # Neon dev branch URL
 
-pnpm --filter=@streetlifting/api db:generate   # Prisma client
-pnpm --filter=@streetlifting/api db:migrate    # apply migrations against your local Postgres
-
-pnpm dev             # web → http://localhost:1420, api → http://localhost:3000/health
+pnpm dev             # migrates + seeds the dev database, then web → http://localhost:1420, api → http://localhost:3000/health
 ```
+
+Any Postgres works for local development — put its connection string into `apps/api/.env` as
+`DATABASE_URL` if you do not use the Neon development branch. See
+[docs/vercel-deployment.md](docs/vercel-deployment.md) for hosting details.
 
 > **Windows note**: if `pnpm dev` opens a CMD prompt and exits without
 > starting the servers (a known pnpm + cmd.exe quirk on some Windows

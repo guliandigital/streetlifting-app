@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { z } from 'zod';
 import {
   FederationCreate,
@@ -10,6 +8,12 @@ import {
 } from '@streetlifting/domain';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma, Prisma } from '../lib/db.js';
+import {
+  MAX_UPLOAD_CONTENT_BYTES,
+  UPLOAD_BODY_LIMIT_BYTES,
+  storage,
+  storageKey,
+} from '../lib/storage.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
@@ -22,7 +26,7 @@ import {
 } from '../lib/mailer.js';
 
 const log = moduleLogger('federations');
-const MAX_FEDERATION_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const MAX_FEDERATION_ATTACHMENT_BYTES = MAX_UPLOAD_CONTENT_BYTES;
 
 const FederationAttachmentCreateInput = z
   .object({
@@ -125,10 +129,6 @@ const WriteoffCreateInput = z
     linkedReceiptId: z.string().uuid().nullable().optional(),
   })
   .strict();
-
-function uploadRoot(): string {
-  return process.env.STORAGE_DIR ?? path.join(process.cwd(), 'storage');
-}
 
 function sanitizeFilename(filename: string): string {
   return (
@@ -1231,7 +1231,7 @@ export const federationsPlugin: FeaturePlugin = {
 
     app.post<{ Params: { id: string } }>(
       '/federations/:id/attachments',
-      { preHandler: requireAuth() },
+      { preHandler: requireAuth(), bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
       async (req, reply) => {
         if (!canManageFederation(req.user, req.params.id, ['federation_admin'])) {
           return reply.code(403).send({
@@ -1274,10 +1274,8 @@ export const federationsPlugin: FeaturePlugin = {
         }
 
         const filename = sanitizeFilename(parsed.data.filename);
-        const storagePath = path.join('federations', req.params.id, `${randomUUID()}-${filename}`);
-        const absolutePath = path.join(uploadRoot(), storagePath);
-        await mkdir(path.dirname(absolutePath), { recursive: true });
-        await writeFile(absolutePath, content);
+        const storagePath = storageKey('federations', req.params.id, `${randomUUID()}-${filename}`);
+        await storage.put(storagePath, content, parsed.data.mimeType);
 
         try {
           const attachment = await prisma.$transaction(async (tx) => {
@@ -1312,7 +1310,7 @@ export const federationsPlugin: FeaturePlugin = {
           });
           return reply.code(201).send({ attachment });
         } catch (err) {
-          await unlink(absolutePath).catch(() => undefined);
+          await storage.delete(storagePath).catch(() => undefined);
           throw err;
         }
       },
@@ -1394,28 +1392,11 @@ export const federationsPlugin: FeaturePlugin = {
           });
         }
 
-        const root = path.resolve(uploadRoot());
-        const absolutePath = path.resolve(root, attachment.storagePath);
-        if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`)) {
-          return reply.code(500).send({
-            error: {
-              code: 'invalid_storage_path',
-              message: 'Attachment storage path is invalid',
-              requestId: req.requestId,
-            },
-          });
-        }
-
-        try {
-          const content = await readFile(absolutePath);
-          reply.header('Content-Type', attachment.mimeType);
-          reply.header(
-            'Content-Disposition',
-            `attachment; filename="${contentDispositionFilename(attachment.filename)}"`,
-          );
-          return reply.send(content);
-        } catch (err) {
+        const content = await storage.get(attachment.storagePath).catch((err: unknown) => {
           log.error({ err, attachmentId: attachment.id }, 'attachment file read failed');
+          return null;
+        });
+        if (!content) {
           return reply.code(404).send({
             error: {
               code: 'file_missing',
@@ -1424,6 +1405,12 @@ export const federationsPlugin: FeaturePlugin = {
             },
           });
         }
+        reply.header('Content-Type', attachment.mimeType);
+        reply.header(
+          'Content-Disposition',
+          `attachment; filename="${contentDispositionFilename(attachment.filename)}"`,
+        );
+        return reply.send(content);
       },
     );
 

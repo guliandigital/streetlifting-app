@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { z } from 'zod';
 import {
   AthleteCreate,
@@ -11,6 +9,12 @@ import {
 } from '@streetlifting/domain';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma } from '../lib/db.js';
+import {
+  MAX_UPLOAD_CONTENT_BYTES,
+  UPLOAD_BODY_LIMIT_BYTES,
+  storage,
+  storageKey,
+} from '../lib/storage.js';
 import type { Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
@@ -51,7 +55,7 @@ function computeAppearanceIsfPoints(
 
 const log = moduleLogger('athletes');
 
-const MAX_ATHLETE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const MAX_ATHLETE_ATTACHMENT_BYTES = MAX_UPLOAD_CONTENT_BYTES;
 const MAX_ATHLETE_PHOTO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_PHOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -74,10 +78,6 @@ const AthletePhotoCreateInput = z
 
 function photoUrlFor(athleteId: string): string {
   return `/api/athletes/${athleteId}/photo`;
-}
-
-function uploadRoot(): string {
-  return process.env.STORAGE_DIR ?? path.join(process.cwd(), 'storage');
 }
 
 function sanitizeFilename(filename: string): string {
@@ -443,7 +443,7 @@ export const athletesPlugin: FeaturePlugin = {
     // ─── Upload attachment (document) ──────────────────────────────────
     app.post<{ Params: { id: string } }>(
       '/athletes/:id/attachments',
-      { preHandler: requireRole('platform_admin') },
+      { preHandler: requireRole('platform_admin'), bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
       async (req, reply) => {
         const parsed = AthleteAttachmentCreateInput.safeParse(req.body);
         if (!parsed.success) {
@@ -477,10 +477,8 @@ export const athletesPlugin: FeaturePlugin = {
         }
 
         const filename = sanitizeFilename(parsed.data.filename);
-        const storagePath = path.join('athletes', req.params.id, `${randomUUID()}-${filename}`);
-        const absolutePath = path.join(uploadRoot(), storagePath);
-        await mkdir(path.dirname(absolutePath), { recursive: true });
-        await writeFile(absolutePath, content);
+        const storagePath = storageKey('athletes', req.params.id, `${randomUUID()}-${filename}`);
+        await storage.put(storagePath, content, parsed.data.mimeType);
 
         try {
           const attachment = await prisma.$transaction(async (tx) => {
@@ -534,7 +532,7 @@ export const athletesPlugin: FeaturePlugin = {
             },
           });
         } catch (err) {
-          await unlink(absolutePath).catch(() => undefined);
+          await storage.delete(storagePath).catch(() => undefined);
           throw err;
         }
       },
@@ -604,28 +602,11 @@ export const athletesPlugin: FeaturePlugin = {
           });
         }
 
-        const root = path.resolve(uploadRoot());
-        const absolutePath = path.resolve(root, attachment.storagePath);
-        if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`)) {
-          return reply.code(500).send({
-            error: {
-              code: 'invalid_storage_path',
-              message: 'Attachment storage path is invalid',
-              requestId: req.requestId,
-            },
-          });
-        }
-
-        try {
-          const content = await readFile(absolutePath);
-          reply.header('Content-Type', attachment.mimeType);
-          reply.header(
-            'Content-Disposition',
-            `attachment; filename="${contentDispositionFilename(attachment.filename)}"`,
-          );
-          return reply.send(content);
-        } catch (err) {
+        const content = await storage.get(attachment.storagePath).catch((err: unknown) => {
           log.error({ err, attachmentId: attachment.id }, 'attachment file read failed');
+          return null;
+        });
+        if (!content) {
           return reply.code(404).send({
             error: {
               code: 'file_missing',
@@ -634,13 +615,19 @@ export const athletesPlugin: FeaturePlugin = {
             },
           });
         }
+        reply.header('Content-Type', attachment.mimeType);
+        reply.header(
+          'Content-Disposition',
+          `attachment; filename="${contentDispositionFilename(attachment.filename)}"`,
+        );
+        return reply.send(content);
       },
     );
 
     // ─── Photo upload (one current per athlete) ───────────────────────
     app.post<{ Params: { id: string } }>(
       '/athletes/:id/photo',
-      { preHandler: requireRole('platform_admin') },
+      { preHandler: requireRole('platform_admin'), bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
       async (req, reply) => {
         const parsed = AthletePhotoCreateInput.safeParse(req.body);
         if (!parsed.success) {
@@ -683,14 +670,12 @@ export const athletesPlugin: FeaturePlugin = {
         }
 
         const filename = sanitizeFilename(parsed.data.filename);
-        const storagePath = path.join(
+        const storagePath = storageKey(
           'athlete-photos',
           req.params.id,
           `${randomUUID()}-${filename}`,
         );
-        const absolutePath = path.join(uploadRoot(), storagePath);
-        await mkdir(path.dirname(absolutePath), { recursive: true });
-        await writeFile(absolutePath, content);
+        await storage.put(storagePath, content, parsed.data.mimeType);
 
         try {
           const updated = await prisma.$transaction(async (tx) => {
@@ -741,7 +726,7 @@ export const athletesPlugin: FeaturePlugin = {
           );
           return reply.code(201).send({ athlete: updated });
         } catch (err) {
-          await unlink(absolutePath).catch(() => undefined);
+          await storage.delete(storagePath).catch(() => undefined);
           throw err;
         }
       },
@@ -816,25 +801,11 @@ export const athletesPlugin: FeaturePlugin = {
         });
       }
 
-      const root = path.resolve(uploadRoot());
-      const absolutePath = path.resolve(root, photo.storagePath);
-      if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`)) {
-        return reply.code(500).send({
-          error: {
-            code: 'invalid_storage_path',
-            message: 'Photo storage path is invalid',
-            requestId: req.requestId,
-          },
-        });
-      }
-
-      try {
-        const content = await readFile(absolutePath);
-        reply.header('Content-Type', photo.mimeType);
-        reply.header('Cache-Control', 'private, max-age=300');
-        return reply.send(content);
-      } catch (err) {
+      const content = await storage.get(photo.storagePath).catch((err: unknown) => {
         log.error({ err, photoId: photo.id }, 'photo file read failed');
+        return null;
+      });
+      if (!content) {
         return reply.code(404).send({
           error: {
             code: 'file_missing',
@@ -843,6 +814,9 @@ export const athletesPlugin: FeaturePlugin = {
           },
         });
       }
+      reply.header('Content-Type', photo.mimeType);
+      reply.header('Cache-Control', 'private, max-age=300');
+      return reply.send(content);
     });
   },
 };

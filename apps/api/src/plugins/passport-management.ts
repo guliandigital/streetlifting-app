@@ -1,16 +1,20 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { z } from 'zod';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma } from '../lib/db.js';
+import {
+  MAX_UPLOAD_CONTENT_BYTES,
+  UPLOAD_BODY_LIMIT_BYTES,
+  storage,
+  storageKey,
+} from '../lib/storage.js';
 import type { Prisma } from '@prisma/client';
 import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
 
 const uuid = z.string().uuid();
-const MAX_PASSPORT_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const MAX_PASSPORT_ATTACHMENT_BYTES = MAX_UPLOAD_CONTENT_BYTES;
 const passportAttachmentInput = z
   .object({
     filename: z.string().trim().min(1).max(180),
@@ -110,10 +114,6 @@ function isFederationManager(
 
 function invalid(reply: FastifyReply, requestId: string, message: string) {
   return reply.code(400).send({ error: { code: 'validation_error', message, requestId } });
-}
-
-function uploadRoot(): string {
-  return process.env.STORAGE_DIR ?? path.join(process.cwd(), 'storage');
 }
 
 function sanitizeFilename(filename: string): string {
@@ -325,7 +325,7 @@ export const passportManagementPlugin: FeaturePlugin = {
 
     app.post(
       '/passport/attachments',
-      { preHandler: requireAuth(), bodyLimit: 7 * 1024 * 1024 },
+      { preHandler: requireAuth(), bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
       async (req, reply) => {
         const parsed = passportAttachmentInput.safeParse(req.body);
         if (!parsed.success) return invalid(reply, req.requestId, parsed.error.message);
@@ -339,10 +339,8 @@ export const passportManagementPlugin: FeaturePlugin = {
             },
           });
         const filename = sanitizeFilename(parsed.data.filename);
-        const storagePath = path.join('passport', req.user!.id, `${randomUUID()}-${filename}`);
-        const absolutePath = path.join(uploadRoot(), storagePath);
-        await mkdir(path.dirname(absolutePath), { recursive: true });
-        await writeFile(absolutePath, content);
+        const storagePath = storageKey('passport', req.user!.id, `${randomUUID()}-${filename}`);
+        await storage.put(storagePath, content, parsed.data.mimeType);
         try {
           const attachment = await audit.withAudit(
             {
@@ -385,7 +383,7 @@ export const passportManagementPlugin: FeaturePlugin = {
             },
           });
         } catch (error) {
-          await unlink(absolutePath).catch(() => undefined);
+          await storage.delete(storagePath).catch(() => undefined);
           throw error;
         }
       },
@@ -424,25 +422,8 @@ export const passportManagementPlugin: FeaturePlugin = {
           return reply.code(404).send({
             error: { code: 'not_found', message: 'Attachment not found', requestId: req.requestId },
           });
-        const root = path.resolve(uploadRoot());
-        const absolutePath = path.resolve(root, attachment.storagePath);
-        if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`))
-          return reply.code(500).send({
-            error: {
-              code: 'invalid_storage_path',
-              message: 'Attachment storage path is invalid',
-              requestId: req.requestId,
-            },
-          });
-        try {
-          const content = await readFile(absolutePath);
-          reply.header('Content-Type', attachment.mimeType);
-          reply.header(
-            'Content-Disposition',
-            `attachment; filename="${contentDispositionFilename(attachment.filename)}"`,
-          );
-          return reply.send(content);
-        } catch {
+        const content = await storage.get(attachment.storagePath).catch(() => null);
+        if (!content)
           return reply.code(404).send({
             error: {
               code: 'file_missing',
@@ -450,7 +431,12 @@ export const passportManagementPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
-        }
+        reply.header('Content-Type', attachment.mimeType);
+        reply.header(
+          'Content-Disposition',
+          `attachment; filename="${contentDispositionFilename(attachment.filename)}"`,
+        );
+        return reply.send(content);
       },
     );
 
