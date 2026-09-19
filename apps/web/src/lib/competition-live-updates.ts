@@ -79,6 +79,8 @@ function connectCompetitionLiveUpdates({
   competitionId: string;
   onUpdate: () => void;
 }): () => void {
+  // Serverless deployments use the queries' existing HTTP polling.
+  if (import.meta.env.VITE_LIVE_UPDATES_WS === 'false') return () => {};
   let disposed = false;
   let retry = 0;
   let everOpened = false;
