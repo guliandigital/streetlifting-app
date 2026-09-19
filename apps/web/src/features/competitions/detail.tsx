@@ -1,3 +1,4 @@
+import { hasCompleteAttemptSet } from '@streetlifting/domain';
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
@@ -451,7 +452,6 @@ function WeightClassesTabContent({ ops }: { ops: CompetitionOpsResponse | undefi
 }
 
 function AgeClassesTabContent({ ops }: { ops: CompetitionOpsResponse | undefined }) {
-  const [restrictAge, setRestrictAge] = useState(false);
   const seen = new Set<string>();
   const ageDivisions = (ops?.divisions ?? []).filter((d) => {
     if (seen.has(d.nameRu)) return false;
@@ -461,11 +461,10 @@ function AgeClassesTabContent({ ops }: { ops: CompetitionOpsResponse | undefined
 
   return (
     <WorkspacePanel className="p-3">
-      <WorkspaceCheckbox
-        checked={restrictAge}
-        onChange={setRestrictAge}
-        label="Разрешить регистрацию только в своей возрастной"
-      />
+      <p className="pt-muted text-sm" data-testid="competition-age-policy">
+        Возраст проверяется сервером на дату соревнования по регламенту ISF v5.1. Допуск требует
+        полной даты рождения и соответствия возрастной категории.
+      </p>
       <table className="pt-grid mt-2">
         <thead>
           <tr>
@@ -612,6 +611,68 @@ function StagesTabContent() {
   );
 }
 
+function CompetitionReadiness({ id, ops }: { id: string; ops: CompetitionOpsResponse }) {
+  const active = ops.nominations.filter((n) => !['withdrawn', 'disqualified'].includes(n.status));
+  const missingWeight = active.filter((n) => n.bodyWeightAtWeighIn === null).length;
+  const missingMandate = active.filter((n) => !n.isMandatePassed).length;
+  const missingFlight = active.filter((n) => !n.flightId).length;
+  const unfinished = active.filter(
+    (n) =>
+      n.status !== 'finished' ||
+      !hasCompleteAttemptSet({
+        discipline: n.discipline,
+        components: n.discipline.components,
+        attempts: n.attempts,
+      }),
+  ).length;
+  const locked = ['finalized', 'archived'].includes(ops.competition.status);
+  return (
+    <WorkspacePanel className="p-3" data-testid="competition-readiness">
+      <WorkspaceSectionTitle>Проведение турнира</WorkspaceSectionTitle>
+      <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <Link className="pt-link-button" to="/competitions/$id/nominations" params={{ id }}>
+            1. Допуск и взвешивание
+          </Link>
+          <p className="pt-muted mt-2">
+            Без веса: {missingWeight}. Без допуска: {missingMandate}.
+          </p>
+        </div>
+        <div>
+          <Link className="pt-link-button" to="/competitions/$id/schedule" params={{ id }}>
+            2. Потоки и группы
+          </Link>
+          <p className="pt-muted mt-2">
+            Без потока: {missingFlight} из {active.length} активных номинаций.
+          </p>
+        </div>
+        <div>
+          <Link className="pt-link-button" to="/competitions/$id/judge" params={{ id }}>
+            3. Судейство
+          </Link>
+          <p className="pt-muted mt-2">
+            {locked
+              ? 'Запись попыток закрыта.'
+              : ops.competition.status === 'in_progress'
+                ? 'Турнир идёт. Решения записываются судьями.'
+                : 'Для записи попыток запустите турнир после подготовки.'}
+          </p>
+        </div>
+        <div>
+          <Link className="pt-link-button" to="/competitions/$id/protocol-print" params={{ id }}>
+            4. Протокол
+          </Link>
+          <p className="pt-muted mt-2">
+            {locked
+              ? 'Турнир закрыт. Официальное утверждение сверяйте по документам.'
+              : `До завершения: ${unfinished} номинаций с незавершённым протоколом.`}
+          </p>
+        </div>
+      </div>
+    </WorkspacePanel>
+  );
+}
+
 export default function CompetitionDetailFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/competitions/$id' });
@@ -638,7 +699,7 @@ export default function CompetitionDetailFeature() {
     user?.roles.some(
       (r) =>
         r.role === 'platform_admin' ||
-        (r.role === 'federation_admin' && r.federationId === c.federationId),
+        (r.role === 'federation_admin' && r.federationId === c.federationId && !r.competitionId),
     ) ?? false;
 
   return (
@@ -703,6 +764,7 @@ export default function CompetitionDetailFeature() {
       }))}
     >
       <div className="space-y-3">
+        {opsData && <CompetitionReadiness id={id} ops={opsData} />}
         {activeTab === 'settings' && (
           <>
             <WorkspacePanel className="p-3">

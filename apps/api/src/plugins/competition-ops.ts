@@ -1,3 +1,4 @@
+import { assertNominationAdmission } from '../lib/nomination-admission.js';
 import {
   AttemptUpsert,
   CompetitionDefaultSetup,
@@ -330,6 +331,17 @@ async function assertCurrentNomination(tx: Prisma.TransactionClient, id: string)
       'Current mandate approval and a complete profile are required',
     );
   }
+  const competition = await assertNominationAdmission(tx, current.competitionId, current);
+  if (competition.status !== 'in_progress')
+    throw new CompetitionConflict(
+      'competition_not_in_progress',
+      'Start the competition before recording attempts',
+    );
+  if (!['weighed_in', 'on_platform', 'finished'].includes(current.status))
+    throw new CompetitionConflict(
+      'nomination_not_ready',
+      'Nomination must be weighed in and active',
+    );
   return current;
 }
 
@@ -1425,6 +1437,15 @@ export const competitionOpsPlugin: FeaturePlugin = {
             after: parsed.data,
           },
           async (tx) => {
+            if (
+              (await tx.nomination.count({
+                where: { competitionId: competition.id, isMandatePassed: true },
+              })) > 0
+            )
+              throw new CompetitionConflict(
+                'competition_has_approved_nominations',
+                'Revoke approvals before changing category setup',
+              );
             const platform = await tx.platform.upsert({
               where: { competitionId_order: { competitionId: competition.id, order: 1 } },
               create: { competitionId: competition.id, name: parsed.data.platformName, order: 1 },
@@ -1800,6 +1821,8 @@ export const competitionOpsPlugin: FeaturePlugin = {
                   'Complete athlete profile required',
                 );
               }
+              if (parsed.data.isMandatePassed)
+                await assertNominationAdmission(tx, competition.id, parsed.data);
               return tx.nomination.create({
                 data: toNominationCreateData(competition.id, parsed.data),
                 include: nominationInclude,
@@ -2291,6 +2314,13 @@ export const competitionOpsPlugin: FeaturePlugin = {
                 'athlete_profile_incomplete',
                 'Complete athlete profile required',
               );
+            }
+            if (data.isMandatePassed ?? current.isMandatePassed) {
+              await assertNominationAdmission(tx, before.competition.id, {
+                ...current,
+                ...data,
+                weightClassId: data.weightClassId ?? current.weightClassId,
+              });
             }
             const result = await tx.nomination.update({
               where: { id: req.params.nominationId },

@@ -45,6 +45,9 @@ const competition = {
   nameRu: 'Турнир A',
   nameEn: 'Meet A',
   status: 'draft',
+  rulebook: 'ISF v5.1',
+  startDate: new Date('2030-01-01'),
+  endDate: new Date('2030-01-01'),
   isOnlineRegistrationOpen: true,
   registrationDeadline: null,
   entryFeeKopecks: 1000,
@@ -76,7 +79,13 @@ beforeEach(() => {
   db.$queryRaw.mockResolvedValue([{ status: competition.status }]);
   db.discipline.findUnique.mockResolvedValue({ id: disciplineId });
   db.discipline.findMany.mockResolvedValue([]);
-  db.division.findUnique.mockResolvedValue({ id: divisionId, competitionId: id, gender: 'M' });
+  db.division.findUnique.mockResolvedValue({
+    id: divisionId,
+    competitionId: id,
+    gender: 'M',
+    ageMin: null,
+    ageMax: null,
+  });
   db.weightClass.findUnique.mockResolvedValue({ id: weightClassId, divisionId, disciplineId });
   db.nomination.findFirst.mockResolvedValue(null);
   db.athlete.findFirst.mockResolvedValue(null);

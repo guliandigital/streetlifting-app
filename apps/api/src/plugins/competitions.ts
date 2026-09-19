@@ -1,3 +1,5 @@
+import { assertNominationAdmission } from '../lib/nomination-admission.js';
+import { CompetitionConflict } from '../lib/competition-lifecycle.js';
 import {
   CompetitionCreate,
   CompetitionListQuery,
@@ -496,6 +498,28 @@ export const competitionsPlugin: FeaturePlugin = {
           },
           async (tx) => {
             const locked = await lockCompetition(tx, before.id);
+            const currentCompetition = await tx.competition.findUniqueOrThrow({
+              where: { id: before.id },
+            });
+            const changesEligibility =
+              (parsed.data.rulebook !== undefined &&
+                parsed.data.rulebook !== currentCompetition.rulebook) ||
+              (parsed.data.startDate !== undefined &&
+                parsed.data.startDate !==
+                  currentCompetition.startDate.toISOString().slice(0, 10)) ||
+              (parsed.data.endDate !== undefined &&
+                parsed.data.endDate !== currentCompetition.endDate.toISOString().slice(0, 10));
+            if (
+              changesEligibility &&
+              (await tx.nomination.count({
+                where: { competitionId: before.id, isMandatePassed: true },
+              })) > 0
+            ) {
+              throw new CompetitionConflict(
+                'competition_has_approved_nominations',
+                'Revoke approvals before changing competition dates or rulebook; finalized protocols require a correction workflow',
+              );
+            }
             const effectiveStatus = parsed.data.status ?? locked.status;
             await assertCompetitionTransition(tx, before.id, locked.status, effectiveStatus);
             if (
@@ -506,6 +530,20 @@ export const competitionsPlugin: FeaturePlugin = {
                 where: { id: before.id },
                 include: competitionInclude,
               });
+            }
+            if (effectiveStatus === 'finalized' && locked.status !== 'finalized') {
+              const nominations = await tx.nomination.findMany({
+                where: { competitionId: before.id, status: 'finished' },
+                orderBy: { athleteId: 'asc' },
+              });
+              for (const nomination of nominations) {
+                if (!nomination.isMandatePassed)
+                  throw new CompetitionConflict(
+                    'mandate_required',
+                    'Finished nominations require current admission',
+                  );
+                await assertNominationAdmission(tx, before.id, nomination);
+              }
             }
             const eventType = competitionEventType(locked.status, effectiveStatus);
             const result = await tx.competition.update({
