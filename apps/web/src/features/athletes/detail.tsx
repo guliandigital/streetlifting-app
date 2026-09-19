@@ -1,3 +1,4 @@
+import { AthleteReport } from '../../components/athlete-report.js';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
@@ -333,20 +334,7 @@ export default function AthleteDetailFeature() {
               {update.isPending ? 'Сохранение…' : 'Сохранить'}
             </WorkspaceButton>
           ) : null}
-          <WorkspaceButton
-            type="button"
-            icon="warning"
-            onClick={() => toast.info('Заявка о дубликате будет отправлена администратору.')}
-          >
-            Заявить о дубликате
-          </WorkspaceButton>
-          <WorkspaceButton
-            type="button"
-            icon="warning"
-            onClick={() => toast.info('Жалоба на спам будет отправлена администратору.')}
-          >
-            Спам
-          </WorkspaceButton>
+          <AthleteReport key={id} athleteId={id} />
         </>
       }
       tabs={ATHLETE_TABS.map((tab) => {

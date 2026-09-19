@@ -78,6 +78,35 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   await fillText(page, '#clubName', 'E2E Club');
   const athleteId = await submitAndReadId(page, 'athletes');
 
+  // A report is acknowledged only after the existing support workflow persists it.
+  await page.getByRole('button', { name: 'Заявить о дубликате' }).click();
+  const reportDialog = page.getByRole('dialog', { name: 'Дубликат профиля' });
+  await reportDialog.getByLabel('Федерация').selectOption(federationId);
+  await reportDialog.getByLabel('Описание').fill(`Проверить дубликат ${suffix}`);
+  const reportUrl = `**/federations/${federationId}/support-tickets`;
+  await page.route(reportUrl, (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { message: 'Проверка недоступности сервера' } }),
+    }),
+  );
+  await reportDialog.getByRole('button', { name: 'Отправить обращение' }).click();
+  await expect(reportDialog.getByRole('alert')).toContainText('Проверка недоступности сервера');
+  await expect(reportDialog.getByLabel('Описание')).toHaveValue(`Проверить дубликат ${suffix}`);
+  await page.unroute(reportUrl);
+  const reportResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().endsWith(`/federations/${federationId}/support-tickets`),
+  );
+  await reportDialog.getByRole('button', { name: 'Отправить обращение' }).click();
+  const savedReport = await reportResponse;
+  expect(savedReport.status()).toBe(201);
+  const savedTicket = (await savedReport.json()).ticket;
+  expect(savedTicket.messages[0].body).toContain(`/athletes/${athleteId}`);
+  await expect(reportDialog).not.toBeVisible();
+
   await page.goto('/judges/new');
   await fillText(page, '#lastName', judgeLastName);
   await fillText(page, '#firstName', 'Secretary');

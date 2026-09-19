@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { calculateNominationPlaces, calculateNominationScore, type ScoringNomination } from './competition-scoring.js';
+import {
+  calculateNominationPlaces,
+  calculateNominationScore,
+  type ScoringNomination,
+} from './competition-scoring.js';
 
 const baseNomination: ScoringNomination = {
   id: 'n1',
@@ -20,7 +24,13 @@ describe('competition scoring', () => {
       attempts: [
         { componentId: 'pu', attemptNumber: 1, weightKg: 45, result: 'good_lift', repsCount: null },
         { componentId: 'pu', attemptNumber: 2, weightKg: 50, result: 'no_lift', repsCount: null },
-        { componentId: 'pu', attemptNumber: 3, weightKg: 47.5, result: 'good_lift', repsCount: null },
+        {
+          componentId: 'pu',
+          attemptNumber: 3,
+          weightKg: 47.5,
+          result: 'good_lift',
+          repsCount: null,
+        },
       ],
     });
 
@@ -59,6 +69,42 @@ describe('competition scoring', () => {
     expect(score.bestSuccessfulAttemptKg).toBe(16);
     expect(score.finalScore).toBe(20);
   });
+
+  it.each(['missing', 'no_lift', 'pending'] as const)(
+    'does not rank an incomplete total: %s second component',
+    (result) => {
+      const nomination = {
+        ...baseNomination,
+        status: 'finished',
+        components: [
+          { id: 'pu', attemptCount: 3, fixedWeightKg: null },
+          { id: 'di', attemptCount: 3, fixedWeightKg: null },
+        ],
+        attempts: [
+          {
+            componentId: 'pu',
+            attemptNumber: 1,
+            weightKg: 50,
+            result: 'good_lift' as const,
+            repsCount: null,
+          },
+          ...(result === 'missing'
+            ? []
+            : [{ componentId: 'di', attemptNumber: 1, weightKg: 70, result, repsCount: null }]),
+        ],
+      };
+      const score = calculateNominationScore(nomination);
+      expect(score.finalScore).toBeNull();
+      expect(score.bestSuccessfulAttemptKg).toBeNull();
+      expect(
+        calculateNominationPlaces([{ ...nomination, finalScore: score.finalScore }])[0],
+      ).toMatchObject({
+        placeInClass: null,
+        placeInDivision: null,
+        placeOverall: null,
+      });
+    },
+  );
 
   it('breaks ties by lower bodyweight and then lower entry number', () => {
     const places = calculateNominationPlaces([

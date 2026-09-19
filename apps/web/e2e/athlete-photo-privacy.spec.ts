@@ -61,6 +61,7 @@ test('athlete detail loads private photos with Bearer auth and renders a blob UR
       });
     return route.fulfill({
       json: {
+        federations: [],
         countries: [],
         regions: [],
         appearances: [],

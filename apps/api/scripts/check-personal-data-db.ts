@@ -263,6 +263,7 @@ try {
   });
   const me = () => app.inject({ url: '/auth/me', headers });
   assert.equal((await me()).json().user.roles.length, 0);
+  assert.equal((await app.inject({ url: `/athletes/${athlete.id}`, headers })).statusCode, 404);
   assert.equal((await me()).json().user.pendingAcknowledgments[0].roleAssignmentId, grant.id);
   const ackUrl = `/auth/role-assignments/${grant.id}/acknowledge`;
   const acknowledgment = { textVersion: ACCESS_ACKNOWLEDGMENT_VERSION };
@@ -311,6 +312,45 @@ try {
   assert.equal((await me()).json().user.roles[0].federationId, federation.id);
   console.log('PASS acknowledgment: owner, version, activation, immutable evidence and audit');
 
+  const foreignFederation = await prisma.federation.create({
+    data: {
+      code: `${suffix}-other`,
+      nameRu: 'Другая федерация',
+      nameEn: 'Other Federation',
+      countryCode: 'AM',
+      billingTariffKopecksPerNomination: 0,
+      securityKey: randomUUID(),
+    },
+  });
+  await prisma.roleAssignment.create({
+    data: {
+      userId: other.id,
+      federationId: foreignFederation.id,
+      role: 'secretary',
+      acknowledgedAt: new Date(),
+      acknowledgedTextVersion: ACCESS_ACKNOWLEDGMENT_VERSION,
+    },
+  });
+  for (const path of ['', '/appearances', '/records', '/documents']) {
+    const url = `/athletes/${athlete.id}${path}`;
+    assert.equal((await app.inject({ url, headers })).statusCode, 200, `Own scope: ${path}`);
+    assert.equal(
+      (await app.inject({ url, headers: otherHeaders })).statusCode,
+      404,
+      `Foreign scope: ${path}`,
+    );
+  }
+  const searchUrl = `/athletes?search=${encodeURIComponent(payload.athlete.lastName)}`;
+  const ownList = (await app.inject({ url: searchUrl, headers })).json();
+  const foreignList = (await app.inject({ url: searchUrl, headers: otherHeaders })).json();
+  assert.equal(ownList.total, 1);
+  assert.equal(ownList.athletes[0].id, athlete.id);
+  assert.equal(foreignList.total, 0);
+  assert.deepEqual(foreignList.athletes, []);
+  console.log(
+    'PASS athlete isolation: real database filters, full card, history, records, documents',
+  );
+
   const png =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSioAAAAASUVORK5CYII=';
   const photoUrl = `/athletes/${athlete.id}/photo`;
@@ -345,6 +385,7 @@ try {
   assert.equal((await app.inject({ url: photoUrl, headers })).statusCode, 200);
   assert.equal((await app.inject({ url: photoUrl, headers: otherHeaders })).statusCode, 404);
   await prisma.roleAssignment.update({ where: { id: grant.id }, data: { revokedAt: new Date() } });
+  assert.equal((await app.inject({ url: `/athletes/${athlete.id}`, headers })).statusCode, 404);
   assert.equal((await app.inject({ url: photoUrl, headers })).statusCode, 404);
   assert.equal((await accept()).statusCode, 404);
   await prisma.athlete.update({
