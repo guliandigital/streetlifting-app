@@ -27,6 +27,7 @@ import {
 } from './api.js';
 import { ChaptersCard } from './chapters-card.js';
 import { PassportRequestsPanel } from './passport-requests-panel.js';
+import { AccountingReconciliationPanel } from './accounting-reconciliation-panel.js';
 
 function todayInput(): string {
   return new Date().toISOString().slice(0, 10);
@@ -78,7 +79,8 @@ function canManageFederation(
   return (
     user?.roles.some(
       (r) =>
-        r.role === 'platform_admin' || (roles.includes(r.role) && r.federationId === federationId),
+        r.role === 'platform_admin' ||
+        (roles.includes(r.role) && r.federationId === federationId && !r.competitionId),
     ) ?? false
   );
 }
@@ -958,6 +960,7 @@ export default function FederationDetailFeature() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+            {canManageAccounting && <AccountingReconciliationPanel federationId={f.id} />}
             <WorkspacePanel className="p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <WorkspaceSectionTitle>Файлы федерации</WorkspaceSectionTitle>

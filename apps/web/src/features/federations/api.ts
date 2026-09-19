@@ -141,6 +141,42 @@ export interface FederationDashboardResponse {
   }>;
 }
 
+export interface ReconciliationCounts {
+  nominations: number;
+  withDecidedAttempt: number;
+  finished: number;
+  finishedWithoutAttempt: number;
+  withdrawn: number;
+  disqualified: number;
+  withdrawnWithDecidedAttempt: number;
+  disqualifiedWithDecidedAttempt: number;
+  postedNominations: number;
+  writeoffDocuments: number;
+}
+
+export interface AccountingReconciliationResponse {
+  generatedAt: string;
+  ruleStatus: 'not_configured';
+  summary: ReconciliationCounts & { competitions: number };
+  ledger: FederationDashboardResponse['balance'] & {
+    receiptDocuments: number;
+    writeoffDocuments: number;
+  };
+  unmatchedWriteoffs: { documents: number; nominations: number };
+  rows: Array<
+    ReconciliationCounts & {
+      id: string;
+      code: string;
+      nameRu: string;
+      status: string;
+      startDate: string;
+      hasFinalizationSnapshot: boolean;
+    }
+  >;
+  limit: number;
+  offset: number;
+}
+
 export function useFederationDashboard(id: string) {
   return useQuery<FederationDashboardResponse>({
     queryKey: ['federations', id, 'dashboard'],

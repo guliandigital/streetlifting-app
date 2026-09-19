@@ -166,6 +166,11 @@ jobs:
         env:
           PD_DB_E2E: '1'
         run: pnpm exec tsx scripts/check-competition-concurrency-db.ts
+      - name: Check read-only accounting reconciliation with PostgreSQL
+        working-directory: apps/api
+        env:
+          PD_DB_E2E: '1'
+        run: pnpm exec tsx scripts/check-accounting-reconciliation-db.ts
       - run: pnpm e2e:web
       - name: Upload Playwright report
         if: failure()
