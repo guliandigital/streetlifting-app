@@ -401,6 +401,25 @@ export const competitionsPlugin: FeaturePlugin = {
           }
         }
 
+        // The confirmed organizer is the person responsible for personal-data
+        // handling at the event (consent collection, access of the secretariat).
+        // A competition cannot start without one.
+        if (nextStatus === 'in_progress' && before.status !== 'in_progress') {
+          const organizers = await prisma.competitionTeamMember.count({
+            where: { competitionId: before.id, role: 'organizer', status: 'confirmed' },
+          });
+          if (organizers === 0) {
+            return reply.code(409).send({
+              error: {
+                code: 'organizer_required',
+                message:
+                  'Confirm a competition organizer (team member with the organizer role) before starting the competition',
+                requestId: req.requestId,
+              },
+            });
+          }
+        }
+
         const eventType = competitionEventType(before.status, nextStatus);
         const updated = await audit.withAudit(
           {

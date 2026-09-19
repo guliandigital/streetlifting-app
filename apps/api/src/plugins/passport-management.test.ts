@@ -155,6 +155,14 @@ describe('passport team workflow', () => {
     });
 
     expect(response.statusCode).toBe(201);
+    const createdId = response.json().teamMember.id as string;
+    expect(createdId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(auditMock.withAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'passport.team_member.invited', targetId: createdId }),
+      expect.any(Function),
+    );
     expect(prismaMock.competitionTeamMember.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ judgeAssignmentId: assignmentId }),

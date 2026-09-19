@@ -670,12 +670,38 @@
     "errors": {
       "setupMissing": "Registration is missing a discipline, division, or weight class.",
       "consentRequired": "Personal data processing consent is required.",
+      "consentChanged": "The consent texts have changed. Read and accept them again.",
       "duplicate": "This nomination already exists in the competition.",
       "closed": "Online registration is closed."
+    },
+    "operator": {
+      "title": "Personal data operator",
+      "contact": "Contact for requests",
+      "organizer": "Responsible for processing at the event",
+      "policy": "Personal data processing policy"
     }
   },
   "language": {
     "ru": "RU",
     "en": "EN"
+  },
+  "accessAcknowledgment": {
+    "retry": "Retry loading",
+    "title": "Confidentiality obligation",
+    "intro_one": "To activate your role, accept the personal-data handling obligation.",
+    "intro_other": "To activate your roles ({{count}}), accept the personal-data handling obligation.",
+    "checkbox": "I have read and accept the obligation",
+    "confirm": "Accept",
+    "done": "Roles activated",
+    "error": "Could not save the acknowledgment. Please try again.",
+    "roles": {
+      "federation_admin": "Federation administrator",
+      "secretary": "Secretary",
+      "accountant": "Accountant",
+      "head_judge": "Head judge",
+      "judge": "Judge",
+      "scoreboard_operator": "Scoreboard operator",
+      "speaker": "Speaker"
+    }
   }
 }

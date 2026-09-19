@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { createLocalJWKSet, jwtVerify } from 'jose';
 import { describe, expect, it } from 'vitest';
-import { buildIsfIdApp } from './app.js';
+import { buildIsfIdApp } from './isf-id-app.js';
 import { createIsfIdIssuer } from './issuer.js';
 
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });

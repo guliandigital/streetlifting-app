@@ -47,7 +47,7 @@ function weightClassesForSelection(
 export default function PublicCompetitionRegistrationFeature() {
   const { t } = useTranslation();
   const { competitionId } = useParams({ from: '/register/$competitionId' });
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['public-registration', competitionId],
     queryFn: () => publicRegistrationApi.details(competitionId),
   });
@@ -68,10 +68,16 @@ export default function PublicCompetitionRegistrationFeature() {
   const [divisionId, setDivisionId] = useState('');
   const [weightClassId, setWeightClassId] = useState('');
   const [consentDataProcessing, setConsentDataProcessing] = useState(false);
-  const [consentPublicResults, setConsentPublicResults] = useState(true);
+  const [consentPublicResults, setConsentPublicResults] = useState(false);
   const [consentPhotoPublication, setConsentPhotoPublication] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdNominationId, setCreatedNominationId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setConsentDataProcessing(false);
+    setConsentPublicResults(false);
+    setConsentPhotoPublication(false);
+  }, [data?.consents?.snapshotHash]);
 
   const divisions = useMemo(
     () => data?.competition.divisions.filter((division) => division.gender === gender) ?? [],
@@ -104,7 +110,7 @@ export default function PublicCompetitionRegistrationFeature() {
       toast.error(t('publicRegistration.errors.setupMissing'));
       return;
     }
-    if (!consentDataProcessing) {
+    if (!consentDataProcessing || !data?.consents?.snapshotHash) {
       toast.error(t('publicRegistration.errors.consentRequired'));
       return;
     }
@@ -129,6 +135,7 @@ export default function PublicCompetitionRegistrationFeature() {
       ...(optional(contactPhone) && { contactPhone: optional(contactPhone) }),
       ...(optional(contactEmail) && { contactEmail: optional(contactEmail) }),
       consentDataProcessing: true,
+      consentSnapshotHash: data.consents.snapshotHash,
       consentPublicResults,
       consentPhotoPublication,
     };
@@ -139,7 +146,13 @@ export default function PublicCompetitionRegistrationFeature() {
       setCreatedNominationId(result.registration.nominationId);
       toast.success(t('publicRegistration.created'));
     } catch (err) {
-      if (err instanceof ApiClientError && err.code === 'duplicate_nomination') {
+      if (err instanceof ApiClientError && err.code === 'consent_changed') {
+        setConsentDataProcessing(false);
+        setConsentPublicResults(false);
+        setConsentPhotoPublication(false);
+        await refetch();
+        toast.error(t('publicRegistration.errors.consentChanged'));
+      } else if (err instanceof ApiClientError && err.code === 'duplicate_nomination') {
         toast.error(t('publicRegistration.errors.duplicate'));
       } else if (err instanceof ApiClientError && err.code === 'registration_closed') {
         toast.error(t('publicRegistration.errors.closed'));
@@ -170,6 +183,7 @@ export default function PublicCompetitionRegistrationFeature() {
   const isAvailable = data.registration.isAvailable;
   const canSubmit =
     isAvailable &&
+    Boolean(data.consents?.snapshotHash) &&
     data.disciplines.length > 0 &&
     divisions.length > 0 &&
     weightClasses.length > 0 &&
@@ -381,6 +395,36 @@ export default function PublicCompetitionRegistrationFeature() {
               </div>
 
               <div className="space-y-2 rounded-md border border-border p-3">
+                {data.consents ? (
+                  <div className="text-sm" data-testid="public-reg-operator">
+                    <div className="font-medium">{t('publicRegistration.operator.title')}</div>
+                    <div>
+                      {data.consents.operator.name}
+                      {data.consents.operator.address ? `, ${data.consents.operator.address}` : ''}
+                    </div>
+                    {data.consents.operator.contact ? (
+                      <div>
+                        {t('publicRegistration.operator.contact')}: {data.consents.operator.contact}
+                      </div>
+                    ) : null}
+                    {data.consents.operator.organizerName ? (
+                      <div>
+                        {t('publicRegistration.operator.organizer')}:{' '}
+                        {data.consents.operator.organizerName}
+                      </div>
+                    ) : null}
+                    {data.consents.operator.privacyPolicyUrl ? (
+                      <a
+                        className="underline"
+                        href={data.consents.operator.privacyPolicyUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {t('publicRegistration.operator.policy')}
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
                 <label className="flex items-start gap-2 text-sm">
                   <input
                     data-testid="public-reg-consent-data"
@@ -389,7 +433,10 @@ export default function PublicCompetitionRegistrationFeature() {
                     checked={consentDataProcessing}
                     onChange={(event) => setConsentDataProcessing(event.target.checked)}
                   />
-                  <span>{t('publicRegistration.consents.dataProcessing')}</span>
+                  <span>
+                    {data.consents?.texts.dataProcessing ??
+                      t('publicRegistration.consents.dataProcessing')}
+                  </span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
                   <input
@@ -398,7 +445,10 @@ export default function PublicCompetitionRegistrationFeature() {
                     checked={consentPublicResults}
                     onChange={(event) => setConsentPublicResults(event.target.checked)}
                   />
-                  <span>{t('publicRegistration.consents.publicResults')}</span>
+                  <span>
+                    {data.consents?.texts.publicResults ??
+                      t('publicRegistration.consents.publicResults')}
+                  </span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
                   <input
@@ -407,7 +457,10 @@ export default function PublicCompetitionRegistrationFeature() {
                     checked={consentPhotoPublication}
                     onChange={(event) => setConsentPhotoPublication(event.target.checked)}
                   />
-                  <span>{t('publicRegistration.consents.photoPublication')}</span>
+                  <span>
+                    {data.consents?.texts.photoPublication ??
+                      t('publicRegistration.consents.photoPublication')}
+                  </span>
                 </label>
               </div>
 

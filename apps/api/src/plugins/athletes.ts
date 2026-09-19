@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { z } from 'zod';
 import {
   AthleteCreate,
@@ -11,10 +9,17 @@ import {
 } from '@streetlifting/domain';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma } from '../lib/db.js';
+import {
+  MAX_UPLOAD_CONTENT_BYTES,
+  UPLOAD_BODY_LIMIT_BYTES,
+  storage,
+  storageKey,
+} from '../lib/storage.js';
 import type { Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
+import { LIVE_OPS_READ_ROLES, isPlatformAdmin } from '../lib/auth/authorization-matrix.js';
 import { validateUuidParams } from '../lib/params.js';
 
 const PRESET_BY_DISCIPLINE_CODE = new Map(presets.ISF_V51_DISCIPLINES.map((p) => [p.code, p]));
@@ -51,7 +56,7 @@ function computeAppearanceIsfPoints(
 
 const log = moduleLogger('athletes');
 
-const MAX_ATHLETE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const MAX_ATHLETE_ATTACHMENT_BYTES = MAX_UPLOAD_CONTENT_BYTES;
 const MAX_ATHLETE_PHOTO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_PHOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -74,10 +79,6 @@ const AthletePhotoCreateInput = z
 
 function photoUrlFor(athleteId: string): string {
   return `/api/athletes/${athleteId}/photo`;
-}
-
-function uploadRoot(): string {
-  return process.env.STORAGE_DIR ?? path.join(process.cwd(), 'storage');
 }
 
 function sanitizeFilename(filename: string): string {
@@ -443,7 +444,7 @@ export const athletesPlugin: FeaturePlugin = {
     // ─── Upload attachment (document) ──────────────────────────────────
     app.post<{ Params: { id: string } }>(
       '/athletes/:id/attachments',
-      { preHandler: requireRole('platform_admin') },
+      { preHandler: requireRole('platform_admin'), bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
       async (req, reply) => {
         const parsed = AthleteAttachmentCreateInput.safeParse(req.body);
         if (!parsed.success) {
@@ -477,10 +478,8 @@ export const athletesPlugin: FeaturePlugin = {
         }
 
         const filename = sanitizeFilename(parsed.data.filename);
-        const storagePath = path.join('athletes', req.params.id, `${randomUUID()}-${filename}`);
-        const absolutePath = path.join(uploadRoot(), storagePath);
-        await mkdir(path.dirname(absolutePath), { recursive: true });
-        await writeFile(absolutePath, content);
+        const storagePath = storageKey('athletes', req.params.id, `${randomUUID()}-${filename}`);
+        await storage.put(storagePath, content, parsed.data.mimeType);
 
         try {
           const attachment = await prisma.$transaction(async (tx) => {
@@ -534,7 +533,7 @@ export const athletesPlugin: FeaturePlugin = {
             },
           });
         } catch (err) {
-          await unlink(absolutePath).catch(() => undefined);
+          await storage.delete(storagePath).catch(() => undefined);
           throw err;
         }
       },
@@ -598,34 +597,20 @@ export const athletesPlugin: FeaturePlugin = {
             deletedAt: null,
           },
         });
-        if (!attachment) {
+        // Photos must use the consent-aware /photo endpoint, even when the
+        // caller knows an attachment id from an older documents response.
+        if (!attachment || attachment.kind === 'athlete_photo') {
+          reply.header('Cache-Control', 'private, no-store');
           return reply.code(404).send({
             error: { code: 'not_found', message: 'Attachment not found', requestId: req.requestId },
           });
         }
 
-        const root = path.resolve(uploadRoot());
-        const absolutePath = path.resolve(root, attachment.storagePath);
-        if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`)) {
-          return reply.code(500).send({
-            error: {
-              code: 'invalid_storage_path',
-              message: 'Attachment storage path is invalid',
-              requestId: req.requestId,
-            },
-          });
-        }
-
-        try {
-          const content = await readFile(absolutePath);
-          reply.header('Content-Type', attachment.mimeType);
-          reply.header(
-            'Content-Disposition',
-            `attachment; filename="${contentDispositionFilename(attachment.filename)}"`,
-          );
-          return reply.send(content);
-        } catch (err) {
+        const content = await storage.get(attachment.storagePath).catch((err: unknown) => {
           log.error({ err, attachmentId: attachment.id }, 'attachment file read failed');
+          return null;
+        });
+        if (!content) {
           return reply.code(404).send({
             error: {
               code: 'file_missing',
@@ -634,13 +619,19 @@ export const athletesPlugin: FeaturePlugin = {
             },
           });
         }
+        reply.header('Content-Type', attachment.mimeType);
+        reply.header(
+          'Content-Disposition',
+          `attachment; filename="${contentDispositionFilename(attachment.filename)}"`,
+        );
+        return reply.send(content);
       },
     );
 
     // ─── Photo upload (one current per athlete) ───────────────────────
     app.post<{ Params: { id: string } }>(
       '/athletes/:id/photo',
-      { preHandler: requireRole('platform_admin') },
+      { preHandler: requireRole('platform_admin'), bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
       async (req, reply) => {
         const parsed = AthletePhotoCreateInput.safeParse(req.body);
         if (!parsed.success) {
@@ -683,14 +674,12 @@ export const athletesPlugin: FeaturePlugin = {
         }
 
         const filename = sanitizeFilename(parsed.data.filename);
-        const storagePath = path.join(
+        const storagePath = storageKey(
           'athlete-photos',
           req.params.id,
           `${randomUUID()}-${filename}`,
         );
-        const absolutePath = path.join(uploadRoot(), storagePath);
-        await mkdir(path.dirname(absolutePath), { recursive: true });
-        await writeFile(absolutePath, content);
+        await storage.put(storagePath, content, parsed.data.mimeType);
 
         try {
           const updated = await prisma.$transaction(async (tx) => {
@@ -741,7 +730,7 @@ export const athletesPlugin: FeaturePlugin = {
           );
           return reply.code(201).send({ athlete: updated });
         } catch (err) {
-          await unlink(absolutePath).catch(() => undefined);
+          await storage.delete(storagePath).catch(() => undefined);
           throw err;
         }
       },
@@ -800,49 +789,105 @@ export const athletesPlugin: FeaturePlugin = {
       },
     );
 
-    // ─── Photo download (public, no auth — <img> can't send Bearer) ───
-    app.get<{ Params: { id: string } }>('/athletes/:id/photo', async (req, reply) => {
-      const photo = await prisma.attachment.findFirst({
-        where: {
-          athleteId: req.params.id,
-          kind: 'athlete_photo',
-          deletedAt: null,
-        },
-        orderBy: { uploadedAt: 'desc' },
-      });
-      if (!photo) {
-        return reply.code(404).send({
-          error: { code: 'not_found', message: 'Photo not found', requestId: req.requestId },
+    // Public photos require consent in the requested federation. Private
+    // workspace previews use authenticated fetch instead of a bare <img> URL.
+    app.get<{ Params: { id: string }; Querystring: { federationId?: string } }>(
+      '/athletes/:id/photo',
+      async (req, reply) => {
+        reply.header('Cache-Control', 'private, no-store');
+        reply.header('Vary', 'Authorization');
+        if (req.headers.authorization && !req.user) {
+          return reply.code(401).send({
+            error: {
+              code: 'unauthorized',
+              message: 'Authentication required',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const query = z.object({ federationId: z.string().uuid().optional() }).safeParse(req.query);
+        if (!query.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: 'Invalid federation',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const athlete = await prisma.athlete.findUnique({
+          where: { id: req.params.id },
+          select: { id: true, userId: true, privacyMode: true },
         });
-      }
-
-      const root = path.resolve(uploadRoot());
-      const absolutePath = path.resolve(root, photo.storagePath);
-      if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`)) {
-        return reply.code(500).send({
-          error: {
-            code: 'invalid_storage_path',
-            message: 'Photo storage path is invalid',
-            requestId: req.requestId,
+        let allowed = Boolean(
+          athlete && req.user && (athlete.userId === req.user.id || isPlatformAdmin(req.user)),
+        );
+        if (athlete && req.user && !allowed) {
+          const scopes = req.user.roles
+            .filter((assignment) => LIVE_OPS_READ_ROLES.some((role) => role === assignment.role))
+            .flatMap((assignment) => [
+              ...(assignment.federationId ? [{ federationId: assignment.federationId }] : []),
+              ...(assignment.competitionId ? [{ id: assignment.competitionId }] : []),
+            ]);
+          if (scopes.length > 0) {
+            allowed = Boolean(
+              await prisma.nomination.findFirst({
+                where: { athleteId: athlete.id, competition: { OR: scopes } },
+                select: { id: true },
+              }),
+            );
+          }
+        }
+        if (athlete && !allowed && athlete.privacyMode !== 'hidden') {
+          const federationId = query.data.federationId ?? null;
+          allowed = Boolean(
+            await prisma.consent.findFirst({
+              where: {
+                athleteId: athlete.id,
+                scope: 'photo_publication',
+                revokedAt: null,
+                federationId,
+                ...(federationId ? { federation: { isPublicResultsClosed: false } } : {}),
+              },
+              select: { id: true },
+            }),
+          );
+        }
+        if (!allowed) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Photo not found', requestId: req.requestId },
+          });
+        }
+        const photo = await prisma.attachment.findFirst({
+          where: {
+            athleteId: req.params.id,
+            kind: 'athlete_photo',
+            deletedAt: null,
           },
+          orderBy: { uploadedAt: 'desc' },
         });
-      }
+        if (!photo) {
+          return reply.code(404).send({
+            error: { code: 'not_found', message: 'Photo not found', requestId: req.requestId },
+          });
+        }
 
-      try {
-        const content = await readFile(absolutePath);
+        const content = await storage.get(photo.storagePath).catch((err: unknown) => {
+          log.error({ err, photoId: photo.id }, 'photo file read failed');
+          return null;
+        });
+        if (!content) {
+          return reply.code(404).send({
+            error: {
+              code: 'file_missing',
+              message: 'Photo file is missing from storage',
+              requestId: req.requestId,
+            },
+          });
+        }
         reply.header('Content-Type', photo.mimeType);
-        reply.header('Cache-Control', 'private, max-age=300');
         return reply.send(content);
-      } catch (err) {
-        log.error({ err, photoId: photo.id }, 'photo file read failed');
-        return reply.code(404).send({
-          error: {
-            code: 'file_missing',
-            message: 'Photo file is missing from storage',
-            requestId: req.requestId,
-          },
-        });
-      }
-    });
+      },
+    );
   },
 };

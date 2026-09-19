@@ -16,7 +16,7 @@ import { WorkspacePage } from '../../components/workspace.js';
 import { api, ApiClientError } from '../../lib/api-client.js';
 import { useAuth } from '../../lib/auth/hooks.js';
 import { useAuthStore } from '../../lib/auth/store.js';
-import { useFederations } from '../federations/api.js';
+import { useFederations } from '../../lib/federations-api.js';
 import {
   useCabinetOverview,
   usePassportAttachments,

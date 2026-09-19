@@ -14,17 +14,13 @@ const apiDir = path.join(root, 'apps', 'api');
 const webDir = path.join(root, 'apps', 'web');
 const apiEnvPath = path.join(apiDir, '.env');
 const apiEnvExamplePath = path.join(apiDir, '.env.example');
-const isWindows = process.platform === 'win32';
 
 const flags = new Set(process.argv.slice(2));
-const skipDocker = flags.has('--skip-docker') || process.env.STREETLIFTING_SKIP_DOCKER === '1';
 const skipPrepare = flags.has('--skip-prepare') || process.env.STREETLIFTING_SKIP_PREPARE === '1';
 const skipSeed = flags.has('--skip-seed') || process.env.STREETLIFTING_SKIP_SEED === '1';
 const exitAfterReady = flags.has('--once') || flags.has('--check');
 const apiPortOverride = process.env.STREETLIFTING_API_PORT ?? process.env.PORT;
 const webPort = process.env.STREETLIFTING_WEB_PORT ?? '1420';
-const postgresPort = process.env.STREETLIFTING_POSTGRES_PORT ?? '55432';
-const redisPort = process.env.STREETLIFTING_REDIS_PORT ?? '56379';
 
 const commands = {
   tsc: path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
@@ -60,17 +56,6 @@ function run(command, args, options = {}) {
   if (result.status !== 0) {
     fail(`${command} ${args.join(' ')} failed with exit code ${result.status}`);
   }
-}
-
-function commandOk(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: options.cwd ?? root,
-    env: options.env ?? process.env,
-    stdio: 'ignore',
-    shell: false,
-    timeout: options.timeoutMs ?? 10_000,
-  });
-  return !result.error && result.status === 0;
 }
 
 function parseEnvText(text) {
@@ -119,13 +104,10 @@ function ensureApiEnv() {
 
   const lines = fs.readFileSync(apiEnvPath, 'utf8').split(/\r?\n/);
   const env = parseEnvText(lines.join('\n'));
-  const oldDefaultDatabaseUrl = 'postgresql://streetlifting:streetlifting@localhost:5432/streetlifting?schema=public';
-  const localDatabaseUrl = `postgresql://streetlifting:streetlifting@localhost:${postgresPort}/streetlifting?schema=public`;
   const defaults = {
     NODE_ENV: 'development',
     PORT: '3000',
     HOST: '0.0.0.0',
-    DATABASE_URL: localDatabaseUrl,
     CORS_ORIGIN: 'http://localhost:1420',
     RATE_LIMIT_MAX: '600',
     RATE_LIMIT_TIME_WINDOW: '1 minute',
@@ -136,7 +118,7 @@ function ensureApiEnv() {
 
   let changed = false;
   for (const [key, value] of Object.entries(defaults)) {
-    if (!env[key] || (key === 'DATABASE_URL' && env[key] === oldDefaultDatabaseUrl)) {
+    if (!env[key]) {
       setEnvLine(lines, key, value);
       env[key] = value;
       changed = true;
@@ -157,24 +139,19 @@ function ensureApiEnv() {
 
   const apiEnv = { ...readEnvFile(apiEnvPath), ...process.env };
   if (apiPortOverride) apiEnv.PORT = apiPortOverride;
+
+  if (!apiEnv.DATABASE_URL) {
+    fail(
+      [
+        'DATABASE_URL is not set in apps/api/.env.',
+        'Local development uses a Neon development branch (no Docker):',
+        '  1. vercel link --cwd apps/api   (once, picks the streetlifting-api project)',
+        '  2. vercel env pull apps/api/.env --environment=development --cwd apps/api',
+        'or paste a Postgres connection string into apps/api/.env manually.',
+      ].join('\n'),
+    );
+  }
   return apiEnv;
-}
-
-function startDockerDesktop() {
-  if (!isWindows) return false;
-  const candidates = [
-    process.env.ProgramFiles ? path.join(process.env.ProgramFiles, 'Docker', 'Docker', 'Docker Desktop.exe') : null,
-    process.env['ProgramFiles(x86)']
-      ? path.join(process.env['ProgramFiles(x86)'], 'Docker', 'Docker', 'Docker Desktop.exe')
-      : null,
-  ].filter(Boolean);
-  const dockerDesktop = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!dockerDesktop) return false;
-
-  info('starting Docker Desktop');
-  const child = spawn(dockerDesktop, [], { detached: true, stdio: 'ignore' });
-  child.unref();
-  return true;
 }
 
 async function waitUntil(label, check, timeoutMs, intervalMs = 2_000) {
@@ -208,46 +185,6 @@ async function ensurePortFree(port, label) {
   }
 }
 
-async function ensureDocker() {
-  if (skipDocker) {
-    info('skipping Docker startup because --skip-docker was passed');
-    return;
-  }
-
-  if (!commandOk('docker', ['version', '--format', '{{.Server.Version}}'])) {
-    const started = startDockerDesktop();
-    if (!started) {
-      fail('Docker daemon is not available. Start Docker Desktop and rerun pnpm dev.');
-    }
-    await waitUntil(
-      'Docker daemon',
-      () => commandOk('docker', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 10_000 }),
-      180_000,
-      3_000,
-    );
-  }
-
-  info('starting Postgres and Redis with docker compose');
-  run('docker', ['compose', 'up', '-d'], {
-    cwd: root,
-    env: {
-      ...process.env,
-      STREETLIFTING_POSTGRES_PORT: postgresPort,
-      STREETLIFTING_REDIS_PORT: redisPort,
-    },
-  });
-  await waitUntil(
-    `Postgres on 127.0.0.1:${postgresPort}`,
-    () => canConnect('127.0.0.1', Number(postgresPort)),
-    120_000,
-  );
-  await waitUntil(
-    `Redis on 127.0.0.1:${redisPort}`,
-    () => canConnect('127.0.0.1', Number(redisPort)),
-    120_000,
-  );
-}
-
 function node(script, args, options = {}) {
   run(process.execPath, [script, ...args], options);
 }
@@ -265,7 +202,13 @@ async function prepare(apiEnv) {
   node(commands.prisma, ['generate'], { cwd: apiDir, env: apiEnv });
 
   info('applying database migrations');
-  node(commands.prisma, ['migrate', 'deploy'], { cwd: apiDir, env: apiEnv });
+  // Prisma Migrate needs a direct connection; prefer the unpooled URL when the
+  // env came from the Neon integration.
+  const migrateEnv = {
+    ...apiEnv,
+    DATABASE_URL: apiEnv.DATABASE_URL_UNPOOLED || apiEnv.DATABASE_URL,
+  };
+  node(commands.prisma, ['migrate', 'deploy'], { cwd: apiDir, env: migrateEnv });
 
   if (skipSeed) {
     info('skipping seed scripts because --skip-seed was passed');
@@ -322,7 +265,6 @@ async function main() {
   const apiEnv = ensureApiEnv();
   await ensurePortFree(Number(apiEnv.PORT ?? 3000), 'API');
   await ensurePortFree(Number(webPort), 'Web');
-  await ensureDocker();
   await prepare(apiEnv);
 
   const children = [];
@@ -332,7 +274,11 @@ async function main() {
   });
   children.push(api);
 
-  await waitUntil('API health', () => httpOk(`http://127.0.0.1:${apiEnv.PORT ?? 3000}/health`), 60_000);
+  await waitUntil(
+    'API health',
+    () => httpOk(`http://127.0.0.1:${apiEnv.PORT ?? 3000}/health`),
+    60_000,
+  );
 
   const webEnv = {
     ...process.env,

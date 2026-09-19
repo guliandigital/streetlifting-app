@@ -1,4 +1,5 @@
 import Fastify, { type FastifyError } from 'fastify';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import websocket from '@fastify/websocket';
@@ -46,6 +47,11 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:1420')
   .map((s) => s.trim())
   .filter(Boolean);
 
+// WebSocket live updates need a long-lived server. Serverless hosts (Vercel)
+// cannot upgrade connections, so the channel is skipped there and clients
+// fall back to HTTP polling. `LIVE_UPDATES_WS=false` disables it explicitly.
+const websocketEnabled = process.env.LIVE_UPDATES_WS !== 'false' && !process.env.VERCEL;
+
 const app = Fastify({
   loggerInstance: rootLogger,
   disableRequestLogging: false,
@@ -56,13 +62,15 @@ const app = Fastify({
 const boot = moduleLogger('boot');
 
 await registerRequestContext(app);
-await app.register(websocket, {
-  options: {
-    maxPayload: 1024,
-    handleProtocols: (protocols: Set<string>) =>
-      protocols.has('streetlifting-live.v1') ? 'streetlifting-live.v1' : false,
-  },
-});
+if (websocketEnabled) {
+  await app.register(websocket, {
+    options: {
+      maxPayload: 1024,
+      handleProtocols: (protocols: Set<string>) =>
+        protocols.has('streetlifting-live.v1') ? 'streetlifting-live.v1' : false,
+    },
+  });
+}
 
 // Attach req.user globally so every plugin can use requireAuth/requireRole.
 app.addHook('preHandler', attachUser);
@@ -117,12 +125,13 @@ const features = [
   federationChaptersPlugin,
   competitionsPlugin,
   competitionOpsPlugin,
-  liveUpdatesPlugin,
+  ...(websocketEnabled ? [liveUpdatesPlugin] : []),
   publicRegistrationPlugin,
   isfIntegrationPlugin,
   // Feature plugins are appended here as milestones land. Each loads
   // independently; see ADR-0003 for the isolation contract.
 ];
+boot.info({ websocketEnabled }, 'live updates transport');
 
 const result = await loadPlugins(app, features);
 boot.info(
@@ -143,8 +152,13 @@ app.setErrorHandler((err: FastifyError, req, reply) => {
 });
 
 try {
-  await app.listen({ port, host });
+  if (!process.env.VERCEL) await app.listen({ port, host });
 } catch (err) {
   boot.fatal({ err }, 'server failed to start');
   process.exit(1);
+}
+
+export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  await app.ready();
+  app.server.emit('request', req, res);
 }

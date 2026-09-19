@@ -20,6 +20,17 @@ export const FederationCreate = z
     chiefAccountantName: z.string().max(200).optional(),
     cashierName: z.string().max(200).optional(),
     billingTariffKopecksPerNomination: z.number().int().nonnegative(),
+    // Personal-data operator requisites (152-ФЗ): shown verbatim in consent
+    // texts and used by data subjects to send requests to the federation.
+    pdOperatorName: z.string().max(300).optional(),
+    pdOperatorAddress: z.string().max(500).optional(),
+    pdOperatorContact: z.string().max(200).optional(),
+    privacyPolicyUrl: z
+      .string()
+      .url()
+      .max(2048)
+      .regex(/^https?:\/\//i)
+      .optional(),
   })
   .strict();
 export type FederationCreate = z.infer<typeof FederationCreate>;
@@ -44,6 +55,16 @@ export const FederationUpdate = z
     billingTariffKopecksPerNomination: z.number().int().nonnegative().optional(),
     isPublicResultsClosed: z.boolean().optional(),
     notificationsDisabled: z.boolean().optional(),
+    pdOperatorName: z.string().max(300).nullable().optional(),
+    pdOperatorAddress: z.string().max(500).nullable().optional(),
+    pdOperatorContact: z.string().max(200).nullable().optional(),
+    privacyPolicyUrl: z
+      .string()
+      .url()
+      .max(2048)
+      .regex(/^https?:\/\//i)
+      .nullable()
+      .optional(),
   })
   .strict();
 export type FederationUpdate = z.infer<typeof FederationUpdate>;

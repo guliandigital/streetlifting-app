@@ -18,6 +18,10 @@ import {
   signAccessToken,
 } from '../lib/auth/tokens.js';
 import { requireAuth } from '../lib/auth/middleware.js';
+import {
+  ACCESS_ACKNOWLEDGMENT_TEXTS,
+  ACCESS_ACKNOWLEDGMENT_VERSION,
+} from '../lib/access-acknowledgment.js';
 
 const log = moduleLogger('auth');
 
@@ -55,6 +59,12 @@ const ChangePasswordBody = z
   })
   .strict();
 
+const AcknowledgeBody = z
+  .object({
+    textVersion: z.string().min(1).max(64),
+  })
+  .strict();
+
 interface TokenPair {
   accessToken: string;
   accessTokenExpiresIn: number;
@@ -62,7 +72,10 @@ interface TokenPair {
   refreshTokenExpiresAt: string;
 }
 
-async function issueTokenPair(userId: string, ctx: { ip: string | null; userAgent: string | null }): Promise<TokenPair> {
+async function issueTokenPair(
+  userId: string,
+  ctx: { ip: string | null; userAgent: string | null },
+): Promise<TokenPair> {
   const accessToken = await signAccessToken(userId);
   const refresh = await issueRefreshToken(userId, ctx);
   return {
@@ -84,46 +97,54 @@ export const authPlugin: FeaturePlugin = {
       '/auth/register',
       { config: { rateLimit: { max: 3, timeWindow: '1 minute' } } },
       async (req, reply) => {
-      const parsed = RegisterBody.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
-        });
-      }
-      const { email, displayName, password } = parsed.data;
-      const passwordHash = await hashPassword(password);
-
-      try {
-        const user = await audit.withAudit(
-          {
-            ...audit.fromRequest(req),
-            action: 'auth.user.registered',
-            scopeFederationId: null,
-            scopeCompetitionId: null,
-            targetType: 'user',
-            targetId: '00000000-0000-0000-0000-000000000000',
-            before: null,
-            after: { email, displayName },
-          },
-          (tx) =>
-            tx.user.create({
-              data: { email, displayName, passwordHash },
-              select: { id: true, email: true, displayName: true, createdAt: true },
-            }),
-        );
-        // Patch the audit row's targetId — we didn't have it before the insert.
-        // For now log it in the operational stream so we can correlate.
-        log.info({ userId: user.id, requestId: req.requestId }, 'user registered');
-        return reply.code(201).send({ user });
-      } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          return reply.code(409).send({
-            error: { code: 'email_taken', message: 'Email already registered', requestId: req.requestId },
+        const parsed = RegisterBody.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
-        throw err;
-      }
-    },
+        const { email, displayName, password } = parsed.data;
+        const passwordHash = await hashPassword(password);
+
+        try {
+          const user = await audit.withAudit(
+            {
+              ...audit.fromRequest(req),
+              action: 'auth.user.registered',
+              scopeFederationId: null,
+              scopeCompetitionId: null,
+              targetType: 'user',
+              targetId: '00000000-0000-0000-0000-000000000000',
+              before: null,
+              after: { email, displayName },
+            },
+            (tx) =>
+              tx.user.create({
+                data: { email, displayName, passwordHash },
+                select: { id: true, email: true, displayName: true, createdAt: true },
+              }),
+          );
+          // Patch the audit row's targetId — we didn't have it before the insert.
+          // For now log it in the operational stream so we can correlate.
+          log.info({ userId: user.id, requestId: req.requestId }, 'user registered');
+          return reply.code(201).send({ user });
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            return reply.code(409).send({
+              error: {
+                code: 'email_taken',
+                message: 'Email already registered',
+                requestId: req.requestId,
+              },
+            });
+          }
+          throw err;
+        }
+      },
     );
 
     // ─── Login ─────────────────────────────────────────────────────────
@@ -132,57 +153,71 @@ export const authPlugin: FeaturePlugin = {
       '/auth/login',
       { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
       async (req, reply) => {
-      const parsed = LoginBody.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
-        });
-      }
-      const { email, password } = parsed.data;
-      const user = await prisma.user.findUnique({ where: { email } });
-      const ok = user ? await verifyPassword(user.passwordHash ?? '', password) : false;
+        const parsed = LoginBody.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        const { email, password } = parsed.data;
+        const user = await prisma.user.findUnique({ where: { email } });
+        const ok = user ? await verifyPassword(user.passwordHash ?? '', password) : false;
 
-      const ctx = audit.fromRequest(req);
-      if (!user || !ok) {
+        const ctx = audit.fromRequest(req);
+        if (!user || !ok) {
+          await audit.record({
+            ...ctx,
+            action: 'auth.login.failed',
+            result: 'denied',
+            scopeFederationId: null,
+            scopeCompetitionId: null,
+            targetType: 'user',
+            targetId: user?.id ?? '00000000-0000-0000-0000-000000000000',
+            before: null,
+            after: { email },
+            notes: user ? 'wrong password' : 'user not found',
+          });
+          return reply.code(401).send({
+            error: {
+              code: 'invalid_credentials',
+              message: 'Invalid email or password',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        // Lazy rehash if cost params have moved on since the original hash.
+        if (user.passwordHash && needsRehash(user.passwordHash)) {
+          const fresh = await hashPassword(password);
+          await prisma.user.update({ where: { id: user.id }, data: { passwordHash: fresh } });
+        }
+
+        const tokens = await issueTokenPair(user.id, {
+          ip: req.ip ?? null,
+          userAgent: req.headers['user-agent'] ?? null,
+        });
         await audit.record({
           ...ctx,
-          action: 'auth.login.failed',
-          result: 'denied',
+          actorUserId: user.id,
+          action: 'auth.login.succeeded',
+          result: 'success',
           scopeFederationId: null,
           scopeCompetitionId: null,
           targetType: 'user',
-          targetId: user?.id ?? '00000000-0000-0000-0000-000000000000',
+          targetId: user.id,
           before: null,
-          after: { email },
-          notes: user ? 'wrong password' : 'user not found',
+          after: null,
         });
-        return reply.code(401).send({
-          error: { code: 'invalid_credentials', message: 'Invalid email or password', requestId: req.requestId },
+
+        return reply.send({
+          user: { id: user.id, email: user.email, displayName: user.displayName },
+          ...tokens,
         });
-      }
-
-      // Lazy rehash if cost params have moved on since the original hash.
-      if (user.passwordHash && needsRehash(user.passwordHash)) {
-        const fresh = await hashPassword(password);
-        await prisma.user.update({ where: { id: user.id }, data: { passwordHash: fresh } });
-      }
-
-      const tokens = await issueTokenPair(user.id, { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null });
-      await audit.record({
-        ...ctx,
-        actorUserId: user.id,
-        action: 'auth.login.succeeded',
-        result: 'success',
-        scopeFederationId: null,
-        scopeCompetitionId: null,
-        targetType: 'user',
-        targetId: user.id,
-        before: null,
-        after: null,
-      });
-
-      return reply.send({ user: { id: user.id, email: user.email, displayName: user.displayName }, ...tokens });
-    },
+      },
     );
 
     // ─── Refresh ───────────────────────────────────────────────────────
@@ -191,58 +226,71 @@ export const authPlugin: FeaturePlugin = {
       '/auth/refresh',
       { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
       async (req, reply) => {
-      const parsed = RefreshBody.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+        const parsed = RefreshBody.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        const result = await rotateRefreshToken(parsed.data.refreshToken, {
+          ip: req.ip ?? null,
+          userAgent: req.headers['user-agent'] ?? null,
         });
-      }
-      const result = await rotateRefreshToken(parsed.data.refreshToken, {
-        ip: req.ip ?? null,
-        userAgent: req.headers['user-agent'] ?? null,
-      });
-      const ctx = audit.fromRequest(req);
+        const ctx = audit.fromRequest(req);
 
-      if ('error' in result) {
-        const codeMap = { invalid: 'invalid_token', expired: 'token_expired', reuse: 'token_reuse' } as const;
+        if ('error' in result) {
+          const codeMap = {
+            invalid: 'invalid_token',
+            expired: 'token_expired',
+            reuse: 'token_reuse',
+          } as const;
+          await audit.record({
+            ...ctx,
+            action:
+              result.error === 'reuse' ? 'auth.refresh.reuse_detected' : 'auth.refresh.failed',
+            result: result.error === 'reuse' ? 'denied' : 'failure',
+            scopeFederationId: null,
+            scopeCompetitionId: null,
+            targetType: 'refresh_token',
+            targetId: '00000000-0000-0000-0000-000000000000',
+            before: null,
+            after: null,
+            notes: result.error,
+          });
+          return reply.code(401).send({
+            error: {
+              code: codeMap[result.error],
+              message: 'Refresh failed',
+              requestId: req.requestId,
+            },
+          });
+        }
+
+        const accessToken = await signAccessToken(result.userId);
         await audit.record({
           ...ctx,
-          action: result.error === 'reuse' ? 'auth.refresh.reuse_detected' : 'auth.refresh.failed',
-          result: result.error === 'reuse' ? 'denied' : 'failure',
+          actorUserId: result.userId,
+          action: 'auth.refresh.succeeded',
+          result: 'success',
           scopeFederationId: null,
           scopeCompetitionId: null,
-          targetType: 'refresh_token',
-          targetId: '00000000-0000-0000-0000-000000000000',
+          targetType: 'user',
+          targetId: result.userId,
           before: null,
           after: null,
-          notes: result.error,
         });
-        return reply
-          .code(401)
-          .send({ error: { code: codeMap[result.error], message: 'Refresh failed', requestId: req.requestId } });
-      }
 
-      const accessToken = await signAccessToken(result.userId);
-      await audit.record({
-        ...ctx,
-        actorUserId: result.userId,
-        action: 'auth.refresh.succeeded',
-        result: 'success',
-        scopeFederationId: null,
-        scopeCompetitionId: null,
-        targetType: 'user',
-        targetId: result.userId,
-        before: null,
-        after: null,
-      });
-
-      return reply.send({
-        accessToken,
-        accessTokenExpiresIn: ACCESS_TOKEN_TTL_SECONDS,
-        refreshToken: result.issued.opaque,
-        refreshTokenExpiresAt: result.issued.expiresAt.toISOString(),
-      });
-    },
+        return reply.send({
+          accessToken,
+          accessTokenExpiresIn: ACCESS_TOKEN_TTL_SECONDS,
+          refreshToken: result.issued.opaque,
+          refreshTokenExpiresAt: result.issued.expiresAt.toISOString(),
+        });
+      },
     );
 
     // ─── Logout ────────────────────────────────────────────────────────
@@ -250,7 +298,11 @@ export const authPlugin: FeaturePlugin = {
       const parsed = LogoutBody.safeParse(req.body);
       if (!parsed.success) {
         return reply.code(400).send({
-          error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+          error: {
+            code: 'validation_error',
+            message: parsed.error.message,
+            requestId: req.requestId,
+          },
         });
       }
       await revokeRefreshFamily(parsed.data.refreshToken);
@@ -277,7 +329,11 @@ export const authPlugin: FeaturePlugin = {
         const parsed = ChangePasswordBody.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
-            error: { code: 'validation_error', message: parsed.error.message, requestId: req.requestId },
+            error: {
+              code: 'validation_error',
+              message: parsed.error.message,
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -304,13 +360,21 @@ export const authPlugin: FeaturePlugin = {
             notes: 'invalid current password',
           });
           return reply.code(401).send({
-            error: { code: 'invalid_current_password', message: 'Invalid current password', requestId: req.requestId },
+            error: {
+              code: 'invalid_current_password',
+              message: 'Invalid current password',
+              requestId: req.requestId,
+            },
           });
         }
 
         if (currentPassword === newPassword) {
           return reply.code(400).send({
-            error: { code: 'password_reused', message: 'New password must be different', requestId: req.requestId },
+            error: {
+              code: 'password_reused',
+              message: 'New password must be different',
+              requestId: req.requestId,
+            },
           });
         }
 
@@ -346,7 +410,121 @@ export const authPlugin: FeaturePlugin = {
     // ─── Me ────────────────────────────────────────────────────────────
     app.get('/auth/me', { preHandler: requireAuth() }, async (req) => {
       const u = req.user!;
-      return { user: { id: u.id, email: u.email, displayName: u.displayName, roles: u.roles } };
+      return {
+        user: {
+          id: u.id,
+          email: u.email,
+          displayName: u.displayName,
+          roles: u.roles,
+          pendingAcknowledgments: u.pendingAcknowledgments ?? [],
+        },
+      };
     });
+
+    // ─── Access acknowledgment (152-ФЗ art. 7) ─────────────────────────
+    // Roles that touch other people's personal data stay inactive until the
+    // holder accepts the confidentiality obligation for that exact grant.
+    app.get('/auth/access-acknowledgment', { preHandler: requireAuth() }, async () => ({
+      textVersion: ACCESS_ACKNOWLEDGMENT_VERSION,
+      texts: ACCESS_ACKNOWLEDGMENT_TEXTS,
+    }));
+
+    app.post<{ Params: { id: string } }>(
+      '/auth/role-assignments/:id/acknowledge',
+      { preHandler: requireAuth(), config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+      async (req, reply) => {
+        const params = z.object({ id: z.string().uuid() }).safeParse(req.params);
+        const body = AcknowledgeBody.safeParse(req.body);
+        if (!params.success || !body.success) {
+          return reply.code(400).send({
+            error: {
+              code: 'validation_error',
+              message: body.success ? 'Invalid role assignment id' : body.error.message,
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (body.data.textVersion !== ACCESS_ACKNOWLEDGMENT_VERSION) {
+          return reply.code(409).send({
+            error: {
+              code: 'acknowledgment_version_mismatch',
+              message: 'The acknowledgment text has changed; reload and accept the current version',
+              requestId: req.requestId,
+            },
+          });
+        }
+        const assignment = await prisma.roleAssignment.findFirst({
+          where: { id: params.data.id, userId: req.user!.id, revokedAt: null },
+        });
+        if (!assignment) {
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Role assignment not found',
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (
+          assignment.acknowledgedAt &&
+          assignment.acknowledgedTextVersion === ACCESS_ACKNOWLEDGMENT_VERSION
+        ) {
+          return {
+            status: 'ok',
+            roleAssignmentId: assignment.id,
+            textVersion: body.data.textVersion,
+          };
+        }
+        const ua = req.headers['user-agent'];
+        await audit.withAudit(
+          {
+            ...audit.fromRequest(req),
+            actorUserId: req.user!.id,
+            action: 'role.access_acknowledged',
+            scopeFederationId: assignment.federationId,
+            scopeCompetitionId: assignment.competitionId,
+            targetType: 'role_assignment',
+            targetId: assignment.id,
+            before: {
+              acknowledgedAt: assignment.acknowledgedAt?.toISOString() ?? null,
+              acknowledgedTextVersion: assignment.acknowledgedTextVersion,
+            },
+            after: { role: assignment.role, textVersion: body.data.textVersion },
+          },
+          async (tx) => {
+            const updated = await tx.roleAssignment.updateMany({
+              where: {
+                id: assignment.id,
+                userId: req.user!.id,
+                revokedAt: null,
+                OR: [
+                  { acknowledgedAt: null },
+                  { acknowledgedTextVersion: null },
+                  { acknowledgedTextVersion: { not: ACCESS_ACKNOWLEDGMENT_VERSION } },
+                ],
+              },
+              data: {
+                acknowledgedAt: new Date(),
+                acknowledgedTextVersion: body.data.textVersion,
+                acknowledgedFromIp: req.ip ? req.ip.slice(0, 64) : null,
+                acknowledgedFromUserAgent: typeof ua === 'string' ? ua.slice(0, 512) : null,
+              },
+            });
+            if (updated.count !== 1) {
+              throw Object.assign(new Error('Role assignment changed; reload your access'), {
+                statusCode: 409,
+                code: 'role_assignment_changed',
+              });
+            }
+          },
+        );
+        log.info({ userId: req.user!.id, roleAssignmentId: assignment.id }, 'access acknowledged');
+        return {
+          status: 'ok',
+          roleAssignmentId: assignment.id,
+          textVersion: body.data.textVersion,
+        };
+      },
+    );
   },
 };

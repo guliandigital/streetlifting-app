@@ -10,7 +10,10 @@ import {
 } from '@streetlifting/ui';
 import { api, ApiClientError } from '../../lib/api-client.js';
 import { useAuthStore } from '../../lib/auth/store.js';
-import { clearPendingIsfAssertion, savePendingIsfAssertion } from './pending-assertion.js';
+import {
+  clearPendingIsfAssertion,
+  savePendingIsfAssertion,
+} from '../../lib/isf-pending-assertion.js';
 
 const ASSERTION_HASH_KEY = 'isf_assertion';
 

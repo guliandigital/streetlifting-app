@@ -4,6 +4,13 @@ import { useAuthStore } from './auth/store.js';
 
 const LIVE_WS_PROTOCOL = 'streetlifting-live.v1';
 const RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000] as const;
+/**
+ * A socket that has never opened after this many attempts is treated as
+ * "transport unavailable" (e.g. the API runs on a serverless host with no
+ * WebSocket support) and we stop retrying. HTTP polling keeps the screens
+ * fresh either way; this only avoids a reconnect loop for the session.
+ */
+const MAX_ATTEMPTS_WITHOUT_OPEN = 3;
 
 type LiveUpdateMessage = {
   type: 'competition.updated';
@@ -72,8 +79,11 @@ function connectCompetitionLiveUpdates({
   competitionId: string;
   onUpdate: () => void;
 }): () => void {
+  // Serverless deployments use the queries' existing HTTP polling.
+  if (import.meta.env.VITE_LIVE_UPDATES_WS === 'false') return () => {};
   let disposed = false;
   let retry = 0;
+  let everOpened = false;
   let reconnectTimer: number | null = null;
   let socket: WebSocket | null = null;
 
@@ -82,6 +92,7 @@ function connectCompetitionLiveUpdates({
     socket = new WebSocket(url, protocols);
     socket.addEventListener('open', () => {
       retry = 0;
+      everOpened = true;
     });
     socket.addEventListener('message', (event) => {
       try {
@@ -96,6 +107,7 @@ function connectCompetitionLiveUpdates({
       // Authorization/public-visibility rejections are terminal until the
       // user session or federation setting changes; do not reconnect forever.
       if (event.code === 1008) return;
+      if (!everOpened && retry + 1 >= MAX_ATTEMPTS_WITHOUT_OPEN) return;
       const delay = RETRY_DELAYS_MS[Math.min(retry, RETRY_DELAYS_MS.length - 1)]!;
       retry += 1;
       reconnectTimer = window.setTimeout(connect, delay);

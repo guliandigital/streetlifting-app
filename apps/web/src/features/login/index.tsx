@@ -17,7 +17,7 @@ import { defaultAuthenticatedRoute } from '../../lib/auth/default-route.js';
 import { useAuthStore } from '../../lib/auth/store.js';
 import { api, ApiClientError } from '../../lib/api-client.js';
 import { moduleLogger } from '../../lib/logger.js';
-import { clearPendingIsfAssertion, pendingIsfAssertion } from '../isf-id/pending-assertion.js';
+import { clearPendingIsfAssertion, pendingIsfAssertion } from '../../lib/isf-pending-assertion.js';
 
 const log = moduleLogger('login');
 

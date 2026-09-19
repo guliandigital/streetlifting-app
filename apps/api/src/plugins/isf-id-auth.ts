@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma, Prisma } from '../lib/db.js';
+import { UPLOAD_BODY_LIMIT_BYTES } from '../lib/storage.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
 import {
@@ -15,7 +16,7 @@ import {
   verifyIsfIdAssertion,
   type VerifiedIsfIdAssertion,
 } from '../lib/auth/isf-id.js';
-import { readCabinetOverview } from './cabinet.js';
+import { readCabinetOverview } from '../lib/cabinet-overview.js';
 
 const IsfSessionBody = z
   .object({
@@ -373,7 +374,10 @@ export const isfIdAuthPlugin: FeaturePlugin = {
 
     app.post(
       '/federation/passport/action',
-      { config: { rateLimit: { max: 10, timeWindow: '1 minute' } }, bodyLimit: 7 * 1024 * 1024 },
+      {
+        config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+        bodyLimit: UPLOAD_BODY_LIMIT_BYTES,
+      },
       async (req, reply) => {
         const parsed = federationPassportActionBody.safeParse(req.body);
         if (!parsed.success) {

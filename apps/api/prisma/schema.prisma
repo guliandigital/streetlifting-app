@@ -283,6 +283,11 @@ model RoleAssignment {
   grantedByUserId String?    @db.Uuid
   grantedAt     DateTime     @default(now()) @db.Timestamptz(6)
   revokedAt     DateTime?    @db.Timestamptz(6)
+  /// Confidentiality acknowledgment (152-ФЗ art. 7); see lib/access-acknowledgment.ts.
+  acknowledgedAt            DateTime? @db.Timestamptz(6)
+  acknowledgedTextVersion   String?
+  acknowledgedFromIp        String?
+  acknowledgedFromUserAgent String?
 
   user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   federation    Federation?  @relation(fields: [federationId], references: [id], onDelete: Cascade)
@@ -355,6 +360,11 @@ model Federation {
   securityKey                       String    @db.Uuid
   isPublicResultsClosed             Boolean   @default(false)
   notificationsDisabled             Boolean   @default(false)
+  /// Personal-data operator requisites (152-ФЗ) rendered into consent texts.
+  pdOperatorName                    String?
+  pdOperatorAddress                 String?
+  pdOperatorContact                 String?
+  privacyPolicyUrl                  String?
   affiliationStatus                 FederationAffiliationStatus @default(unverified)
   affiliationBody                   FederationAffiliationBody?
   affiliationConfirmedAt            DateTime? @db.Timestamptz(6)
@@ -378,6 +388,7 @@ model Federation {
   protocolKeys      FederationProtocolKey[]
   finalProtocolImports FinalProtocolImport[]
 
+  @@index([affiliationStatus, affiliationBody])
   @@map("federation")
 }
 

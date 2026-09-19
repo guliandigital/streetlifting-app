@@ -97,6 +97,7 @@ import { useHydrateAuth, useAuth } from '../lib/auth/hooks.js';
 import { defaultAuthenticatedRoute } from '../lib/auth/default-route.js';
 import { setLocale, SUPPORTED_LOCALES, type SupportedLocale } from '../lib/i18n/index.js';
 import { WorkspaceIcon, type WorkspaceIconName } from './workspace.js';
+import { AccessAcknowledgmentGate } from './access-acknowledgment-gate.js';
 
 type StreetliftingTheme = 'dark' | 'light';
 
@@ -478,6 +479,8 @@ export function RootLayout() {
           <main className="pt-shell-main">
             {hydrating ? (
               <div className="pt-page p-6 text-sm text-gray-600">{t('app.restoringSession')}</div>
+            ) : (user?.pendingAcknowledgments?.length ?? 0) > 0 ? (
+              <AccessAcknowledgmentGate />
             ) : (
               <Outlet />
             )}
@@ -608,6 +611,8 @@ export function RootLayout() {
       <main className="flex-1">
         {hydrating ? (
           <div className="p-6 text-sm text-muted-foreground">{t('app.restoringSession')}</div>
+        ) : (user?.pendingAcknowledgments?.length ?? 0) > 0 ? (
+          <AccessAcknowledgmentGate />
         ) : (
           <Outlet />
         )}

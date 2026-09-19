@@ -7,17 +7,12 @@ import {
   WorkspacePanel,
   WorkspaceSectionTitle,
 } from '../../components/workspace.js';
-import type { PassportFederationReviewRequest } from '../profile/api.js';
+import type { PassportFederationReviewRequest } from '../../lib/passport-api.js';
 
 type ResolutionDraft = {
   note: string;
   function:
-    | 'judge'
-    | 'secretary'
-    | 'assistant'
-    | 'scoreboard_operator'
-    | 'speaker'
-    | 'technical_official';
+    'judge' | 'secretary' | 'assistant' | 'scoreboard_operator' | 'speaker' | 'technical_official';
   credentialKind: 'category' | 'attestation' | 'certificate';
   name: string;
   basis: string;

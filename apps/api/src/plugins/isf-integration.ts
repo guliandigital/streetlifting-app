@@ -4,7 +4,7 @@ import {
   presets,
   type IsfPublicResultsStatus,
 } from '@streetlifting/domain';
-import { createHash, createPublicKey, verify } from 'node:crypto';
+import { createHash, createPublicKey, timingSafeEqual, verify } from 'node:crypto';
 import { z } from 'zod';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma, Prisma } from '../lib/db.js';
@@ -524,6 +524,33 @@ export const isfIntegrationPlugin: FeaturePlugin = {
       module: 'isf-integration',
       webhooksConfigured: isWebhookConfigured(),
     }));
+
+    // Serverless hosts have no long-lived timer, so outbox delivery is also
+    // exposed as a cron target (see apps/api/vercel.json). Vercel calls it with
+    // `Authorization: Bearer <CRON_SECRET>`; without a configured secret the
+    // route is disabled rather than open.
+    app.get('/internal/cron/isf-outbox', async (req, reply) => {
+      const secret = process.env.CRON_SECRET?.trim();
+      const provided = req.headers.authorization?.startsWith('Bearer ')
+        ? req.headers.authorization.slice('Bearer '.length)
+        : '';
+      if (
+        !secret ||
+        provided.length !== secret.length ||
+        !timingSafeEqual(Buffer.from(provided), Buffer.from(secret))
+      ) {
+        return reply.code(secret ? 401 : 404).send({
+          error: {
+            code: secret ? 'unauthorized' : 'not_found',
+            message: 'Cron target unavailable',
+            requestId: req.requestId,
+          },
+        });
+      }
+      if (!isWebhookConfigured()) return { status: 'skipped', reason: 'webhooks_not_configured' };
+      const result = await publishPendingSyncOutboxEvents();
+      return { status: 'ok', result };
+    });
 
     const deliveryIntervalMs = Number(process.env.ISF_WEBHOOK_DELIVERY_INTERVAL_MS ?? 0);
     if (Number.isFinite(deliveryIntervalMs) && deliveryIntervalMs > 0) {

@@ -29,10 +29,16 @@ import type {
   JudgeDecisionSubmission,
 } from '@streetlifting/domain';
 import { useAuthStore } from './auth/store.js';
-import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './auth/types.js';
-import { moduleLogger } from './logger.js';
 import type {
-  Federation,
+  AccessAcknowledgmentResponse,
+  ApiError,
+  LoginResponse,
+  MeResponse,
+  RefreshResponse,
+} from './auth/types.js';
+import { moduleLogger } from './logger.js';
+import type { Federation } from './federations-api.js';
+import type {
   FederationAuditEntryDto,
   FederationAttachmentDto,
   FederationChapterDto,
@@ -52,7 +58,7 @@ import type {
   AthleteRecordsResponse,
   AthleteDocumentsResponse,
 } from '../features/athletes/api.js';
-import type { DisciplineDto } from '../features/disciplines/api.js';
+import type { DisciplineDto } from './disciplines-api.js';
 import type { JudgeDto, JudgeListResponse } from '../features/judges/api.js';
 import type { CompetitionDto, CompetitionListResponse } from '../features/competitions/api.js';
 import type {
@@ -77,7 +83,7 @@ import type {
   PassportExternalLink,
   PassportFederationReviewRequest,
   PassportReviewRequest,
-} from '../features/profile/api.js';
+} from './passport-api.js';
 
 const log = moduleLogger('api-client');
 
@@ -320,6 +326,17 @@ export const api = {
     }),
 
   me: (): Promise<MeResponse> => request<MeResponse>('/auth/me'),
+
+  accessAcknowledgment: (): Promise<AccessAcknowledgmentResponse> =>
+    request<AccessAcknowledgmentResponse>('/auth/access-acknowledgment'),
+  acknowledgeRole: (
+    roleAssignmentId: string,
+    textVersion: string,
+  ): Promise<{ status: 'ok'; roleAssignmentId: string; textVersion: string }> =>
+    request(`/auth/role-assignments/${roleAssignmentId}/acknowledge`, {
+      method: 'POST',
+      body: { textVersion },
+    }),
 
   isf: {
     session: (token: string): Promise<LoginResponse> =>
@@ -752,6 +769,7 @@ export const api = {
       request(`/athletes/${id}/photo`, { method: 'POST', body: data }),
     deletePhoto: (id: string): Promise<{ status: string }> =>
       request(`/athletes/${id}/photo`, { method: 'DELETE' }),
+    downloadPhoto: (id: string): Promise<Blob> => requestBlob(`/athletes/${id}/photo`),
   },
 
   disciplines: {

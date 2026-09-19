@@ -1,11 +1,18 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { apiUrl, authHeaders, installFreshAuth, loginViaApi } from './helpers/auth.js';
+import {
+  apiUrl,
+  authHeaders,
+  confirmOrganizer,
+  installFreshAuth,
+  loginViaApi,
+} from './helpers/auth.js';
 
 interface ReportCompetitionSetup {
   competitionId: string;
 }
 
 interface PublicRegistrationDetails {
+  consents: { snapshotHash: string };
   competition: {
     divisions: Array<{
       id: string;
@@ -70,6 +77,7 @@ async function createReportCompetition(
     competition: { id: string };
   };
   const competitionId = competitionBody.competition.id;
+  await confirmOrganizer(request, auth.accessToken, competitionId, auth.user.id);
 
   const setupResponse = await request.post(apiUrl(`/competitions/${competitionId}/setup/default`), {
     headers,
@@ -107,6 +115,7 @@ async function createReportCompetition(
         declaredWeightClassId: weightClass!.id,
         weightClassId: weightClass!.id,
         consentDataProcessing: true,
+        consentSnapshotHash: details.consents!.snapshotHash,
         consentPublicResults: true,
       },
     },

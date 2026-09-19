@@ -8,6 +8,8 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  # Any syntactically valid URL is enough for `prisma generate` / `prisma validate`.
+  DATABASE_URL: postgresql://streetlifting:streetlifting@localhost:5432/streetlifting?schema=public
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,10 +17,9 @@ concurrency:
 
 jobs:
   check:
+    # Stable check name required by main branch protection; also runs lint/build.
     name: typecheck + test
     runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: postgresql://streetlifting:streetlifting@localhost:5432/streetlifting?schema=public
     steps:
       - uses: actions/checkout@v4
       # pnpm version is read from `packageManager` in package.json
@@ -28,12 +29,143 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Generate Prisma client
-        run: pnpm --filter=@streetlifting/api db:generate
-      - name: Validate Prisma schema
-        run: pnpm --filter=@streetlifting/api db:validate
+      - name: Audit production dependencies
+        # Accepted exceptions are listed in package.json → pnpm.auditConfig.ignoreGhsas
+        run: pnpm audit --prod --audit-level=high
+      - name: Generate Prisma clients
+        run: |
+          pnpm --filter=@streetlifting/api db:generate
+          pnpm --filter=@streetlifting/isf-id db:generate
+      - name: Validate Prisma schemas
+        run: |
+          pnpm --filter=@streetlifting/api db:validate
+          pnpm --filter=@streetlifting/isf-id db:validate
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: pnpm --filter=@streetlifting/web typecheck:e2e
       - run: pnpm test
       - run: pnpm --filter=@streetlifting/api build
       - run: pnpm --filter=@streetlifting/web build
+      - run: pnpm --filter=@streetlifting/isf-id build
+
+  migrations:
+    name: fresh database migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: streetlifting
+          POSTGRES_PASSWORD: streetlifting
+          POSTGRES_DB: streetlifting
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U streetlifting"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Create databases
+        # Prisma's shadow database must be a separate database (not a schema
+        # inside the same one), otherwise `migrate diff` reports the whole
+        # datamodel as drift. ISF ID gets its own database as in production.
+        env:
+          PGPASSWORD: streetlifting
+        run: |
+          for db in isf_id shadow_api shadow_isf_id; do
+            psql -h localhost -U streetlifting -d streetlifting -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db"
+          done
+      - name: Apply API migrations to an empty database
+        run: pnpm --filter=@streetlifting/api db:deploy
+      - name: Apply ISF ID migrations to an empty database
+        env:
+          DATABASE_URL: postgresql://streetlifting:streetlifting@localhost:5432/isf_id?schema=public
+        run: pnpm --filter=@streetlifting/isf-id db:deploy
+      - name: API schema matches its migrations
+        working-directory: apps/api
+        run: >-
+          pnpm exec prisma migrate diff
+          --from-migrations prisma/migrations
+          --to-schema-datamodel prisma/schema.prisma
+          --shadow-database-url "postgresql://streetlifting:streetlifting@localhost:5432/shadow_api?schema=public"
+          --exit-code
+      - name: ISF ID schema matches its migrations
+        working-directory: apps/isf-id
+        run: >-
+          pnpm exec prisma migrate diff
+          --from-migrations prisma/migrations
+          --to-schema-datamodel prisma/schema.prisma
+          --shadow-database-url "postgresql://streetlifting:streetlifting@localhost:5432/shadow_isf_id?schema=public"
+          --exit-code
+
+  e2e:
+    name: browser e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: streetlifting
+          POSTGRES_PASSWORD: streetlifting
+          POSTGRES_DB: streetlifting_e2e_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U streetlifting"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: '1'
+      DATABASE_URL: postgresql://streetlifting:streetlifting@localhost:5432/streetlifting_e2e_ci?schema=public
+      ROOT_EMAIL: root@e2e.local
+      ROOT_PASSWORD: E2eRootPassword-2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright browser
+        run: pnpm --filter=@streetlifting/web exec playwright install --with-deps chromium
+      - name: Prepare database
+        run: |
+          pnpm build:packages
+          pnpm --filter=@streetlifting/api db:generate
+          pnpm --filter=@streetlifting/api db:deploy
+          pnpm --filter=@streetlifting/api seed:launch
+      - name: Write API env for the Playwright web server
+        # Mirrors what scripts/dev.mjs creates locally; secrets are throwaway.
+        run: |
+          cat > apps/api/.env <<EOF
+          NODE_ENV=development
+          DATABASE_URL=${DATABASE_URL}
+          CORS_ORIGIN=http://127.0.0.1:1420
+          JWT_SECRET=$(openssl rand -base64 48)
+          LOG_LEVEL=warn
+          RATE_LIMIT_MAX=600
+          ROOT_EMAIL=${ROOT_EMAIL}
+          ROOT_PASSWORD=${ROOT_PASSWORD}
+          EOF
+      - name: Check personal-data flows with real database and storage
+        working-directory: apps/api
+        env:
+          PD_DB_E2E: '1'
+        run: pnpm exec tsx scripts/check-personal-data-db.ts
+      - run: pnpm e2e:web
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: output/playwright
+          retention-days: 7

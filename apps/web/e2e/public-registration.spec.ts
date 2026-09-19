@@ -1,5 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
-import { apiUrl, authHeaders, loginViaApi } from './helpers/auth.js';
+import {
+  apiUrl,
+  authHeaders,
+  confirmOrganizer,
+  installFreshAuth,
+  loginViaApi,
+} from './helpers/auth.js';
 
 async function clickAndWaitForApi(
   page: Page,
@@ -61,11 +67,12 @@ test('public online registration creates a draft nomination for secretary review
   expect(competitionResponse.ok(), await competitionResponse.text()).toBe(true);
   const competitionBody = (await competitionResponse.json()) as { competition: { id: string } };
   const competitionId = competitionBody.competition.id;
+  await confirmOrganizer(request, auth.accessToken, competitionId, auth.user.id);
 
-  const setupResponse = await request.post(
-    apiUrl(`/competitions/${competitionId}/setup/default`),
-    { headers, data: {} },
-  );
+  const setupResponse = await request.post(apiUrl(`/competitions/${competitionId}/setup/default`), {
+    headers,
+    data: {},
+  });
   expect(setupResponse.ok(), await setupResponse.text()).toBe(true);
 
   await page.goto(`/federations/${federationCode}/register`);
@@ -105,11 +112,38 @@ test('public online registration creates a draft nomination for secretary review
     nominations: Array<{
       status: string;
       paymentStatus: string;
-      athlete: { lastName: string };
+      athlete: { id: string; lastName: string };
     }>;
   };
   const nomination = opsBody.nominations.find((item) => item.athlete.lastName === athleteLastName);
   expect(nomination).toBeTruthy();
   expect(nomination?.status).toBe('draft');
   expect(nomination?.paymentStatus).toBe('unpaid');
+
+  // Real API + storage: registration did not grant publication, but the admin
+  // must still see the photo through the authenticated blob download.
+  const athleteId = nomination!.athlete.id;
+  const photoUrl = `/athletes/${athleteId}/photo`;
+  const upload = await request.post(apiUrl(photoUrl), {
+    headers,
+    data: {
+      filename: 'test.png',
+      mimeType: 'image/png',
+      contentBase64:
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
+    },
+  });
+  expect(upload.status(), await upload.text()).toBe(201);
+  expect(
+    (
+      await request.get(apiUrl(`${photoUrl}?federationId=${federationBody.federation.id}`))
+    ).status(),
+  ).toBe(404);
+  await installFreshAuth(page);
+  await page.goto(`/athletes/${athleteId}`);
+  const photo = page.getByRole('img', { name: `${athleteLastName} Participant` });
+  await expect(photo).toHaveAttribute('src', /^blob:/);
+  await expect
+    .poll(() => photo.evaluate((element) => (element as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
 });

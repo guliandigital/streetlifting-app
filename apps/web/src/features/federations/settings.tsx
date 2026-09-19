@@ -130,6 +130,10 @@ export default function FederationSettingsFeature() {
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [chiefAccountantName, setChiefAccountantName] = useState('');
   const [cashierName, setCashierName] = useState('');
+  const [pdOperatorName, setPdOperatorName] = useState('');
+  const [pdOperatorAddress, setPdOperatorAddress] = useState('');
+  const [pdOperatorContact, setPdOperatorContact] = useState('');
+  const [privacyPolicyUrl, setPrivacyPolicyUrl] = useState('');
   const [notificationsDisabled, setNotificationsDisabled] = useState(false);
   const [isPublicResultsClosed, setIsPublicResultsClosed] = useState(false);
 
@@ -142,6 +146,10 @@ export default function FederationSettingsFeature() {
     setWebsiteUrl(data.federation.websiteUrl ?? '');
     setChiefAccountantName(data.federation.chiefAccountantName ?? '');
     setCashierName(data.federation.cashierName ?? '');
+    setPdOperatorName(data.federation.pdOperatorName ?? '');
+    setPdOperatorAddress(data.federation.pdOperatorAddress ?? '');
+    setPdOperatorContact(data.federation.pdOperatorContact ?? '');
+    setPrivacyPolicyUrl(data.federation.privacyPolicyUrl ?? '');
     setNotificationsDisabled(data.federation.notificationsDisabled);
     setIsPublicResultsClosed(data.federation.isPublicResultsClosed);
   }, [data]);
@@ -195,6 +203,10 @@ export default function FederationSettingsFeature() {
         websiteUrl: nullableText(websiteUrl),
         chiefAccountantName: nullableText(chiefAccountantName),
         cashierName: nullableText(cashierName),
+        pdOperatorName: nullableText(pdOperatorName),
+        pdOperatorAddress: nullableText(pdOperatorAddress),
+        pdOperatorContact: nullableText(pdOperatorContact),
+        privacyPolicyUrl: nullableText(privacyPolicyUrl),
         notificationsDisabled,
         isPublicResultsClosed,
       });
@@ -382,6 +394,41 @@ export default function FederationSettingsFeature() {
                     value={cashierName}
                     onChange={(event) => setCashierName(event.target.value)}
                     disabled={!canManage}
+                  />
+                  <label htmlFor="pdOperatorName">Оператор ПД (наименование):</label>
+                  <input
+                    id="pdOperatorName"
+                    className="pt-field"
+                    value={pdOperatorName}
+                    onChange={(event) => setPdOperatorName(event.target.value)}
+                    disabled={!canManage}
+                    placeholder="Как в уставе: РОО «Федерация …»"
+                  />
+                  <label htmlFor="pdOperatorAddress">Оператор ПД (адрес):</label>
+                  <input
+                    id="pdOperatorAddress"
+                    className="pt-field"
+                    value={pdOperatorAddress}
+                    onChange={(event) => setPdOperatorAddress(event.target.value)}
+                    disabled={!canManage}
+                  />
+                  <label htmlFor="pdOperatorContact">Оператор ПД (контакт для запросов):</label>
+                  <input
+                    id="pdOperatorContact"
+                    className="pt-field"
+                    value={pdOperatorContact}
+                    onChange={(event) => setPdOperatorContact(event.target.value)}
+                    disabled={!canManage}
+                    placeholder="e-mail или телефон, куда спортсмены направляют запросы и отзыв согласия"
+                  />
+                  <label htmlFor="privacyPolicyUrl">Политика обработки ПД (URL):</label>
+                  <input
+                    id="privacyPolicyUrl"
+                    className="pt-field"
+                    value={privacyPolicyUrl}
+                    onChange={(event) => setPrivacyPolicyUrl(event.target.value)}
+                    disabled={!canManage}
+                    placeholder="https://"
                   />
                   <label>Ключ защиты:</label>
                   <input className="pt-field font-mono" value={f.securityKey} readOnly />
