@@ -9,30 +9,10 @@ import type {
 } from '@streetlifting/domain';
 import { api } from '../../lib/api-client.js';
 
-interface FederationDto {
-  id: string;
-  code: string;
-  nameRu: string;
-  nameEn: string;
-  countryCode: string;
-  regionCode: string | null;
-  contactPhone: string | null;
-  contactEmail: string | null;
-  telegramHandle: string | null;
-  vkUrl: string | null;
-  websiteUrl: string | null;
-  chiefAccountantName: string | null;
-  cashierName: string | null;
-  /** Server returns BigInt as string in JSON (Prisma serialization). */
-  billingTariffKopecksPerNomination: string | number;
-  securityKey: string;
-  isPublicResultsClosed: boolean;
-  notificationsDisabled: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { Federation } from '../../lib/federations-api.js';
 
-export type Federation = FederationDto;
+export type { Federation };
+export { useFederations, useFederation } from '../../lib/federations-api.js';
 
 export interface FederationReceiptDto {
   id: string;
@@ -159,20 +139,6 @@ export interface FederationDashboardResponse {
     nameRu: string;
     nominations: number;
   }>;
-}
-
-export function useFederations() {
-  return useQuery<{ federations: Federation[] }>({
-    queryKey: ['federations'],
-    queryFn: () => api.federations.list(),
-  });
-}
-
-export function useFederation(id: string) {
-  return useQuery<{ federation: Federation }>({
-    queryKey: ['federations', id],
-    queryFn: () => api.federations.get(id),
-  });
 }
 
 export function useFederationDashboard(id: string) {
@@ -397,9 +363,9 @@ export function useFederationChapters(federationId: string) {
 export function useCreateFederationChapter(federationId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: FederationChapterCreate) => api.federations.chapters.create(federationId, data),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['federations', federationId, 'chapters'] }),
+    mutationFn: (data: FederationChapterCreate) =>
+      api.federations.chapters.create(federationId, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['federations', federationId, 'chapters'] }),
   });
 }
 
@@ -408,7 +374,6 @@ export function useUpdateFederationChapter(federationId: string, chapterId: stri
   return useMutation({
     mutationFn: (data: FederationChapterUpdate) =>
       api.federations.chapters.update(federationId, chapterId, data),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['federations', federationId, 'chapters'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['federations', federationId, 'chapters'] }),
   });
 }

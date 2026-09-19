@@ -15,7 +15,7 @@ import {
   verifyIsfIdAssertion,
   type VerifiedIsfIdAssertion,
 } from '../lib/auth/isf-id.js';
-import { readCabinetOverview } from './cabinet.js';
+import { readCabinetOverview } from '../lib/cabinet-overview.js';
 
 const IsfSessionBody = z
   .object({

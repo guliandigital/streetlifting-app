@@ -3,7 +3,7 @@ import {
   clearPendingIsfAssertion,
   pendingIsfAssertion,
   savePendingIsfAssertion,
-} from './pending-assertion.js';
+} from './isf-pending-assertion.js';
 
 describe('pending ISF assertion', () => {
   afterEach(() => clearPendingIsfAssertion());

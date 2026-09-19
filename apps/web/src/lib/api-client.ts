@@ -31,8 +31,8 @@ import type {
 import { useAuthStore } from './auth/store.js';
 import type { ApiError, LoginResponse, MeResponse, RefreshResponse } from './auth/types.js';
 import { moduleLogger } from './logger.js';
+import type { Federation } from './federations-api.js';
 import type {
-  Federation,
   FederationAuditEntryDto,
   FederationAttachmentDto,
   FederationChapterDto,
@@ -52,7 +52,7 @@ import type {
   AthleteRecordsResponse,
   AthleteDocumentsResponse,
 } from '../features/athletes/api.js';
-import type { DisciplineDto } from '../features/disciplines/api.js';
+import type { DisciplineDto } from './disciplines-api.js';
 import type { JudgeDto, JudgeListResponse } from '../features/judges/api.js';
 import type { CompetitionDto, CompetitionListResponse } from '../features/competitions/api.js';
 import type {
@@ -77,7 +77,7 @@ import type {
   PassportExternalLink,
   PassportFederationReviewRequest,
   PassportReviewRequest,
-} from '../features/profile/api.js';
+} from './passport-api.js';
 
 const log = moduleLogger('api-client');
 

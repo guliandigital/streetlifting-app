@@ -17,6 +17,8 @@ export default tseslint.config(
       '**/coverage/**',
       'output/**',
       'apps/desktop/src-tauri/target/**',
+      // Plain browser scripts served as-is (theme bootstrap, legacy SW cleanup).
+      'apps/web/public/**',
       'apps/desktop/src-tauri/gen/**',
       'apps/isf-id/generated/**',
       '_logo_pack_unpack/**',
@@ -102,9 +104,17 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['../*/features/*', '@/features/*'],
+              // Any sibling-feature import (`../<feature>/...`). Climbing out
+              // of `features/` (`../../lib/...`) and same-feature imports
+              // (`./...`) stay allowed.
+              regex: '^\\.\\./(?!\\.\\./)',
               message:
-                'Features must not import from each other (ADR-0003). Push shared shapes to packages/domain or shared UI to packages/ui.',
+                'Features must not import from each other (ADR-0003). Push shared shapes to packages/domain, shared hooks/DTOs to apps/web/src/lib, or shared UI to packages/ui.',
+            },
+            {
+              group: ['@/features/*', '**/features/*'],
+              message:
+                'Features must not import from each other (ADR-0003). Push shared shapes to packages/domain, shared hooks/DTOs to apps/web/src/lib, or shared UI to packages/ui.',
             },
           ],
         },
@@ -113,15 +123,18 @@ export default tseslint.config(
   },
   {
     files: ['apps/api/src/plugins/**/*.ts'],
+    ignores: ['apps/api/src/plugins/**/*.test.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
           patterns: [
             {
-              group: ['../plugins/*'],
+              // Every file in plugins/ is a plugin, so any same-directory
+              // import is a plugin-to-plugin dependency.
+              regex: '^\\./|/plugins/',
               message:
-                'Plugins must not import from each other (ADR-0003). Use packages/domain or shared lib.',
+                'Plugins must not import from each other (ADR-0003). Move shared logic to apps/api/src/lib or packages/domain.',
             },
           ],
         },

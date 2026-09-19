@@ -17,7 +17,7 @@ import { formatRub, rubToKopecks } from '../../lib/money.js';
 import { type CompetitionDto, useCompetition, useUpdateCompetition } from './api.js';
 import { type CompetitionOpsResponse, useCompetitionOps } from './operations-api.js';
 import { CompetitionTeamPanel } from './team-panel.js';
-import { useDisciplines } from '../disciplines/api.js';
+import { useDisciplines } from '../../lib/disciplines-api.js';
 import {
   dateTimeInputToIso,
   formatDate,

@@ -27,30 +27,31 @@
     "seed:federation-user": "tsx scripts/seed-federation-user.ts",
     "smoke:isf": "tsx scripts/smoke-isf-integration.ts",
     "smoke:pilot": "tsx scripts/smoke-pilot-flow.ts",
-    "clean": "rimraf dist .turbo"
+    "clean": "rimraf dist .turbo",
+    "vercel-build": "node scripts/vercel-build.mjs"
   },
   "dependencies": {
-    "@fastify/cors": "^10.0.1",
-    "@fastify/helmet": "^13.0.0",
-    "@fastify/jwt": "^9.0.1",
-    "@fastify/rate-limit": "^10.2.1",
-    "@fastify/websocket": "^11.0.1",
-    "@prisma/client": "^6.0.1",
-    "@sentry/node": "^8.45.1",
+    "@fastify/cors": "^10.1.0",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/websocket": "^11.3.1",
+    "@prisma/client": "^6.19.3",
+    "@sentry/node": "^8.55.2",
     "@streetlifting/domain": "workspace:*",
+    "@vercel/blob": "^2.8.0",
     "argon2": "^0.41.1",
-    "fastify": "^5.1.0",
+    "fastify": "^5.12.5",
     "fastify-type-provider-zod": "^4.0.2",
-    "jose": "^5.9.6",
-    "nodemailer": "^8.0.7",
-    "pino": "^9.5.0",
-    "pino-pretty": "^13.0.0",
+    "jose": "^5.10.0",
+    "nodemailer": "^9.1.1",
+    "pino": "^9.14.0",
+    "pino-pretty": "^13.1.3",
     "redis": "4.7.0",
-    "zod": "^3.23.8"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "prisma": "^6.0.1",
-    "tsx": "^4.19.2",
-    "vitest": "^2.1.8"
+    "prisma": "^6.19.3",
+    "tsx": "^4.23.13",
+    "vitest": "^3.2.7"
   }
 }
