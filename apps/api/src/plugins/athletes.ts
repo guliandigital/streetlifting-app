@@ -20,6 +20,9 @@ import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth, requireRole } from '../lib/auth/middleware.js';
 import { LIVE_OPS_READ_ROLES, isPlatformAdmin } from '../lib/auth/authorization-matrix.js';
+import type { preHandlerHookHandler } from 'fastify';
+import type { AuthenticatedUser } from '../lib/auth/middleware.js';
+import { FULL_OPS_READ_ROLES } from '../lib/auth/authorization-matrix.js';
 import { validateUuidParams } from '../lib/params.js';
 
 const PRESET_BY_DISCIPLINE_CODE = new Map(presets.ISF_V51_DISCIPLINES.map((p) => [p.code, p]));
@@ -118,6 +121,39 @@ function stripUndefined<T extends object>(obj: T): Partial<T> {
   return out as Partial<T>;
 }
 
+/** Full cards are available only to the owner and the scoped secretariat. */
+export function athleteReadScope(user: AuthenticatedUser): Prisma.AthleteWhereInput {
+  if (isPlatformAdmin(user)) return {};
+  const scopes = user.roles
+    .filter((assignment) => FULL_OPS_READ_ROLES.some((role) => role === assignment.role))
+    .filter((assignment) => assignment.federationId || assignment.competitionId)
+    .map((assignment) => ({
+      ...(assignment.federationId ? { federationId: assignment.federationId } : {}),
+      ...(assignment.competitionId ? { id: assignment.competitionId } : {}),
+    }));
+  return {
+    OR: [
+      { userId: user.id },
+      ...(scopes.length ? [{ nominations: { some: { competition: { OR: scopes } } } }] : []),
+    ],
+  };
+}
+
+const requireAthleteRead: preHandlerHookHandler = async (req, reply) => {
+  if (!req.user) return;
+  reply.header('Cache-Control', 'private, no-store');
+  const { id } = req.params as { id: string };
+  const athlete = await prisma.athlete.findFirst({
+    where: { AND: [{ id }, athleteReadScope(req.user)] },
+    select: { id: true },
+  });
+  if (!athlete) {
+    return reply.code(404).send({
+      error: { code: 'not_found', message: 'Athlete not found', requestId: req.requestId },
+    });
+  }
+};
+
 export const athletesPlugin: FeaturePlugin = {
   name: 'athletes',
   register: async (app) => {
@@ -140,7 +176,8 @@ export const athletesPlugin: FeaturePlugin = {
       const { search, gender, countryCode, cardNumberContains, bornFrom, bornTo, limit, offset } =
         parsed.data;
 
-      const conditions: Prisma.AthleteWhereInput[] = [];
+      reply.header('Cache-Control', 'private, no-store');
+      const conditions: Prisma.AthleteWhereInput[] = [athleteReadScope(req.user!)];
       if (search) {
         conditions.push({
           OR: [
@@ -181,7 +218,7 @@ export const athletesPlugin: FeaturePlugin = {
     // ─── Get one ──────────────────────────────────────────────────────
     app.get<{ Params: { id: string } }>(
       '/athletes/:id',
-      { preHandler: requireAuth() },
+      { preHandler: [requireAuth(), requireAthleteRead] },
       async (req, reply) => {
         const athlete = await prisma.athlete.findUnique({ where: { id: req.params.id } });
         if (!athlete) {
@@ -196,7 +233,7 @@ export const athletesPlugin: FeaturePlugin = {
     // ─── Appearances (cross-meet competition history) ─────────────────
     app.get<{ Params: { id: string } }>(
       '/athletes/:id/appearances',
-      { preHandler: requireAuth() },
+      { preHandler: [requireAuth(), requireAthleteRead] },
       async (req, reply) => {
         const athlete = await prisma.athlete.findUnique({
           where: { id: req.params.id },
@@ -257,7 +294,7 @@ export const athletesPlugin: FeaturePlugin = {
     // ─── Records (federation/national/continental/world held by athlete) ──
     app.get<{ Params: { id: string } }>(
       '/athletes/:id/records',
-      { preHandler: requireAuth() },
+      { preHandler: [requireAuth(), requireAthleteRead] },
       async (req, reply) => {
         const exists = await prisma.athlete.findUnique({
           where: { id: req.params.id },
@@ -301,7 +338,7 @@ export const athletesPlugin: FeaturePlugin = {
     // ─── Documents (attachments linked to athlete) ─────────────────────
     app.get<{ Params: { id: string } }>(
       '/athletes/:id/documents',
-      { preHandler: requireAuth() },
+      { preHandler: [requireAuth(), requireAthleteRead] },
       async (req, reply) => {
         const exists = await prisma.athlete.findUnique({
           where: { id: req.params.id },
@@ -613,7 +650,7 @@ export const athletesPlugin: FeaturePlugin = {
     // ─── Download attachment ──────────────────────────────────────────
     app.get<{ Params: { id: string; attachmentId: string } }>(
       '/athletes/:id/attachments/:attachmentId/download',
-      { preHandler: requireAuth() },
+      { preHandler: [requireAuth(), requireAthleteRead] },
       async (req, reply) => {
         const attachment = await prisma.attachment.findFirst({
           where: {

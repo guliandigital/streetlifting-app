@@ -4,7 +4,7 @@ import { athletesPlugin } from './athletes.js';
 import type { AuthenticatedUser } from '../lib/auth/middleware.js';
 
 const db = vi.hoisted(() => ({
-  athlete: { findUnique: vi.fn() },
+  athlete: { findUnique: vi.fn(), findFirst: vi.fn() },
   consent: { findFirst: vi.fn() },
   nomination: { findFirst: vi.fn() },
   attachment: { findFirst: vi.fn() },
