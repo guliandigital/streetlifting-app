@@ -24,6 +24,12 @@ import { validateUuidParams } from '../lib/params.js';
 import { assertNoForbiddenExportKeys } from '../lib/privacy-allowlist.js';
 import { publishCompetitionLiveUpdate } from '../lib/live-updates.js';
 
+import {
+  lockEditableCompetition,
+  withCompetitionAudit,
+  CompetitionConflict,
+} from '../lib/competition-lifecycle.js';
+
 const log = moduleLogger('competition-ops');
 
 const FULL_OPS_READ_ROLES = ['federation_admin', 'secretary'] as const;
@@ -68,17 +74,21 @@ function effectiveJudgeAssignments<
 }
 
 async function runSerializable<T>(operation: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       return await operation();
     } catch (error) {
       if (
         !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-        error.code !== 'P2034' ||
-        attempt === 2
+        !(
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && ['40001', '40P01'].includes(String(error.meta?.code)))
+        ) ||
+        attempt === 4
       ) {
         throw error;
       }
+      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)));
     }
   }
   throw new Error('Serializable transaction retry limit exceeded');
@@ -301,12 +311,26 @@ function toAttemptData(data: AttemptUpsert): Prisma.AttemptUncheckedCreateInput 
   }) as Prisma.AttemptUncheckedCreateInput;
 }
 
-async function hasCompleteAthleteProfile(athleteId: string): Promise<boolean> {
-  const athlete = await prisma.athlete.findUnique({
+async function hasCompleteAthleteProfile(
+  athleteId: string,
+  db: Prisma.TransactionClient = prisma,
+): Promise<boolean> {
+  const athlete = await db.athlete.findUnique({
     where: { id: athleteId },
     select: { dateOfBirth: true, countryCode: true },
   });
   return Boolean(athlete?.dateOfBirth && athlete.countryCode);
+}
+
+async function assertCurrentNomination(tx: Prisma.TransactionClient, id: string) {
+  const current = await tx.nomination.findUniqueOrThrow({ where: { id } });
+  if (!current.isMandatePassed || !(await hasCompleteAthleteProfile(current.athleteId, tx))) {
+    throw new CompetitionConflict(
+      'mandate_required',
+      'Current mandate approval and a complete profile are required',
+    );
+  }
+  return current;
 }
 
 async function validateNominationRefs(
@@ -316,25 +340,26 @@ async function validateNominationRefs(
     'athleteId' | 'disciplineId' | 'divisionId' | 'weightClassId' | 'declaredWeightClassId'
   > &
     Pick<NominationCreate, 'flightId' | 'groupId' | 'bodyWeightAtWeighIn'>,
+  db: Prisma.TransactionClient = prisma,
 ): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
   const [athlete, discipline, division, declaredWeightClass, weightClass, flight, group] =
     await Promise.all([
-      prisma.athlete.findUnique({
+      db.athlete.findUnique({
         where: { id: data.athleteId },
         select: { id: true, gender: true },
       }),
-      prisma.discipline.findUnique({ where: { id: data.disciplineId }, select: { id: true } }),
-      prisma.division.findUnique({
+      db.discipline.findUnique({ where: { id: data.disciplineId }, select: { id: true } }),
+      db.division.findUnique({
         where: { id: data.divisionId },
         select: { id: true, competitionId: true, gender: true },
       }),
       data.declaredWeightClassId
-        ? prisma.weightClass.findUnique({
+        ? db.weightClass.findUnique({
             where: { id: data.declaredWeightClassId },
             select: { id: true, divisionId: true, disciplineId: true },
           })
         : Promise.resolve(null),
-      prisma.weightClass.findUnique({
+      db.weightClass.findUnique({
         where: { id: data.weightClassId },
         select: {
           id: true,
@@ -345,13 +370,13 @@ async function validateNominationRefs(
         },
       }),
       data.flightId
-        ? prisma.flight.findUnique({
+        ? db.flight.findUnique({
             where: { id: data.flightId },
             select: { id: true, competitionId: true },
           })
         : Promise.resolve(null),
       data.groupId
-        ? prisma.group.findUnique({
+        ? db.group.findUnique({
             where: { id: data.groupId },
             select: { id: true, flight: { select: { id: true, competitionId: true } } },
           })
@@ -458,16 +483,17 @@ export async function validateNominationOperationalRefs(
     NominationUpdate,
     'declaredWeightClassId' | 'weightClassId' | 'flightId' | 'groupId' | 'bodyWeightAtWeighIn'
   >,
+  db: Prisma.TransactionClient = prisma,
 ): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
   const [declaredWeightClass, weightClass, flight, group] = await Promise.all([
     data.declaredWeightClassId
-      ? prisma.weightClass.findUnique({
+      ? db.weightClass.findUnique({
           where: { id: data.declaredWeightClassId },
           select: { id: true, divisionId: true, disciplineId: true },
         })
       : Promise.resolve(null),
     data.weightClassId
-      ? prisma.weightClass.findUnique({
+      ? db.weightClass.findUnique({
           where: { id: data.weightClassId },
           select: {
             id: true,
@@ -479,13 +505,13 @@ export async function validateNominationOperationalRefs(
         })
       : Promise.resolve(null),
     data.flightId
-      ? prisma.flight.findUnique({
+      ? db.flight.findUnique({
           where: { id: data.flightId },
           select: { id: true, competitionId: true },
         })
       : Promise.resolve(null),
     data.groupId
-      ? prisma.group.findUnique({
+      ? db.group.findUnique({
           where: { id: data.groupId },
           select: { id: true, flight: { select: { id: true, competitionId: true } } },
         })
@@ -1386,7 +1412,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
           });
         }
 
-        const result = await audit.withAudit(
+        const result = await withCompetitionAudit(
           {
             ...audit.fromRequest(req),
             actorUserId: req.user!.id,
@@ -1567,6 +1593,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
 
         try {
           const judgeAssignment = await prisma.$transaction(async (tx) => {
+            await lockEditableCompetition(tx, competition.id);
             const created = await tx.judgeAssignment.create({
               data: {
                 competitionId: competition.id,
@@ -1641,6 +1668,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
         }
 
         await prisma.$transaction(async (tx) => {
+          await lockEditableCompetition(tx, before.competition.id);
           await tx.judgeAssignment.delete({ where: { id: before.id } });
           await audit.record(
             {
@@ -1748,7 +1776,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
         }
 
         try {
-          const nomination = await audit.withAudit(
+          const nomination = await withCompetitionAudit(
             {
               ...audit.fromRequest(req),
               actorUserId: req.user!.id,
@@ -1760,11 +1788,23 @@ export const competitionOpsPlugin: FeaturePlugin = {
               before: null,
               after: parsed.data,
             },
-            (tx) =>
-              tx.nomination.create({
+            async (tx) => {
+              const refs = await validateNominationRefs(competition.id, parsed.data, tx);
+              if (!refs.ok) throw new CompetitionConflict(refs.code, refs.message);
+              if (
+                parsed.data.isMandatePassed &&
+                !(await hasCompleteAthleteProfile(parsed.data.athleteId, tx))
+              ) {
+                throw new CompetitionConflict(
+                  'athlete_profile_incomplete',
+                  'Complete athlete profile required',
+                );
+              }
+              return tx.nomination.create({
                 data: toNominationCreateData(competition.id, parsed.data),
                 include: nominationInclude,
-              }),
+              });
+            },
           );
           return reply.code(201).send({ nomination });
         } catch (err) {
@@ -1820,7 +1860,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
           });
         }
 
-        const result = await audit.withAudit(
+        const result = await withCompetitionAudit(
           {
             ...audit.fromRequest(req),
             actorUserId: req.user!.id,
@@ -1918,7 +1958,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
           });
         }
 
-        const result = await audit.withAudit(
+        const result = await withCompetitionAudit(
           {
             ...audit.fromRequest(req),
             actorUserId: req.user!.id,
@@ -2211,7 +2251,7 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const { competition: beforeCompetition, ...beforeNomination } = before;
         void beforeCompetition;
 
-        const updated = await audit.withAudit(
+        const updated = await withCompetitionAudit(
           {
             ...audit.fromRequest(req),
             actorUserId: req.user!.id,
@@ -2228,6 +2268,30 @@ export const competitionOpsPlugin: FeaturePlugin = {
             after: data,
           },
           async (tx) => {
+            const current = await tx.nomination.findUniqueOrThrow({ where: { id: before.id } });
+            if (current.updatedAt.getTime() !== before.updatedAt.getTime()) {
+              throw new CompetitionConflict(
+                'nomination_changed',
+                'Nomination changed; reload before retrying',
+              );
+            }
+            const refs = await validateNominationOperationalRefs(
+              before.competition.id,
+              before.divisionId,
+              before.disciplineId,
+              { ...current, ...data },
+              tx,
+            );
+            if (!refs.ok) throw new CompetitionConflict(refs.code, refs.message);
+            if (
+              (data.isMandatePassed ?? current.isMandatePassed) &&
+              !(await hasCompleteAthleteProfile(current.athleteId, tx))
+            ) {
+              throw new CompetitionConflict(
+                'athlete_profile_incomplete',
+                'Complete athlete profile required',
+              );
+            }
             const result = await tx.nomination.update({
               where: { id: req.params.nominationId },
               data: toNominationUpdateData(data),
@@ -2373,6 +2437,8 @@ export const competitionOpsPlugin: FeaturePlugin = {
         const attempt = await runSerializable(() =>
           prisma.$transaction(
             async (tx) => {
+              await lockEditableCompetition(tx, nomination.competition.id);
+              await assertCurrentNomination(tx, nomination.id);
               const base = toAttemptData(attemptData);
               const existing = await tx.attempt.findFirst({
                 where: { nominationId: nomination.id, componentId, attemptNumber },
@@ -2561,6 +2627,13 @@ export const competitionOpsPlugin: FeaturePlugin = {
           const attempt = await runSerializable(() =>
             prisma.$transaction(
               async (tx) => {
+                await lockEditableCompetition(tx, nomination.competition.id);
+                const currentNomination = await assertCurrentNomination(tx, nomination.id);
+                if (currentNomination.flightId !== nomination.flightId)
+                  throw new CompetitionConflict(
+                    'nomination_changed',
+                    'Platform assignment changed; reload nomination',
+                  );
                 const assignments = effectiveJudgeAssignments(
                   await tx.judgeAssignment.findMany({
                     where: {
@@ -2590,11 +2663,29 @@ export const competitionOpsPlugin: FeaturePlugin = {
                     'Attempt must be called by the operator before voting',
                   );
                 }
-                if (currentAttempt.result !== 'pending') {
-                  throw new JudgeDecisionConflictError('Attempt is already decided');
-                }
-
                 const ownAssignment = ownAssignments[0]!;
+                const previousVote = await tx.attemptJudgeDecision.findUnique({
+                  where: {
+                    attemptId_judgeAssignmentId: {
+                      attemptId: currentAttempt.id,
+                      judgeAssignmentId: ownAssignment.id,
+                    },
+                  },
+                });
+                if (
+                  previousVote?.call === parsed.data.call &&
+                  previousVote.reasonCode === (parsed.data.reasonCode ?? null)
+                ) {
+                  return currentAttempt;
+                }
+                if (currentAttempt.result !== 'pending') {
+                  const voteCount = await tx.attemptJudgeDecision.count({
+                    where: { attemptId: currentAttempt.id },
+                  });
+                  if (previousVote || voteCount === 0) {
+                    throw new JudgeDecisionConflictError('Attempt is already decided');
+                  }
+                }
                 await tx.attemptJudgeDecision.upsert({
                   where: {
                     attemptId_judgeAssignmentId: {
@@ -2627,6 +2718,11 @@ export const competitionOpsPlugin: FeaturePlugin = {
                   assignments.length,
                   votes.map((vote) => vote.call),
                 );
+                if (currentAttempt.result !== 'pending' && result !== currentAttempt.result) {
+                  throw new JudgeDecisionConflictError(
+                    'A late vote cannot change the decided result',
+                  );
+                }
                 const saved = await tx.attempt.update({
                   where: { id: currentAttempt.id },
                   data: {
