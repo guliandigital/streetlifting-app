@@ -71,6 +71,7 @@ export async function captureFinalizationSnapshot(
       discipline: { include: { components: { orderBy: [{ order: 'asc' }, { id: 'asc' }] } } },
       division: true,
       weightClass: true,
+      declaredWeightClass: { select: { nameRu: true } },
       attempts: {
         orderBy: [{ componentId: 'asc' }, { attemptNumber: 'asc' }, { id: 'asc' }],
         select: {

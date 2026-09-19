@@ -1,3 +1,5 @@
+import { getCompetitionProtocol } from '../lib/competition-protocol.js';
+import { protocolAttemptSummary, type CompetitionProtocol } from '@streetlifting/domain';
 import { runSerializable } from '../lib/serializable.js';
 import { assertNominationAdmission } from '../lib/nomination-admission.js';
 import {
@@ -1176,37 +1178,14 @@ function nominationPayloadForUser(
   return nominationPayload;
 }
 
-function athleteName(nomination: OpsPayload['nominations'][number]): string {
+function athleteName(nomination: CompetitionProtocol['nominations'][number]): string {
   return [nomination.athlete.lastName, nomination.athlete.firstName, nomination.athlete.middleName]
     .filter(Boolean)
     .join(' ');
 }
 
-function attemptExportSummary(nomination: OpsPayload['nominations'][number]): string {
-  return nomination.attempts
-    .map((attempt) =>
-      [
-        attempt.component?.code ?? 'default',
-        attempt.attemptNumber,
-        attempt.weightKg,
-        attempt.repsCount ?? '',
-        attempt.result,
-      ].join(':'),
-    )
-    .join(' | ');
-}
-
-function protocolRows(payload: OpsPayload): unknown[][] {
-  const ranked = [...payload.nominations].sort(
-    (a, b) =>
-      (a.placeInClass ?? Number.POSITIVE_INFINITY) - (b.placeInClass ?? Number.POSITIVE_INFINITY) ||
-      Number(b.finalScore ?? 0) - Number(a.finalScore ?? 0) ||
-      Number(b.bestSuccessfulAttemptKg ?? 0) - Number(a.bestSuccessfulAttemptKg ?? 0) ||
-      `${a.athlete.lastName} ${a.athlete.firstName}`.localeCompare(
-        `${b.athlete.lastName} ${b.athlete.firstName}`,
-      ),
-  );
-
+function protocolRows(payload: CompetitionProtocol): unknown[][] {
+  const ranked = payload.nominations;
   return [
     [
       'place',
@@ -1224,6 +1203,11 @@ function protocolRows(payload: OpsPayload): unknown[][] {
       'score',
       'attempts',
       'status',
+      'protocolSource',
+      'snapshotRevision',
+      'snapshotCreatedAt',
+      'snapshotHash',
+      'approvalStatus',
     ],
     ...ranked.map((n, index) => [
       index + 1,
@@ -1239,8 +1223,13 @@ function protocolRows(payload: OpsPayload): unknown[][] {
       n.bodyWeightAtWeighIn,
       n.bestSuccessfulAttemptKg,
       n.finalScore,
-      attemptExportSummary(n),
+      protocolAttemptSummary(n),
       n.status,
+      payload.provenance.source,
+      payload.provenance.revision,
+      payload.provenance.createdAt,
+      payload.provenance.payloadHash,
+      payload.provenance.approvalStatus,
     ]),
   ];
 }
@@ -2898,52 +2887,39 @@ export const competitionOpsPlugin: FeaturePlugin = {
       },
     );
 
-    app.get<{ Params: { id: string } }>(
-      '/competitions/:id/protocol.csv',
-      { preHandler: requireAuth() },
-      async (req, reply) => {
-        const payload = await getOpsPayload(req.params.id);
-        if (!payload) {
-          return reply.code(404).send({
-            error: {
-              code: 'not_found',
-              message: 'Competition not found',
-              requestId: req.requestId,
-            },
+    // All protocol renderers share an allowlisted, versioned source and the existing staff scope.
+    for (const format of ['json', 'csv', 'xlsx'] as const) {
+      app.get<{ Params: { id: string } }>(
+        `/competitions/:id/protocol.${format}`,
+        { preHandler: requireAuth() },
+        async (req, reply) => {
+          const competition = await prisma.competition.findUnique({
+            where: { id: req.params.id },
+            select: { id: true, federationId: true },
           });
-        }
-        if (!canReadLiveOps(req.user, payload.competition)) {
-          return reply.code(403).send({
-            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
-          });
-        }
-
-        return sendCsv(reply, `${payload.competition.code}-protocol.csv`, protocolRows(payload));
-      },
-    );
-
-    app.get<{ Params: { id: string } }>(
-      '/competitions/:id/protocol.xlsx',
-      { preHandler: requireAuth() },
-      async (req, reply) => {
-        const payload = await getOpsPayload(req.params.id);
-        if (!payload) {
-          return reply.code(404).send({
-            error: {
-              code: 'not_found',
-              message: 'Competition not found',
-              requestId: req.requestId,
-            },
-          });
-        }
-        if (!canReadLiveOps(req.user, payload.competition)) {
-          return reply.code(403).send({
-            error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
-          });
-        }
-        return sendXlsx(reply, `${payload.competition.code}-protocol.xlsx`, protocolRows(payload));
-      },
-    );
+          if (!competition)
+            return reply.code(404).send({
+              error: {
+                code: 'not_found',
+                message: 'Competition not found',
+                requestId: req.requestId,
+              },
+            });
+          if (!canReadLiveOps(req.user, competition))
+            return reply.code(403).send({
+              error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
+            });
+          const protocol = await getCompetitionProtocol(competition.id);
+          reply.header('Cache-Control', 'private, no-store');
+          reply.header('X-Protocol-Source', protocol.provenance.source);
+          if (format === 'json') return protocol;
+          const filename = `${protocol.competition.code}-protocol.${format}`;
+          return format === 'csv'
+            ? sendCsv(reply, filename, protocolRows(protocol))
+            : sendXlsx(reply, filename, protocolRows(protocol));
+        },
+      );
+    }
 
     app.get<{ Params: { id: string } }>(
       '/competitions/:id/accounting.csv',

@@ -14,13 +14,19 @@ import {
   TableRow,
 } from '@streetlifting/ui';
 import { WorkspacePage, WorkspaceState } from '../../components/workspace.js';
-import { useCompetitionOps } from './operations-api.js';
-import { attemptSummary, fullName } from './tournament-utils.js';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../lib/api-client.js';
+import { protocolAttemptSummary } from '@streetlifting/domain';
+import { fullName } from './tournament-utils.js';
 
 export default function CompetitionProtocolPrintFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/competitions/$id/protocol-print' });
-  const { data, isLoading, error } = useCompetitionOps(id);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['competition-protocol', id],
+    queryFn: () => api.competitions.protocol(id),
+    gcTime: 0,
+  });
 
   if (isLoading) {
     return <WorkspaceState>{t('common.loading')}</WorkspaceState>;
@@ -34,18 +40,12 @@ export default function CompetitionProtocolPrintFeature() {
     );
   }
 
-  const rows = [...data.nominations].sort(
-    (a, b) =>
-      (a.placeInClass ?? Number.POSITIVE_INFINITY) - (b.placeInClass ?? Number.POSITIVE_INFINITY) ||
-      Number(b.finalScore ?? 0) - Number(a.finalScore ?? 0) ||
-      Number(b.bestSuccessfulAttemptKg ?? 0) - Number(a.bestSuccessfulAttemptKg ?? 0) ||
-      fullName(a.athlete).localeCompare(fullName(b.athlete)),
-  );
+  const rows = data.nominations;
 
   return (
     <WorkspacePage
       title={t('protocolPrint.title')}
-      subtitle={`${data.competition.nameRu} · ${data.competition.federation.nameRu}`}
+      subtitle={data.competition.nameRu}
       actions={
         <>
           <Button type="button" onClick={() => window.print()}>
@@ -63,6 +63,20 @@ export default function CompetitionProtocolPrintFeature() {
         data-testid="protocol-print"
         className="space-y-5 print:max-w-none print:px-0 print:py-0"
       >
+        <h2 className="text-xl font-semibold">{data.competition.nameRu}</h2>
+        <div data-testid="protocol-provenance" className="space-y-1 text-sm">
+          <p>{t(`protocolPrint.source.${data.provenance.source}`)}</p>
+          <p>{t('protocolPrint.approvalNotRecorded')}</p>
+          {data.provenance.revision !== null && (
+            <>
+              <p>
+                {t('protocolPrint.revision', { revision: data.provenance.revision })} ·{' '}
+                {data.provenance.createdAt}
+              </p>
+              <p className="break-all">SHA-256: {data.provenance.payloadHash}</p>
+            </>
+          )}
+        </div>
         <Card className="print:border-0 print:shadow-none">
           <CardHeader className="print:px-0">
             <CardTitle>{t('protocolPrint.results')}</CardTitle>
@@ -99,7 +113,7 @@ export default function CompetitionProtocolPrintFeature() {
                       {nomination.bestSuccessfulAttemptKg ?? '—'}
                     </TableCell>
                     <TableCell className="tabular-nums">{nomination.finalScore ?? '—'}</TableCell>
-                    <TableCell className="text-xs">{attemptSummary(nomination)}</TableCell>
+                    <TableCell className="text-xs">{protocolAttemptSummary(nomination)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

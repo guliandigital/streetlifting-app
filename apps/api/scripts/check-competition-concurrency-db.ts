@@ -370,10 +370,28 @@ try {
     (await db.competition.findUniqueOrThrow({ where: { id: competition.id } })).nameEn,
     competition.nameEn,
   );
+  const protocolUrls = ['json', 'csv', 'xlsx'].map(
+    (format) => `/competitions/${competition.id}/protocol.${format}`,
+  );
+  const frozenProtocols = await Promise.all(
+    protocolUrls.map((url) => app.inject({ url, headers: headers[0]! })),
+  );
+  for (const response of frozenProtocols) {
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.headers['cache-control'], 'private, no-store');
+    assert.equal(response.headers['x-protocol-source'], 'finalization_snapshot');
+  }
+  assert.equal(frozenProtocols[0]!.json().provenance.payloadHash, snapshot.payloadHash);
+  assert.equal(frozenProtocols[0]!.json().provenance.approvalStatus, 'not_recorded');
+  assert.equal(frozenProtocols[0]!.body.includes('dateOfBirth'), false);
+  assert.equal(frozenProtocols[0]!.body.includes('paidAmountKopecks'), false);
+  assert(frozenProtocols[1]!.body.includes(snapshot.payloadHash));
+  // XLSX uses stored ZIP entries, so the shared source metadata must be present in XML.
+  assert(frozenProtocols[2]!.rawPayload.includes(Buffer.from(snapshot.payloadHash)));
   // Mutable reference edits must never recalculate or rename historical evidence.
   await db.discipline.update({
     where: { id: discipline.id },
-    data: { nameEn: 'Changed catalog', attemptCount: 5 },
+    data: { nameRu: 'Changed catalog', nameEn: 'Changed catalog', attemptCount: 5 },
   });
   await db.division.update({ where: { id: division.id }, data: { veteranCoefficient: 2 } });
   assert.deepEqual(
@@ -381,6 +399,43 @@ try {
       .payload,
     snapshot.payload,
   );
+  await db.athlete.update({ where: { id: athlete.id }, data: { lastName: 'Changed identity' } });
+  await db.weightClass.update({
+    where: { id: weightClass.id },
+    data: { nameRu: 'Changed weight class' },
+  });
+  for (const [index, url] of protocolUrls.entries()) {
+    const after = await app.inject({ url, headers: headers[0]! });
+    assert.equal(after.statusCode, 200, after.body);
+    assert.deepEqual(after.rawPayload, frozenProtocols[index]!.rawPayload);
+    assert.equal((await app.inject({ url })).statusCode, 401);
+  }
+  // Legacy archives are explicitly unverified; never manufacture a historical snapshot.
+  const legacy = await db.competition.create({
+    data: {
+      federationId: federation.id,
+      code: randomUUID(),
+      nameRu: 'Legacy',
+      nameEn: 'Legacy',
+      startDate: new Date('2020-01-01'),
+      endDate: new Date('2020-01-01'),
+      timezone: 'UTC',
+      status: 'archived',
+    },
+  });
+  const legacyProtocol = await app.inject({
+    url: `/competitions/${legacy.id}/protocol.json`,
+    headers: headers[0]!,
+  });
+  assert.equal(legacyProtocol.statusCode, 200, legacyProtocol.body);
+  assert.equal(legacyProtocol.json().provenance.source, 'legacy_unverified');
+  assert.equal(legacyProtocol.json().provenance.payloadHash, null);
+  await db.competition.update({ where: { id: legacy.id }, data: { status: 'draft' } });
+  const workingProtocol = await app.inject({
+    url: `/competitions/${legacy.id}/protocol.json`,
+    headers: headers[0]!,
+  });
+  assert.equal(workingProtocol.json().provenance.source, 'working');
   const snapshotUrl = `/competitions/${competition.id}/finalization-snapshot`;
   const readSnapshot = await app.inject({ url: snapshotUrl, headers: headers[0]! });
   assert.equal(readSnapshot.statusCode, 200, readSnapshot.body);
@@ -421,6 +476,20 @@ try {
     });
     assert.equal(denied.statusCode, 403, denied.body);
     assert.equal(denied.body.includes(snapshot.payloadHash), false);
+    for (const url of protocolUrls) {
+      const exported = await app.inject({
+        url,
+        headers: { authorization: `Bearer ${await signAccessToken(outsider.id)}` },
+      });
+      // Existing competition-scoped staff may export, but cannot download the raw snapshot.
+      assert.equal(
+        exported.statusCode,
+        scope.federationId === federation.id ? 200 : 403,
+        exported.body,
+      );
+      if (exported.statusCode === 403)
+        assert.equal(exported.body.includes(snapshot.payloadHash), false);
+    }
   }
   assert.equal(
     await db.syncOutbox.count({

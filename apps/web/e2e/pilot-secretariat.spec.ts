@@ -294,6 +294,7 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
 
   await page.goto(`/competitions/${competitionId}/protocol-print`);
   await expect(page.getByTestId('protocol-print')).toContainText(athleteLastName);
+  await expect(page.getByTestId('protocol-provenance')).toContainText('Рабочий протокол');
 
   await page.goto(`/competitions/${competitionId}/operations`);
   await page.getByTestId('ops-tab-exports').click();
@@ -342,6 +343,12 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   expect((await snapshotDownload).suggestedFilename()).toBe(
     `competition-${competitionId}-snapshot-r1.json`,
   );
+  await page.goto(`/competitions/${competitionId}/protocol-print`);
+  await expect(page.getByTestId('protocol-print')).toContainText(athleteLastName);
+  await expect(page.getByTestId('protocol-provenance')).toContainText('Снимок протокола');
+  await expect(page.getByTestId('protocol-provenance')).toContainText('Версия 1');
+  await expect(page.getByTestId('protocol-provenance')).toContainText('SHA-256:');
+  await expect(page.getByTestId('protocol-provenance')).toContainText('не зарегистрировано');
   await page.goto(`/federations/${federationId}`);
   await expect(page.getByTestId('accounting-reconciliation')).toBeVisible();
   await expect(page.getByTestId('reconciliation-totals')).toContainText(
