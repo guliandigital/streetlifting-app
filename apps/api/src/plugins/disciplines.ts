@@ -16,6 +16,16 @@ function stripUndefined<T extends object>(obj: T): Partial<T> {
   return out as Partial<T>;
 }
 
+class DisciplineInUseError extends Error {}
+const RULE_FIELDS = [
+  'family',
+  'format',
+  'equipment',
+  'attemptCount',
+  'fixedWeightKg',
+  'applyVeteranCoefficient',
+] as const;
+
 export const disciplinesPlugin: FeaturePlugin = {
   name: 'disciplines',
   register: async (app) => {
@@ -113,21 +123,53 @@ export const disciplinesPlugin: FeaturePlugin = {
           });
         }
         const updateData = stripUndefined(parsed.data) as Prisma.DisciplineUpdateInput;
-        const updated = await audit.withAudit(
-          {
-            ...audit.fromRequest(req),
-            actorUserId: req.user!.id,
-            action: 'discipline.updated',
-            scopeFederationId: null,
-            scopeCompetitionId: null,
-            targetType: 'discipline',
-            targetId: req.params.id,
-            before,
-            after: parsed.data,
-          },
-          (tx) => tx.discipline.update({ where: { id: req.params.id }, data: updateData }),
-        );
-        return { discipline: updated };
+        try {
+          const updated = await audit.withAudit(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'discipline.updated',
+              scopeFederationId: null,
+              scopeCompetitionId: null,
+              targetType: 'discipline',
+              targetId: req.params.id,
+              before,
+              after: parsed.data,
+            },
+            async (tx) => {
+              // Conflicts with FK key-share locks taken when a new usage is added.
+              await tx.$queryRaw`SELECT id FROM discipline WHERE id = ${req.params.id}::uuid FOR UPDATE`;
+              const current = await tx.discipline.findUniqueOrThrow({
+                where: { id: req.params.id },
+                include: {
+                  _count: { select: { nominations: true, records: true, weightClasses: true } },
+                },
+              });
+              const changesRules = RULE_FIELDS.some(
+                (field) =>
+                  parsed.data[field] !== undefined && parsed.data[field] !== current[field],
+              );
+              const inUse =
+                current._count.nominations + current._count.records + current._count.weightClasses >
+                0;
+              if (changesRules && inUse) throw new DisciplineInUseError();
+              return tx.discipline.update({ where: { id: req.params.id }, data: updateData });
+            },
+          );
+          return { discipline: updated };
+        } catch (error) {
+          if (error instanceof DisciplineInUseError) {
+            return reply.code(409).send({
+              error: {
+                code: 'discipline_rules_locked',
+                message:
+                  'Дисциплина уже используется. Создайте новую дисциплину для изменения правил расчёта.',
+                requestId: req.requestId,
+              },
+            });
+          }
+          throw error;
+        }
       },
     );
   },
