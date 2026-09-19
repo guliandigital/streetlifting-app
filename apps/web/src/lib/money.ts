@@ -17,3 +17,9 @@ export function rubToKopecks(rub: string): number {
   if (!Number.isFinite(parsed) || parsed < 0) return 0;
   return Math.round(parsed * 100);
 }
+
+/** Imported zero/default amounts are not evidence of free participation. */
+export function formatEntryFee(kopecks: string | number, unknownLabel: string): string {
+  const value = Number(kopecks);
+  return Number.isFinite(value) && value > 0 ? formatRub(value) : unknownLabel;
+}

@@ -202,6 +202,12 @@
     }
   },
   "competitions": {
+    "source": {
+      "label": "Card source",
+      "importedArchive": "Imported archive — verify approval against source documents",
+      "externalAnnouncement": "External announcement — operation in this service is unconfirmed",
+      "sourceUnspecified": "Source not recorded"
+    },
     "title": "Competitions",
     "subtitle": "Competition calendar and baseline tournament setup.",
     "listTitle": "Calendar",
@@ -641,6 +647,7 @@
     "backToFederation": "Back to federation competitions",
     "noOpenCompetitions": "No competitions are open for online registration yet.",
     "entryFee": "Entry fee",
+    "entryFeeUnspecified": "Confirm with the organizer",
     "currentNominations": "Nominations",
     "paymentHint": "Due by organizer rules: {{value}}",
     "fields": {

@@ -1,3 +1,4 @@
+import { competitionCity } from '../../lib/competition-presentation.js';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -14,7 +15,7 @@ import {
   toast,
 } from '@streetlifting/ui';
 import type { PublicCompetitionRegistrationCreate } from '@streetlifting/domain';
-import { formatRub } from '../../lib/money.js';
+import { formatEntryFee } from '../../lib/money.js';
 import { ApiClientError } from '../../lib/api-client.js';
 import {
   publicRegistrationApi,
@@ -195,8 +196,12 @@ export default function PublicCompetitionRegistrationFeature() {
         <div className="text-sm text-muted-foreground">{data.competition.federation.nameRu}</div>
         <h1 className="text-2xl font-semibold">{data.competition.nameRu}</h1>
         <div className="text-sm text-muted-foreground">
-          {data.competition.city ?? '—'} · {data.competition.venue ?? '—'} ·{' '}
-          {formatRub(data.competition.entryFeeKopecks)}
+          {competitionCity(data.competition.city, data.competition.startDate) ?? '—'} ·{' '}
+          {data.competition.venue ?? '—'} ·{' '}
+          {formatEntryFee(
+            data.competition.entryFeeKopecks,
+            t('publicRegistration.entryFeeUnspecified'),
+          )}
         </div>
       </div>
 
@@ -467,7 +472,10 @@ export default function PublicCompetitionRegistrationFeature() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-muted-foreground">
                   {t('publicRegistration.paymentHint', {
-                    value: formatRub(data.competition.entryFeeKopecks),
+                    value: formatEntryFee(
+                      data.competition.entryFeeKopecks,
+                      t('publicRegistration.entryFeeUnspecified'),
+                    ),
                   })}
                 </div>
                 <Button
