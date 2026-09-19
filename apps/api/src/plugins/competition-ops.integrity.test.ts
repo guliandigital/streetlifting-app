@@ -1,12 +1,17 @@
 import Fastify from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { competitionOpsPlugin } from './competition-ops.js';
+import { competitionOpsPlugin, validateNominationOperationalRefs } from './competition-ops.js';
 
 const db = vi.hoisted(() => ({
   nomination: { findUnique: vi.fn() },
   competition: { findUnique: vi.fn() },
   athlete: { findUnique: vi.fn() },
   judge: { findUnique: vi.fn() },
+  weightClass: { findUnique: vi.fn() },
+  flight: { findUnique: vi.fn() },
+  group: { findUnique: vi.fn() },
+  discipline: { findUnique: vi.fn() },
+  division: { findUnique: vi.fn() },
   $transaction: vi.fn(),
 }));
 vi.mock('../lib/audit.js', () => ({ fromRequest: vi.fn(() => ({})), record: vi.fn() }));
@@ -34,14 +39,26 @@ beforeEach(() => {
   });
   db.judge.findUnique.mockResolvedValue(null);
 });
-async function submit(judge: boolean, attemptNumber = 1, alias = false) {
+async function submit(
+  judge: boolean,
+  attemptNumber = 1,
+  alias = false,
+  operator = false,
+  result = 'good_lift',
+) {
   const app = Fastify();
   app.addHook('preHandler', async (req) => {
     req.user = {
       id: 'staff',
       email: 'staff@example.test',
       displayName: 'Staff',
-      roles: [{ role: judge ? 'judge' : 'secretary', federationId, competitionId: null }],
+      roles: [
+        {
+          role: judge ? 'judge' : operator ? 'scoreboard_operator' : 'secretary',
+          federationId,
+          competitionId: null,
+        },
+      ],
     };
   });
   await app.register(competitionOpsPlugin.register);
@@ -49,9 +66,7 @@ async function submit(judge: boolean, attemptNumber = 1, alias = false) {
     return await app.inject({
       method: 'PUT',
       url: `/nominations/${nominationId}/attempts/${alias ? `${componentId}/` : ''}${attemptNumber}${judge ? '/judge-decision' : ''}`,
-      payload: judge
-        ? { componentId, call: 'white' }
-        : { componentId, weightKg: 50, result: 'good_lift' },
+      payload: judge ? { componentId, call: 'white' } : { componentId, weightKg: 50, result },
     });
   } finally {
     await app.close();
@@ -173,4 +188,143 @@ it('cannot move an unapproved nomination directly to finished', async () => {
   expect((await changeNomination('PATCH', { status: 'finished' })).json().error.code).toBe(
     'mandate_required',
   );
+});
+
+it('cannot manually finish an approved nomination without attempts', async () => {
+  const n = await db.nomination.findUnique();
+  db.nomination.findUnique.mockResolvedValue({ ...n, status: 'draft' });
+  expect((await changeNomination('PATCH', { status: 'finished' })).json().error.code).toBe(
+    'nomination_finish_derived',
+  );
+});
+it('rejects clearing the required weight class before writing', async () => {
+  expect((await changeNomination('PATCH', { weightClassId: null })).json().error.code).toBe(
+    'weight_class_required',
+  );
+});
+it('rejects direct decisions by the scoreboard operator', async () => {
+  const res = await submit(false, 1, false, true);
+  expect(res.statusCode).toBe(403);
+  expect(res.json().error.code).toBe('attempt_result_forbidden');
+  expect(db.$transaction).not.toHaveBeenCalled();
+});
+it('prevents the scoreboard operator reopening a decided attempt', async () => {
+  const tx = {
+    attempt: {
+      findFirst: vi.fn(async () => ({ id: 'saved', result: 'good_lift' })),
+      update: vi.fn(),
+    },
+  };
+  db.$transaction.mockImplementation(async (callback) => callback(tx));
+  const res = await submit(false, 1, false, true, 'pending');
+  expect(res.statusCode).toBe(409);
+  expect(res.json().error.code).toBe('attempt_already_decided');
+  expect(tx.attempt.update).not.toHaveBeenCalled();
+});
+describe('operational reference consistency', () => {
+  it('rejects internal registration in a division of another gender', async () => {
+    db.competition.findUnique.mockResolvedValue({
+      id: competitionId,
+      federationId,
+      status: 'draft',
+    });
+    db.athlete.findUnique.mockResolvedValue({ id: nominationId, gender: 'F' });
+    db.discipline.findUnique.mockResolvedValue({ id: componentId });
+    db.division.findUnique.mockResolvedValue({ id: competitionId, competitionId, gender: 'M' });
+    db.weightClass.findUnique.mockResolvedValue({
+      id: federationId,
+      divisionId: competitionId,
+      disciplineId: componentId,
+    });
+    expect(
+      (
+        await changeNomination('POST', {
+          athleteId: nominationId,
+          disciplineId: componentId,
+          divisionId: competitionId,
+          weightClassId: federationId,
+        })
+      ).json().error.code,
+    ).toBe('division_gender_mismatch');
+  });
+  it('prevents operator edits after the first judge vote even before a majority', async () => {
+    const tx = {
+      attempt: {
+        findFirst: vi.fn(async () => ({
+          id: 'saved',
+          result: 'pending',
+          _count: { judgeVotes: 1 },
+        })),
+        update: vi.fn(),
+      },
+    };
+    db.$transaction.mockImplementation(async (callback) => callback(tx));
+    const res = await submit(false, 1, false, true, 'pending');
+    expect(res.statusCode).toBe(409);
+    expect(tx.attempt.update).not.toHaveBeenCalled();
+  });
+  it('rejects a nonexistent weight class instead of deferring to a foreign key failure', async () => {
+    db.weightClass.findUnique.mockResolvedValue(null);
+    expect(
+      await validateNominationOperationalRefs(competitionId, 'division', 'discipline', {
+        weightClassId: federationId,
+      }),
+    ).toMatchObject({ ok: false, code: 'weight_class_not_found' });
+  });
+  it.each([60, 71])('rejects measured weight %s outside the class', async (weight) => {
+    db.weightClass.findUnique.mockResolvedValue({
+      divisionId: 'division',
+      disciplineId: 'discipline',
+      weightMin: 60,
+      weightMax: 70,
+    });
+    expect(
+      await validateNominationOperationalRefs(competitionId, 'division', 'discipline', {
+        weightClassId: federationId,
+        bodyWeightAtWeighIn: weight,
+      }),
+    ).toMatchObject({ ok: false, code: 'body_weight_class_mismatch' });
+  });
+  it('accepts the inclusive upper weight boundary', async () => {
+    db.weightClass.findUnique.mockResolvedValue({
+      divisionId: 'division',
+      disciplineId: null,
+      weightMin: 60,
+      weightMax: 70,
+    });
+    expect(
+      await validateNominationOperationalRefs(competitionId, 'division', 'discipline', {
+        weightClassId: federationId,
+        bodyWeightAtWeighIn: 70,
+      }),
+    ).toEqual({ ok: true });
+  });
+  it('checks the stored group when only the flight is patched', async () => {
+    const n = await db.nomination.findUnique();
+    db.nomination.findUnique.mockResolvedValue({
+      ...n,
+      groupId: componentId,
+      flightId: nominationId,
+    });
+    db.flight.findUnique.mockResolvedValue({ id: federationId, competitionId });
+    db.group.findUnique.mockResolvedValue({
+      id: componentId,
+      flight: { id: nominationId, competitionId },
+    });
+    expect((await changeNomination('PATCH', { flightId: federationId })).json().error.code).toBe(
+      'group_flight_mismatch',
+    );
+  });
+  it('rejects removing a flight while its group remains assigned', async () => {
+    db.group.findUnique.mockResolvedValue({
+      id: componentId,
+      flight: { id: nominationId, competitionId },
+    });
+    expect(
+      await validateNominationOperationalRefs(competitionId, 'division', 'discipline', {
+        groupId: componentId,
+        flightId: null,
+      }),
+    ).toMatchObject({ ok: false, code: 'group_flight_mismatch' });
+  });
 });

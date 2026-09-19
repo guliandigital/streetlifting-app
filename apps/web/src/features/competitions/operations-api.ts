@@ -269,6 +269,7 @@ export interface JudgeAssignmentDto {
 
 export interface CompetitionOpsResponse {
   competition: {
+    status: string;
     id: string;
     federationId: string;
     code: string;

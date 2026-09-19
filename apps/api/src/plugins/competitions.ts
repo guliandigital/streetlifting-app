@@ -1,9 +1,15 @@
-import { CompetitionCreate, CompetitionListQuery, CompetitionUpdate } from '@streetlifting/domain';
+import {
+  CompetitionCreate,
+  CompetitionListQuery,
+  CompetitionUpdate,
+  hasCompleteAttemptSet,
+} from '@streetlifting/domain';
 import type { FeaturePlugin } from '../lib/load-plugins.js';
 import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
+import { matchesCompetitionScope } from '../lib/auth/authorization-matrix.js';
 import { validateUuidParams } from '../lib/params.js';
 import { createSyncOutboxEvent, outboxPayload } from '../lib/sync-outbox.js';
 import { publishCompetitionLiveUpdate } from '../lib/live-updates.js';
@@ -29,7 +35,7 @@ function scopedIds(
   const federationIds = new Set<string>();
   const competitionIds = new Set<string>();
   for (const r of user.roles) {
-    if (r.federationId) federationIds.add(r.federationId);
+    if (r.federationId && !r.competitionId) federationIds.add(r.federationId);
     if (r.competitionId) competitionIds.add(r.competitionId);
   }
   return { federationIds: [...federationIds], competitionIds: [...competitionIds] };
@@ -43,22 +49,21 @@ function canReadCompetition(
 ): boolean {
   if (!user) return false;
   return user.roles.some(
-    (r) =>
-      r.role === 'platform_admin' ||
-      r.federationId === competition.federationId ||
-      r.competitionId === competition.id,
+    (r) => r.role === 'platform_admin' || matchesCompetitionScope(r, competition),
   );
 }
 
 function canWriteFederation(
-  user: { roles: Array<{ role: string; federationId: string | null }> } | null,
+  user: {
+    roles: Array<{ role: string; federationId: string | null; competitionId: string | null }>;
+  } | null,
   federationId: string,
 ): boolean {
   if (!user) return false;
   return user.roles.some(
     (r) =>
       r.role === 'platform_admin' ||
-      (r.role === 'federation_admin' && r.federationId === federationId),
+      (r.role === 'federation_admin' && r.federationId === federationId && !r.competitionId),
   );
 }
 
@@ -182,15 +187,21 @@ export const competitionsPlugin: FeaturePlugin = {
       };
 
       if (!('all' in scope)) {
-        if (parsed.data.federationId && !scope.federationIds.includes(parsed.data.federationId)) {
+        if (
+          parsed.data.federationId &&
+          !scope.federationIds.includes(parsed.data.federationId) &&
+          scope.competitionIds.length === 0
+        ) {
           return reply.code(403).send({
             error: { code: 'forbidden', message: 'Out of scope', requestId: req.requestId },
           });
         }
-        where.OR = [
-          { federationId: { in: scope.federationIds } },
-          { id: { in: scope.competitionIds } },
-        ];
+        where.OR = req
+          .user!.roles.filter((r) => r.federationId || r.competitionId)
+          .map((r) => ({
+            ...(r.federationId ? { federationId: r.federationId } : {}),
+            ...(r.competitionId ? { id: r.competitionId } : {}),
+          }));
       }
 
       const [competitions, total] = await Promise.all([
@@ -374,6 +385,19 @@ export const competitionsPlugin: FeaturePlugin = {
         }
 
         const nextStatus = parsed.data.status ?? before.status;
+        if (
+          nextStatus === 'archived' &&
+          before.status !== 'finalized' &&
+          before.status !== 'archived'
+        ) {
+          return reply.code(409).send({
+            error: {
+              code: 'competition_not_finalized',
+              message: 'Finalize the competition before archiving it',
+              requestId: req.requestId,
+            },
+          });
+        }
         if (isStatusDowngradeFromLocked(before.status, nextStatus)) {
           return reply.code(409).send({
             error: {
@@ -395,6 +419,36 @@ export const competitionsPlugin: FeaturePlugin = {
               error: {
                 code: 'competition_has_unfinished_nominations',
                 message: 'Cannot finalize competition while active nominations are unfinished',
+                requestId: req.requestId,
+              },
+            });
+          }
+          const finished = await prisma.nomination.findMany({
+            where: { competitionId: before.id, status: 'finished' },
+            select: {
+              discipline: {
+                select: {
+                  attemptCount: true,
+                  components: { select: { id: true, attemptCount: true } },
+                },
+              },
+              attempts: { select: { componentId: true, attemptNumber: true, result: true } },
+            },
+          });
+          if (
+            finished.some(
+              (nomination) =>
+                !hasCompleteAttemptSet({
+                  discipline: nomination.discipline,
+                  components: nomination.discipline.components,
+                  attempts: nomination.attempts,
+                }),
+            )
+          ) {
+            return reply.code(409).send({
+              error: {
+                code: 'competition_protocol_incomplete',
+                message: 'Finished nominations must have a complete attempt protocol',
                 requestId: req.requestId,
               },
             });

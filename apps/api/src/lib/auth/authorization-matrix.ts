@@ -328,7 +328,9 @@ export function hasFederationRole(
   return actor.roles.some(
     (assignment) =>
       assignment.role === 'platform_admin' ||
-      (roles.includes(assignment.role) && assignment.federationId === federationId),
+      (roles.includes(assignment.role) &&
+        assignment.federationId === federationId &&
+        !assignment.competitionId),
   );
 }
 
@@ -341,9 +343,18 @@ export function hasCompetitionRole(
   return actor.roles.some(
     (assignment) =>
       assignment.role === 'platform_admin' ||
-      (roles.includes(assignment.role) &&
-        (assignment.federationId === competition.federationId ||
-          assignment.competitionId === competition.id)),
+      (roles.includes(assignment.role) && matchesCompetitionScope(assignment, competition)),
+  );
+}
+
+export function matchesCompetitionScope(
+  assignment: { federationId: string | null; competitionId: string | null },
+  competition: CompetitionScope,
+): boolean {
+  return (
+    Boolean(assignment.federationId || assignment.competitionId) &&
+    (!assignment.federationId || assignment.federationId === competition.federationId) &&
+    (!assignment.competitionId || assignment.competitionId === competition.id)
   );
 }
 
@@ -365,9 +376,7 @@ export function canReadCompetition(
   if (!actor) return false;
   return actor.roles.some(
     (assignment) =>
-      assignment.role === 'platform_admin' ||
-      assignment.federationId === competition.federationId ||
-      assignment.competitionId === competition.id,
+      assignment.role === 'platform_admin' || matchesCompetitionScope(assignment, competition),
   );
 }
 

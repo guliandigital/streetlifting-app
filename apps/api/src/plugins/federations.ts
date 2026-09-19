@@ -156,14 +156,17 @@ function decodeBase64File(contentBase64: string): Buffer | null {
 }
 
 function canManageFederation(
-  user: { roles: Array<{ role: string; federationId: string | null }> } | null,
+  user: {
+    roles: Array<{ role: string; federationId: string | null; competitionId: string | null }>;
+  } | null,
   federationId: string,
   roles: readonly string[],
 ): boolean {
   if (!user) return false;
   return user.roles.some(
     (r) =>
-      r.role === 'platform_admin' || (roles.includes(r.role) && r.federationId === federationId),
+      r.role === 'platform_admin' ||
+      (roles.includes(r.role) && r.federationId === federationId && !r.competitionId),
   );
 }
 

@@ -8,6 +8,7 @@ import {
   NominationUpdate,
   calculateNominationPlaces,
   calculateNominationScore,
+  hasCompleteAttemptSet,
   JudgeDecisionSubmission,
   presets,
   resolveJudgeMajority,
@@ -18,6 +19,7 @@ import { prisma, Prisma } from '../lib/db.js';
 import { moduleLogger } from '../lib/logger.js';
 import * as audit from '../lib/audit.js';
 import { requireAuth } from '../lib/auth/middleware.js';
+import { matchesCompetitionScope } from '../lib/auth/authorization-matrix.js';
 import { validateUuidParams } from '../lib/params.js';
 import { assertNoForbiddenExportKeys } from '../lib/privacy-allowlist.js';
 import { publishCompetitionLiveUpdate } from '../lib/live-updates.js';
@@ -115,8 +117,7 @@ function hasAnyScopedRole(
   return user.roles.some(
     (r) =>
       r.role === 'platform_admin' ||
-      (roles.includes(r.role) &&
-        (r.federationId === competition.federationId || r.competitionId === competition.id)),
+      (roles.includes(r.role) && matchesCompetitionScope(r, competition)),
   );
 }
 
@@ -314,15 +315,18 @@ async function validateNominationRefs(
     NominationCreate,
     'athleteId' | 'disciplineId' | 'divisionId' | 'weightClassId' | 'declaredWeightClassId'
   > &
-    Pick<NominationCreate, 'flightId' | 'groupId'>,
+    Pick<NominationCreate, 'flightId' | 'groupId' | 'bodyWeightAtWeighIn'>,
 ): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
   const [athlete, discipline, division, declaredWeightClass, weightClass, flight, group] =
     await Promise.all([
-      prisma.athlete.findUnique({ where: { id: data.athleteId }, select: { id: true } }),
+      prisma.athlete.findUnique({
+        where: { id: data.athleteId },
+        select: { id: true, gender: true },
+      }),
       prisma.discipline.findUnique({ where: { id: data.disciplineId }, select: { id: true } }),
       prisma.division.findUnique({
         where: { id: data.divisionId },
-        select: { id: true, competitionId: true },
+        select: { id: true, competitionId: true, gender: true },
       }),
       data.declaredWeightClassId
         ? prisma.weightClass.findUnique({
@@ -332,7 +336,13 @@ async function validateNominationRefs(
         : Promise.resolve(null),
       prisma.weightClass.findUnique({
         where: { id: data.weightClassId },
-        select: { id: true, divisionId: true, disciplineId: true },
+        select: {
+          id: true,
+          divisionId: true,
+          disciplineId: true,
+          weightMin: true,
+          weightMax: true,
+        },
       }),
       data.flightId
         ? prisma.flight.findUnique({
@@ -358,11 +368,29 @@ async function validateNominationRefs(
       message: 'Division is not in this competition',
     };
   }
+  if (athlete.gender !== division.gender) {
+    return {
+      ok: false,
+      code: 'division_gender_mismatch',
+      message: 'Athlete gender does not match the division',
+    };
+  }
   if (!weightClass || weightClass.divisionId !== data.divisionId) {
     return {
       ok: false,
       code: 'weight_class_out_of_scope',
       message: 'Weight class is not in this division',
+    };
+  }
+  if (
+    data.bodyWeightAtWeighIn != null &&
+    ((weightClass.weightMin != null && data.bodyWeightAtWeighIn <= weightClass.weightMin) ||
+      (weightClass.weightMax != null && data.bodyWeightAtWeighIn > weightClass.weightMax))
+  ) {
+    return {
+      ok: false,
+      code: 'body_weight_class_mismatch',
+      message: 'Weighed body weight is outside the selected class',
     };
   }
   if (
@@ -395,7 +423,7 @@ async function validateNominationRefs(
   if (data.groupId && (!group || group.flight.competitionId !== competitionId)) {
     return { ok: false, code: 'group_out_of_scope', message: 'Group is not in this competition' };
   }
-  if (data.flightId && group && group.flight.id !== data.flightId) {
+  if (group && group.flight.id !== data.flightId) {
     return { ok: false, code: 'group_flight_mismatch', message: 'Group is not in this flight' };
   }
   return { ok: true };
@@ -422,11 +450,14 @@ async function findWeightClassForBodyWeight(
   return match?.id;
 }
 
-async function validateNominationOperationalRefs(
+export async function validateNominationOperationalRefs(
   competitionId: string,
   divisionId: string,
   disciplineId: string,
-  data: Pick<NominationUpdate, 'declaredWeightClassId' | 'weightClassId' | 'flightId' | 'groupId'>,
+  data: Pick<
+    NominationUpdate,
+    'declaredWeightClassId' | 'weightClassId' | 'flightId' | 'groupId' | 'bodyWeightAtWeighIn'
+  >,
 ): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
   const [declaredWeightClass, weightClass, flight, group] = await Promise.all([
     data.declaredWeightClassId
@@ -438,7 +469,13 @@ async function validateNominationOperationalRefs(
     data.weightClassId
       ? prisma.weightClass.findUnique({
           where: { id: data.weightClassId },
-          select: { id: true, divisionId: true, disciplineId: true },
+          select: {
+            id: true,
+            divisionId: true,
+            disciplineId: true,
+            weightMin: true,
+            weightMax: true,
+          },
         })
       : Promise.resolve(null),
     data.flightId
@@ -459,6 +496,10 @@ async function validateNominationOperationalRefs(
     ['declared_weight_class', declaredWeightClass],
     ['weight_class', weightClass],
   ] as const) {
+    const requestedId = kind === 'weight_class' ? data.weightClassId : data.declaredWeightClassId;
+    if (requestedId && !weightClassRef) {
+      return { ok: false, code: `${kind}_not_found`, message: 'Weight class not found' };
+    }
     if (!weightClassRef) continue;
     if (weightClassRef.divisionId !== divisionId) {
       return {
@@ -475,13 +516,25 @@ async function validateNominationOperationalRefs(
       };
     }
   }
+  if (
+    weightClass &&
+    data.bodyWeightAtWeighIn != null &&
+    ((weightClass.weightMin != null && data.bodyWeightAtWeighIn <= weightClass.weightMin) ||
+      (weightClass.weightMax != null && data.bodyWeightAtWeighIn > weightClass.weightMax))
+  ) {
+    return {
+      ok: false,
+      code: 'body_weight_class_mismatch',
+      message: 'Weighed body weight is outside the selected class',
+    };
+  }
   if (data.flightId && (!flight || flight.competitionId !== competitionId)) {
     return { ok: false, code: 'flight_out_of_scope', message: 'Flight is not in this competition' };
   }
   if (data.groupId && (!group || group.flight.competitionId !== competitionId)) {
     return { ok: false, code: 'group_out_of_scope', message: 'Group is not in this competition' };
   }
-  if (data.flightId && group && group.flight.id !== data.flightId) {
+  if (group && group.flight.id !== data.flightId) {
     return { ok: false, code: 'group_flight_mismatch', message: 'Group is not in this flight' };
   }
   return { ok: true };
@@ -534,11 +587,11 @@ async function recalculateNomination(
       repsCount: attempt.repsCount,
     })),
   });
-  const requiredAttemptCount =
-    nomination.discipline.components.length > 0
-      ? nomination.discipline.components.reduce((sum, component) => sum + component.attemptCount, 0)
-      : nomination.discipline.attemptCount;
-  const hasEnoughAttempts = nomination.attempts.length >= requiredAttemptCount;
+  const hasEnoughAttempts = hasCompleteAttemptSet({
+    discipline: nomination.discipline,
+    components: nomination.discipline.components,
+    attempts: nomination.attempts,
+  });
   const nextStatus =
     nomination.status === 'disqualified' || nomination.status === 'withdrawn'
       ? nomination.status
@@ -794,6 +847,7 @@ async function getOpsPayload(competitionId: string) {
       select: {
         id: true,
         federationId: true,
+        status: true,
         code: true,
         nameRu: true,
         nameEn: true,
@@ -1677,6 +1731,15 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
+        if (parsed.data.status === 'finished') {
+          return reply.code(409).send({
+            error: {
+              code: 'nomination_finish_derived',
+              message: 'Nomination completion is derived from attempts',
+              requestId: req.requestId,
+            },
+          });
+        }
         const refCheck = await validateNominationRefs(competition.id, parsed.data);
         if (!refCheck.ok) {
           return reply.code(400).send({
@@ -2069,6 +2132,24 @@ export const competitionOpsPlugin: FeaturePlugin = {
           before.competition,
           data,
         );
+        if (data.status === 'finished' && before.status !== 'finished') {
+          return reply.code(409).send({
+            error: {
+              code: 'nomination_finish_derived',
+              message: 'Nomination completion is derived from attempts',
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (data.weightClassId === null) {
+          return reply.code(400).send({
+            error: {
+              code: 'weight_class_required',
+              message: 'Weight class is required',
+              requestId: req.requestId,
+            },
+          });
+        }
         if (forbiddenUpdateKeys.length > 0) {
           return reply.code(403).send({
             error: {
@@ -2103,7 +2184,20 @@ export const competitionOpsPlugin: FeaturePlugin = {
           before.competition.id,
           before.divisionId,
           before.disciplineId,
-          data,
+          {
+            declaredWeightClassId:
+              data.declaredWeightClassId === undefined
+                ? before.declaredWeightClassId
+                : data.declaredWeightClassId,
+            weightClassId:
+              data.weightClassId === undefined ? before.weightClassId : data.weightClassId,
+            flightId: data.flightId === undefined ? before.flightId : data.flightId,
+            groupId: data.groupId === undefined ? before.groupId : data.groupId,
+            bodyWeightAtWeighIn:
+              data.bodyWeightAtWeighIn === undefined
+                ? before.bodyWeightAtWeighIn
+                : data.bodyWeightAtWeighIn,
+          },
         );
         if (!refCheck.ok) {
           return reply.code(400).send({
@@ -2248,6 +2342,22 @@ export const competitionOpsPlugin: FeaturePlugin = {
           });
         }
         const attemptData = { ...parsed.data, componentId };
+        if (
+          !hasScopedRole(req.user, nomination.competition, [
+            'federation_admin',
+            'secretary',
+            'head_judge',
+          ]) &&
+          (attemptData.result !== 'pending' || attemptData.judgeDecisions.length > 0)
+        ) {
+          return reply.code(403).send({
+            error: {
+              code: 'attempt_result_forbidden',
+              message: 'Scoreboard operators cannot decide attempts',
+              requestId: req.requestId,
+            },
+          });
+        }
 
         const auditBase = {
           ...audit.fromRequest(req),
@@ -2260,37 +2370,61 @@ export const competitionOpsPlugin: FeaturePlugin = {
           after: attemptData,
         };
 
-        const attempt = await prisma.$transaction(async (tx) => {
-          const base = toAttemptData(attemptData);
-          const existing = await tx.attempt.findFirst({
-            where: { nominationId: nomination.id, componentId, attemptNumber },
-            select: { id: true },
-          });
-          const saved = existing
-            ? await tx.attempt.update({
-                where: { id: existing.id },
-                data: stripUndefined({
-                  componentId,
-                  weightKg: attemptData.weightKg,
-                  result: attemptData.result,
-                  judgeDecisions: attemptData.judgeDecisions as Prisma.InputJsonValue,
-                  repsCount: attemptData.repsCount,
-                  timeoutSeconds: attemptData.timeoutSeconds,
-                  startedAt: dateOrNull(attemptData.startedAt),
-                  decidedAt:
-                    attemptData.decidedAt === undefined && attemptData.result !== 'pending'
-                      ? new Date()
-                      : dateOrNull(attemptData.decidedAt),
-                  notes: attemptData.notes,
-                }) as Prisma.AttemptUncheckedUpdateInput,
-              })
-            : await tx.attempt.create({ data: { ...base, nominationId: nomination.id } });
-          await recalculateNomination(tx, nomination.id);
-          await recalculateCompetitionPlacings(tx, nomination.competition.id);
-          await audit.record({ ...auditBase, targetId: saved.id, result: 'success' }, tx);
-          return saved;
-        });
+        const attempt = await runSerializable(() =>
+          prisma.$transaction(
+            async (tx) => {
+              const base = toAttemptData(attemptData);
+              const existing = await tx.attempt.findFirst({
+                where: { nominationId: nomination.id, componentId, attemptNumber },
+                select: { id: true, result: true, _count: { select: { judgeVotes: true } } },
+              });
+              if (
+                existing &&
+                (existing.result !== 'pending' || existing._count.judgeVotes > 0) &&
+                !hasScopedRole(req.user, nomination.competition, [
+                  'federation_admin',
+                  'secretary',
+                  'head_judge',
+                ])
+              )
+                return null;
+              const saved = existing
+                ? await tx.attempt.update({
+                    where: { id: existing.id },
+                    data: stripUndefined({
+                      componentId,
+                      weightKg: attemptData.weightKg,
+                      result: attemptData.result,
+                      judgeDecisions: attemptData.judgeDecisions as Prisma.InputJsonValue,
+                      repsCount: attemptData.repsCount,
+                      timeoutSeconds: attemptData.timeoutSeconds,
+                      startedAt: dateOrNull(attemptData.startedAt),
+                      decidedAt:
+                        attemptData.decidedAt === undefined && attemptData.result !== 'pending'
+                          ? new Date()
+                          : dateOrNull(attemptData.decidedAt),
+                      notes: attemptData.notes,
+                    }) as Prisma.AttemptUncheckedUpdateInput,
+                  })
+                : await tx.attempt.create({ data: { ...base, nominationId: nomination.id } });
+              await recalculateNomination(tx, nomination.id);
+              await recalculateCompetitionPlacings(tx, nomination.competition.id);
+              await audit.record({ ...auditBase, targetId: saved.id, result: 'success' }, tx);
+              return saved;
+            },
+            { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+          ),
+        );
 
+        if (!attempt) {
+          return reply.code(409).send({
+            error: {
+              code: 'attempt_already_decided',
+              message: 'A decided attempt cannot be reopened by the scoreboard operator',
+              requestId: req.requestId,
+            },
+          });
+        }
         const updatedNomination = await prisma.nomination.findUnique({
           where: { id: nomination.id },
           include: nominationInclude,

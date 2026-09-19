@@ -57,6 +57,8 @@ export default function CompetitionCertificatesFeature() {
   const { t } = useTranslation();
   const { id } = useParams({ from: '/competitions/$id/certificates' });
   const { data, isLoading, error, isFetching, refetch } = useCompetitionOps(id);
+  const resultsFinalized =
+    data?.competition.status === 'finalized' || data?.competition.status === 'archived';
   const [selectedWeightKeys, setSelectedWeightKeys] = useState<string[]>([]);
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
@@ -182,13 +184,13 @@ export default function CompetitionCertificatesFeature() {
   return (
     <WorkspacePage
       title={`Печать грамот. Данные на ${new Date().toLocaleTimeString('ru-RU')} (UTC+3)`}
-      subtitle={data.competition.nameRu}
+      subtitle={`${data.competition.nameRu}${resultsFinalized ? '' : ' — предварительные результаты, турнир не завершён'}`}
       actions={
         <>
           <WorkspaceButton
             type="button"
             onClick={() => window.print()}
-            disabled={rows.length === 0}
+            disabled={rows.length === 0 || !resultsFinalized}
           >
             Печать / PDF
           </WorkspaceButton>
@@ -717,6 +719,9 @@ export default function CompetitionCertificatesFeature() {
       )}
 
       <div className="hidden print:block">
+        {!resultsFinalized ? (
+          <p>ПРЕДВАРИТЕЛЬНЫЙ ПРОСМОТР — результаты турнира не утверждены</p>
+        ) : null}
         {rows.map((row) => (
           <section
             key={row.nominationId}
