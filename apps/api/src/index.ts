@@ -1,4 +1,5 @@
 import Fastify, { type FastifyError } from 'fastify';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import websocket from '@fastify/websocket';
@@ -151,8 +152,13 @@ app.setErrorHandler((err: FastifyError, req, reply) => {
 });
 
 try {
-  await app.listen({ port, host });
+  if (!process.env.VERCEL) await app.listen({ port, host });
 } catch (err) {
   boot.fatal({ err }, 'server failed to start');
   process.exit(1);
+}
+
+export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  await app.ready();
+  app.server.emit('request', req, res);
 }
