@@ -15,6 +15,7 @@ describe('ISF ID issuer', () => {
       allowedAudiences: ['streetlifting-api'],
       assertionTtlSeconds: 120,
     });
+    expect(issuer.assertionTtlSeconds).toBe(120);
     const token = await issuer.issueLaunchAssertion({
       subjectId: '00000000-0000-4000-8000-000000000001',
       email: 'Athlete@Example.test',
