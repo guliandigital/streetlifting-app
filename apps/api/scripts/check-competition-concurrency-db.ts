@@ -13,6 +13,9 @@ const { PrismaClient } = await import('@prisma/client');
 const { prisma: db } = await import('../src/lib/db.js');
 const observer = new PrismaClient();
 const { lockCompetition } = await import('../src/lib/competition-lifecycle.js');
+const { snapshotHash, captureFinalizationSnapshot } =
+  await import('../src/lib/finalization-snapshot.js');
+const { ACCESS_ACKNOWLEDGMENT_VERSION } = await import('../src/lib/access-acknowledgment.js');
 const { signAccessToken } = await import('../src/lib/auth/tokens.js');
 const { attachUser } = await import('../src/lib/auth/middleware.js');
 const { registerRequestContext } = await import('../src/lib/request-context.js');
@@ -276,6 +279,10 @@ try {
   assert.equal(rejected.statusCode, 409, rejected.body);
   assert.equal(rejected.json().error.code, 'competition_has_unfinished_nominations');
   assert.equal(
+    await db.competitionFinalizationSnapshot.count({ where: { competitionId: competition.id } }),
+    0,
+  );
+  assert.equal(
     (await db.competition.findUniqueOrThrow({ where: { id: competition.id } })).status,
     'in_progress',
   );
@@ -287,6 +294,19 @@ try {
   );
 
   // Repair the disposable fixture through the real API, then race both routes.
+  assert.equal((await write('good_lift')).statusCode, 200);
+  await db.nomination.update({ where: { id: nomination.id }, data: { finalScore: 999 } });
+  const staleScore = await finalize();
+  assert.equal(staleScore.statusCode, 409, staleScore.body);
+  assert.equal(staleScore.json().error.code, 'protocol_calculation_stale');
+  assert.equal(
+    (await db.competition.findUniqueOrThrow({ where: { id: competition.id } })).status,
+    'in_progress',
+  );
+  assert.equal(
+    await db.competitionFinalizationSnapshot.count({ where: { competitionId: competition.id } }),
+    0,
+  );
   assert.equal((await write('good_lift')).statusCode, 200);
   const racing = await Promise.all([finalize(), write('good_lift')]);
   assert.equal(racing[0].statusCode, 200, racing[0].body);
@@ -309,6 +329,99 @@ try {
     409,
   );
   assert.equal((await finalize()).statusCode, 200);
+  const snapshot = await db.competitionFinalizationSnapshot.findUniqueOrThrow({
+    where: { competitionId_revision: { competitionId: competition.id, revision: 1 } },
+  });
+  assert.equal(snapshotHash(snapshot.payload), snapshot.payloadHash);
+  const snapshotPayload = snapshot.payload as {
+    approvalStatus: string;
+    nominations: Array<{ finalScore: number; attempts: Array<{ id: string; result: string }> }>;
+  };
+  assert.equal(snapshotPayload.approvalStatus, 'not_recorded');
+  assert.equal(snapshotPayload.nominations[0]!.attempts[0]!.id, attempt.id);
+  assert.equal(snapshotPayload.nominations[0]!.attempts[0]!.result, 'good_lift');
+  assert.equal(
+    await db.competitionFinalizationSnapshot.count({ where: { competitionId: competition.id } }),
+    1,
+  );
+  // SQL immutability, not merely an absent update endpoint.
+  await assert.rejects(
+    db.competitionFinalizationSnapshot.update({
+      where: { id: snapshot.id },
+      data: { payloadHash: '0'.repeat(64) },
+    }),
+    /immutable/,
+  );
+  await assert.rejects(
+    db.competitionFinalizationSnapshot.delete({ where: { id: snapshot.id } }),
+    /immutable/,
+  );
+  // A failed snapshot write rolls back preceding changes in the same transaction.
+  await assert.rejects(
+    db.$transaction(async (tx) => {
+      await tx.competition.update({
+        where: { id: competition.id },
+        data: { nameEn: 'Must roll back' },
+      });
+      await captureFinalizationSnapshot(tx, competition.id, snapshot.createdByUserId);
+    }),
+  );
+  assert.equal(
+    (await db.competition.findUniqueOrThrow({ where: { id: competition.id } })).nameEn,
+    competition.nameEn,
+  );
+  // Mutable reference edits must never recalculate or rename historical evidence.
+  await db.discipline.update({
+    where: { id: discipline.id },
+    data: { nameEn: 'Changed catalog', attemptCount: 5 },
+  });
+  await db.division.update({ where: { id: division.id }, data: { veteranCoefficient: 2 } });
+  assert.deepEqual(
+    (await db.competitionFinalizationSnapshot.findUniqueOrThrow({ where: { id: snapshot.id } }))
+      .payload,
+    snapshot.payload,
+  );
+  const snapshotUrl = `/competitions/${competition.id}/finalization-snapshot`;
+  const readSnapshot = await app.inject({ url: snapshotUrl, headers: headers[0]! });
+  assert.equal(readSnapshot.statusCode, 200, readSnapshot.body);
+  assert.equal(readSnapshot.headers['cache-control'], 'private, no-store');
+  assert.equal(readSnapshot.json().snapshot.payloadHash, snapshot.payloadHash);
+  assert.equal((await app.inject({ url: snapshotUrl })).statusCode, 401);
+  const otherFederation = await db.federation.create({
+    data: {
+      code: randomUUID(),
+      nameRu: 'Other',
+      nameEn: 'Other',
+      countryCode: 'AM',
+      securityKey: randomUUID(),
+      billingTariffKopecksPerNomination: 0,
+    },
+  });
+  for (const scope of [
+    { federationId: otherFederation.id },
+    { federationId: federation.id, competitionId: competition.id },
+  ]) {
+    const outsider = await db.user.create({
+      data: {
+        email: `${randomUUID()}@example.test`,
+        displayName: 'Scoped user',
+        roleAssignments: {
+          create: {
+            role: 'federation_admin',
+            ...scope,
+            acknowledgedAt: new Date(),
+            acknowledgedTextVersion: ACCESS_ACKNOWLEDGMENT_VERSION,
+          },
+        },
+      },
+    });
+    const denied = await app.inject({
+      url: snapshotUrl,
+      headers: { authorization: `Bearer ${await signAccessToken(outsider.id)}` },
+    });
+    assert.equal(denied.statusCode, 403, denied.body);
+    assert.equal(denied.body.includes(snapshot.payloadHash), false);
+  }
   assert.equal(
     await db.syncOutbox.count({
       where: { aggregateId: competition.id, eventType: 'competition.finalized' },
@@ -333,6 +446,8 @@ try {
       staleFinalizationRejected: true,
       finalizationAttemptRace: true,
       finalizedWritesBlocked: true,
+      immutableFinalizationSnapshot: true,
+      snapshotScopeIsolation: true,
     }),
   );
 } finally {

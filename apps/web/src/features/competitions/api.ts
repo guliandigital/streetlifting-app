@@ -2,6 +2,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CompetitionCreate, CompetitionUpdate } from '@streetlifting/domain';
 import { api } from '../../lib/api-client.js';
 
+export interface FinalizationSnapshotResponse {
+  approvalStatus: 'not_recorded';
+  snapshot: null | {
+    id: string;
+    revision: number;
+    schemaVersion: number;
+    createdAt: string;
+    payloadHash: string;
+    payload: unknown;
+  };
+}
+
 export interface CompetitionDto {
   id: string;
   federationId: string;
