@@ -1,3 +1,4 @@
+import type { CompetitionProtocol } from '@streetlifting/domain';
 import type {
   AthleteCreate,
   AthleteUpdate,
@@ -578,6 +579,8 @@ export const api = {
       return request(`/competitions${qs ? `?${qs}` : ''}`);
     },
     get: (id: string): Promise<{ competition: CompetitionDto }> => request(`/competitions/${id}`),
+    protocol: (id: string): Promise<CompetitionProtocol> =>
+      request(`/competitions/${id}/protocol.json`),
     finalizationSnapshot: (id: string): Promise<FinalizationSnapshotResponse> =>
       request(`/competitions/${id}/finalization-snapshot`),
     create: (data: CompetitionCreate): Promise<{ competition: CompetitionDto }> =>

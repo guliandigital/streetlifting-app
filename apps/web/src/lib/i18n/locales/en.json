@@ -491,6 +491,13 @@
     "waitForCall": "Wait for the operator to call the attempt, or the result has already been finalized."
   },
   "protocolPrint": {
+    "source": {
+      "working": "Working protocol — results may change",
+      "finalization_snapshot": "Protocol snapshot captured at finalization",
+      "legacy_unverified": "Archive without a snapshot — current reference data, historical version unverified"
+    },
+    "approvalNotRecorded": "Official federation approval has not been recorded.",
+    "revision": "Revision {{revision}}",
     "title": "Print protocol",
     "results": "Final results",
     "printPdf": "Print / PDF"
