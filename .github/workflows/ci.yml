@@ -71,11 +71,21 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Create databases
+        # Prisma's shadow database must be a separate database (not a schema
+        # inside the same one), otherwise `migrate diff` reports the whole
+        # datamodel as drift. ISF ID gets its own database as in production.
+        env:
+          PGPASSWORD: streetlifting
+        run: |
+          for db in isf_id shadow_api shadow_isf_id; do
+            psql -h localhost -U streetlifting -d streetlifting -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db"
+          done
       - name: Apply API migrations to an empty database
         run: pnpm --filter=@streetlifting/api db:deploy
       - name: Apply ISF ID migrations to an empty database
         env:
-          DATABASE_URL: postgresql://streetlifting:streetlifting@localhost:5432/streetlifting?schema=isf_id
+          DATABASE_URL: postgresql://streetlifting:streetlifting@localhost:5432/isf_id?schema=public
         run: pnpm --filter=@streetlifting/isf-id db:deploy
       - name: API schema matches its migrations
         working-directory: apps/api
@@ -83,7 +93,7 @@ jobs:
           pnpm exec prisma migrate diff
           --from-migrations prisma/migrations
           --to-schema-datamodel prisma/schema.prisma
-          --shadow-database-url "postgresql://streetlifting:streetlifting@localhost:5432/streetlifting?schema=shadow_api"
+          --shadow-database-url "postgresql://streetlifting:streetlifting@localhost:5432/shadow_api?schema=public"
           --exit-code
       - name: ISF ID schema matches its migrations
         working-directory: apps/isf-id
@@ -91,7 +101,7 @@ jobs:
           pnpm exec prisma migrate diff
           --from-migrations prisma/migrations
           --to-schema-datamodel prisma/schema.prisma
-          --shadow-database-url "postgresql://streetlifting:streetlifting@localhost:5432/streetlifting?schema=shadow_isf_id"
+          --shadow-database-url "postgresql://streetlifting:streetlifting@localhost:5432/shadow_isf_id?schema=public"
           --exit-code
 
   e2e:

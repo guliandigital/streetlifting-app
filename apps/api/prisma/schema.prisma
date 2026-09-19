@@ -378,6 +378,7 @@ model Federation {
   protocolKeys      FederationProtocolKey[]
   finalProtocolImports FinalProtocolImport[]
 
+  @@index([affiliationStatus, affiliationBody])
   @@map("federation")
 }
 
