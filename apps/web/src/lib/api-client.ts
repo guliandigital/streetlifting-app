@@ -60,7 +60,11 @@ import type {
 } from '../features/athletes/api.js';
 import type { DisciplineDto } from './disciplines-api.js';
 import type { JudgeDto, JudgeListResponse } from '../features/judges/api.js';
-import type { CompetitionDto, CompetitionListResponse } from '../features/competitions/api.js';
+import type {
+  CompetitionDto,
+  CompetitionListResponse,
+  FinalizationSnapshotResponse,
+} from '../features/competitions/api.js';
 import type {
   CompetitionLiveOpsResponse,
   CompetitionOpsResponse,
@@ -571,6 +575,8 @@ export const api = {
       return request(`/competitions${qs ? `?${qs}` : ''}`);
     },
     get: (id: string): Promise<{ competition: CompetitionDto }> => request(`/competitions/${id}`),
+    finalizationSnapshot: (id: string): Promise<FinalizationSnapshotResponse> =>
+      request(`/competitions/${id}/finalization-snapshot`),
     create: (data: CompetitionCreate): Promise<{ competition: CompetitionDto }> =>
       request('/competitions', { method: 'POST', body: data }),
     update: (id: string, data: CompetitionUpdate): Promise<{ competition: CompetitionDto }> =>

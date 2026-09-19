@@ -150,6 +150,9 @@ VALUES ('00000000-0000-4000-8000-000000000902', 'Legacy', 'Athlete', '1998-01-01
     DATABASE_URL: databaseUrl('streetlifting_e2e_upgrade'),
     PD_UPGRADE_CHECK: '1',
   });
+  run(process.execPath, [tsx, join(api, 'scripts/check-competition-concurrency-db.ts')], runDir, {
+    DATABASE_URL: databaseUrl('streetlifting_e2e_upgrade'),
+  });
   const fullBrowserSuite = process.argv.includes('--browser-all');
   const browser = fullBrowserSuite || process.argv.includes('--browser');
   if (browser) {

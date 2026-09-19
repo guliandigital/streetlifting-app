@@ -571,10 +571,29 @@ model Competition {
   roleAssignments           RoleAssignment[]
   teamMembers               CompetitionTeamMember[]
   finalProtocolImports      FinalProtocolImport[]
+  finalizationSnapshots     CompetitionFinalizationSnapshot[]
 
   @@unique([federationId, code])
   @@index([federationId, status])
   @@map("competition")
+}
+
+/// Immutable evidence of an operational finalization, not federation approval.
+/// Existing archive rows are never backfilled from mutable current data.
+model CompetitionFinalizationSnapshot {
+  id              String   @id @default(uuid()) @db.Uuid
+  competitionId   String   @db.Uuid
+  revision        Int
+  schemaVersion   Int
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  createdByUserId String   @db.Uuid
+  payloadHash     String   @db.Char(64)
+  payload         Json
+
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+
+  @@unique([competitionId, revision])
+  @@map("competition_finalization_snapshot")
 }
 
 model Division {

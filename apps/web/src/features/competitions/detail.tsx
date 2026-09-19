@@ -1,4 +1,5 @@
 import { competitionCity, competitionSourceLabel } from '../../lib/competition-presentation.js';
+import { FinalizationSnapshotPanel } from './finalization-snapshot-panel.js';
 import { hasCompleteAttemptSet } from '@streetlifting/domain';
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
@@ -766,6 +767,9 @@ export default function CompetitionDetailFeature() {
     >
       <div className="space-y-3">
         {opsData && <CompetitionReadiness id={id} ops={opsData} />}
+        {canWrite && ['finalized', 'archived'].includes(c.status) && (
+          <FinalizationSnapshotPanel id={id} />
+        )}
         {activeTab === 'settings' && (
           <>
             <WorkspacePanel className="p-3">

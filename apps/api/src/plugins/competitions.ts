@@ -1,4 +1,6 @@
+import { runSerializable } from '../lib/serializable.js';
 import { assertNominationAdmission } from '../lib/nomination-admission.js';
+import { captureFinalizationSnapshot } from '../lib/finalization-snapshot.js';
 import { CompetitionConflict } from '../lib/competition-lifecycle.js';
 import {
   CompetitionCreate,
@@ -248,6 +250,37 @@ export const competitionsPlugin: FeaturePlugin = {
       },
     );
 
+    app.get<{ Params: { id: string } }>(
+      '/competitions/:id/finalization-snapshot',
+      { preHandler: requireAuth() },
+      async (req, reply) => {
+        reply.header('cache-control', 'private, no-store');
+        const competition = await prisma.competition.findUnique({ where: { id: req.params.id } });
+        if (!competition)
+          return reply.code(404).send({
+            error: {
+              code: 'not_found',
+              message: 'Competition not found',
+              requestId: req.requestId,
+            },
+          });
+        // Snapshot includes historical identity evidence. Use the existing
+        // federation finalization authority, not any tournament-scoped role.
+        if (!canWriteFederation(req.user, competition.federationId))
+          return reply.code(403).send({
+            error: {
+              code: 'forbidden',
+              message: 'Federation administrator required',
+              requestId: req.requestId,
+            },
+          });
+        const snapshot = await prisma.competitionFinalizationSnapshot.findUnique({
+          where: { competitionId_revision: { competitionId: competition.id, revision: 1 } },
+        });
+        return { snapshot, approvalStatus: 'not_recorded' };
+      },
+    );
+
     app.post('/competitions', { preHandler: requireAuth() }, async (req, reply) => {
       const parsed = CompetitionCreate.safeParse(req.body);
       if (!parsed.success) {
@@ -478,96 +511,102 @@ export const competitionsPlugin: FeaturePlugin = {
           }
         }
 
-        const updated = await audit.withAudit(
-          {
-            ...audit.fromRequest(req),
-            actorUserId: req.user!.id,
-            action: 'competition.updated',
-            scopeFederationId: before.federationId,
-            scopeCompetitionId: before.id,
-            targetType: 'competition',
-            targetId: before.id,
-            before: {
-              ...before,
-              startDate: before.startDate.toISOString(),
-              endDate: before.endDate.toISOString(),
-              registrationDeadline: before.registrationDeadline?.toISOString() ?? null,
-              entryFeeKopecks: before.entryFeeKopecks.toString(),
+        const updated = await runSerializable(() =>
+          audit.withAudit(
+            {
+              ...audit.fromRequest(req),
+              actorUserId: req.user!.id,
+              action: 'competition.updated',
+              scopeFederationId: before.federationId,
+              scopeCompetitionId: before.id,
+              targetType: 'competition',
+              targetId: before.id,
+              before: {
+                ...before,
+                startDate: before.startDate.toISOString(),
+                endDate: before.endDate.toISOString(),
+                registrationDeadline: before.registrationDeadline?.toISOString() ?? null,
+                entryFeeKopecks: before.entryFeeKopecks.toString(),
+              },
+              after: parsed.data,
             },
-            after: parsed.data,
-          },
-          async (tx) => {
-            const locked = await lockCompetition(tx, before.id);
-            const currentCompetition = await tx.competition.findUniqueOrThrow({
-              where: { id: before.id },
-            });
-            const changesEligibility =
-              (parsed.data.rulebook !== undefined &&
-                parsed.data.rulebook !== currentCompetition.rulebook) ||
-              (parsed.data.startDate !== undefined &&
-                parsed.data.startDate !==
-                  currentCompetition.startDate.toISOString().slice(0, 10)) ||
-              (parsed.data.endDate !== undefined &&
-                parsed.data.endDate !== currentCompetition.endDate.toISOString().slice(0, 10));
-            if (
-              changesEligibility &&
-              (await tx.nomination.count({
-                where: { competitionId: before.id, isMandatePassed: true },
-              })) > 0
-            ) {
-              throw new CompetitionConflict(
-                'competition_has_approved_nominations',
-                'Revoke approvals before changing competition dates or rulebook; finalized protocols require a correction workflow',
-              );
-            }
-            const effectiveStatus = parsed.data.status ?? locked.status;
-            await assertCompetitionTransition(tx, before.id, locked.status, effectiveStatus);
-            if (
-              effectiveStatus === locked.status &&
-              Object.keys(parsed.data).every((key) => key === 'status')
-            ) {
-              return tx.competition.findUniqueOrThrow({
+            async (tx) => {
+              await tx.$executeRaw`SET TRANSACTION ISOLATION LEVEL SERIALIZABLE`;
+              const locked = await lockCompetition(tx, before.id);
+              const currentCompetition = await tx.competition.findUniqueOrThrow({
                 where: { id: before.id },
+              });
+              const changesEligibility =
+                (parsed.data.rulebook !== undefined &&
+                  parsed.data.rulebook !== currentCompetition.rulebook) ||
+                (parsed.data.startDate !== undefined &&
+                  parsed.data.startDate !==
+                    currentCompetition.startDate.toISOString().slice(0, 10)) ||
+                (parsed.data.endDate !== undefined &&
+                  parsed.data.endDate !== currentCompetition.endDate.toISOString().slice(0, 10));
+              if (
+                changesEligibility &&
+                (await tx.nomination.count({
+                  where: { competitionId: before.id, isMandatePassed: true },
+                })) > 0
+              ) {
+                throw new CompetitionConflict(
+                  'competition_has_approved_nominations',
+                  'Revoke approvals before changing competition dates or rulebook; finalized protocols require a correction workflow',
+                );
+              }
+              const effectiveStatus = parsed.data.status ?? locked.status;
+              await assertCompetitionTransition(tx, before.id, locked.status, effectiveStatus);
+              if (
+                effectiveStatus === locked.status &&
+                Object.keys(parsed.data).every((key) => key === 'status')
+              ) {
+                return tx.competition.findUniqueOrThrow({
+                  where: { id: before.id },
+                  include: competitionInclude,
+                });
+              }
+              if (effectiveStatus === 'finalized' && locked.status !== 'finalized') {
+                const nominations = await tx.nomination.findMany({
+                  where: { competitionId: before.id, status: 'finished' },
+                  orderBy: { athleteId: 'asc' },
+                });
+                for (const nomination of nominations) {
+                  if (!nomination.isMandatePassed)
+                    throw new CompetitionConflict(
+                      'mandate_required',
+                      'Finished nominations require current admission',
+                    );
+                  await assertNominationAdmission(tx, before.id, nomination);
+                }
+              }
+              const eventType = competitionEventType(locked.status, effectiveStatus);
+              const result = await tx.competition.update({
+                where: { id: req.params.id },
+                data: toUpdateData(parsed.data),
                 include: competitionInclude,
               });
-            }
-            if (effectiveStatus === 'finalized' && locked.status !== 'finalized') {
-              const nominations = await tx.nomination.findMany({
-                where: { competitionId: before.id, status: 'finished' },
-                orderBy: { athleteId: 'asc' },
-              });
-              for (const nomination of nominations) {
-                if (!nomination.isMandatePassed)
-                  throw new CompetitionConflict(
-                    'mandate_required',
-                    'Finished nominations require current admission',
-                  );
-                await assertNominationAdmission(tx, before.id, nomination);
+              if (effectiveStatus === 'finalized' && locked.status !== 'finalized') {
+                await captureFinalizationSnapshot(tx, result.id, req.user!.id);
               }
-            }
-            const eventType = competitionEventType(locked.status, effectiveStatus);
-            const result = await tx.competition.update({
-              where: { id: req.params.id },
-              data: toUpdateData(parsed.data),
-              include: competitionInclude,
-            });
-            await createSyncOutboxEvent(tx, {
-              eventType,
-              aggregateType: 'competition',
-              aggregateId: result.id,
-              tenant: tenantForOutbox(before.federation),
-              payload: outboxPayload({
-                competitionId: result.id,
-                federationId: result.federationId,
-                code: result.code,
-                beforeStatus: locked.status,
-                status: result.status,
-                changedFields: Object.keys(parsed.data).sort(),
-                updatedAt: result.updatedAt.toISOString(),
-              }),
-            });
-            return result;
-          },
+              await createSyncOutboxEvent(tx, {
+                eventType,
+                aggregateType: 'competition',
+                aggregateId: result.id,
+                tenant: tenantForOutbox(before.federation),
+                payload: outboxPayload({
+                  competitionId: result.id,
+                  federationId: result.federationId,
+                  code: result.code,
+                  beforeStatus: locked.status,
+                  status: result.status,
+                  changedFields: Object.keys(parsed.data).sort(),
+                  updatedAt: result.updatedAt.toISOString(),
+                }),
+              });
+              return result;
+            },
+          ),
         );
 
         publishCompetitionLiveUpdate(app, updated.id);

@@ -269,7 +269,11 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   const recovered = await request.get(apiUrl(`/competitions/${competitionId}/ops`), { headers });
   expect(recovered.ok(), await recovered.text()).toBe(true);
   const recoveredBody = (await recovered.json()) as {
-    nominations: Array<{ id: string; attempts: Array<{ id: string }> }>;
+    nominations: Array<{
+      id: string;
+      attempts: Array<{ id: string; componentId: string | null; attemptNumber: number }>;
+      discipline: { attemptCount: number; components: Array<{ id: string; attemptCount: number }> };
+    }>;
   };
   const savedAttempts = recoveredBody.nominations.find((n) => n.id === nominationId)!.attempts;
   expect(savedAttempts).toHaveLength(1);
@@ -305,4 +309,37 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   const accountingXlsxDownload = page.waitForEvent('download');
   await page.getByTestId('ops-export-accounting-xlsx').click();
   expect((await accountingXlsxDownload).suggestedFilename()).toContain('accounting');
+
+  // Complete every required slot, finalize through the real API and download
+  // the persisted evidence through the authenticated browser, not a rebuilt report.
+  const savedNomination = recoveredBody.nominations.find((n) => n.id === nominationId)!;
+  const components = savedNomination.discipline.components.length
+    ? savedNomination.discipline.components
+    : [{ id: null, attemptCount: savedNomination.discipline.attemptCount }];
+  for (const component of components) {
+    for (let number = 1; number <= component.attemptCount; number++) {
+      if (savedAttempts.some((a) => a.componentId === component.id && a.attemptNumber === number))
+        continue;
+      const response = await request.put(
+        apiUrl(`/nominations/${nominationId}/attempts/${number}`),
+        {
+          headers,
+          data: { componentId: component.id, weightKg: 30, result: 'good_lift' },
+        },
+      );
+      expect(response.ok(), await response.text()).toBe(true);
+    }
+  }
+  const finalized = await request.patch(apiUrl(`/competitions/${competitionId}`), {
+    headers,
+    data: { status: 'finalized' },
+  });
+  expect(finalized.ok(), await finalized.text()).toBe(true);
+  await page.goto(`/competitions/${competitionId}`);
+  await expect(page.getByTestId('finalization-snapshot-panel')).toContainText('Версия 1');
+  const snapshotDownload = page.waitForEvent('download');
+  await page.getByTestId('download-finalization-snapshot').click();
+  expect((await snapshotDownload).suggestedFilename()).toBe(
+    `competition-${competitionId}-snapshot-r1.json`,
+  );
 });
