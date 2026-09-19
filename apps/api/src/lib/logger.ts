@@ -26,12 +26,15 @@ export const REDACT_PATHS: readonly string[] = [
   'body.email',
   'body.phone',
   'body.dateOfBirth',
+  'body.birthYear',
   'user.email',
   'user.phone',
   'user.dateOfBirth',
+  'user.birthYear',
   'athlete.email',
   'athlete.phone',
   'athlete.dateOfBirth',
+  'athlete.birthYear',
 ];
 
 const isProd = process.env.NODE_ENV === 'production';

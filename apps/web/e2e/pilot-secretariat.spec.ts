@@ -73,6 +73,7 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   await fillText(page, '#lastName', athleteLastName);
   await fillText(page, '#firstName', 'Pilot');
   await fillText(page, '#dateOfBirth', '1996-01-01');
+  await page.locator('#countryCode').selectOption('AM');
   await fillText(page, '#city', 'Yerevan');
   await fillText(page, '#clubName', 'E2E Club');
   const athleteId = await submitAndReadId(page, 'athletes');
@@ -164,7 +165,9 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
         const dataTransfer = new DataTransfer();
         dataTransfer.setData('application/x-nomination-id', draggedNominationId);
         dataTransfer.setData('text/plain', draggedNominationId);
-        target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
+        target.dispatchEvent(
+          new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }),
+        );
       },
       { groupId: selectedGroupId, nominationId: nominationId ?? '' },
     ),

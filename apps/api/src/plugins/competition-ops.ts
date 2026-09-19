@@ -300,6 +300,14 @@ function toAttemptData(data: AttemptUpsert): Prisma.AttemptUncheckedCreateInput 
   }) as Prisma.AttemptUncheckedCreateInput;
 }
 
+async function hasCompleteAthleteProfile(athleteId: string): Promise<boolean> {
+  const athlete = await prisma.athlete.findUnique({
+    where: { id: athleteId },
+    select: { dateOfBirth: true, countryCode: true },
+  });
+  return Boolean(athlete?.dateOfBirth && athlete.countryCode);
+}
+
 async function validateNominationRefs(
   competitionId: string,
   data: Pick<
@@ -889,8 +897,10 @@ type OpsPayload = NonNullable<Awaited<ReturnType<typeof getOpsPayload>>>;
 function birthYear(
   value: Date | null | undefined,
   privacyMode: string | null | undefined,
+  knownYear: number | null,
 ): number | null {
-  if (!value || privacyMode === 'hidden') return null;
+  if (privacyMode === 'hidden') return null;
+  if (!value) return knownYear;
   const year = value.getUTCFullYear();
   return Number.isFinite(year) ? year : null;
 }
@@ -968,7 +978,11 @@ function publicNomination(nomination: OpsPayload['nominations'][number]) {
       lastName: nomination.athlete.lastName,
       firstName: nomination.athlete.firstName,
       middleName: nomination.athlete.middleName,
-      birthYear: birthYear(nomination.athlete.dateOfBirth, nomination.athlete.privacyMode),
+      birthYear: birthYear(
+        nomination.athlete.dateOfBirth,
+        nomination.athlete.privacyMode,
+        nomination.athlete.birthYear,
+      ),
       clubName: nomination.athlete.clubName,
       photoUrl: nomination.athlete.privacyMode === 'hidden' ? null : nomination.athlete.photoUrl,
     },
@@ -1639,6 +1653,18 @@ export const competitionOpsPlugin: FeaturePlugin = {
             },
           });
         }
+        if (
+          parsed.data.isMandatePassed &&
+          !(await hasCompleteAthleteProfile(parsed.data.athleteId))
+        ) {
+          return reply.code(400).send({
+            error: {
+              code: 'athlete_profile_incomplete',
+              message: 'Для допуска укажите полную дату рождения и страну спортсмена',
+              requestId: req.requestId,
+            },
+          });
+        }
         const refCheck = await validateNominationRefs(competition.id, parsed.data);
         if (!refCheck.ok) {
           return reply.code(400).send({
@@ -2003,6 +2029,15 @@ export const competitionOpsPlugin: FeaturePlugin = {
           });
         }
         const data: NominationUpdate = { ...parsed.data };
+        if (data.isMandatePassed && !(await hasCompleteAthleteProfile(before.athleteId))) {
+          return reply.code(400).send({
+            error: {
+              code: 'athlete_profile_incomplete',
+              message: 'Для допуска укажите полную дату рождения и страну спортсмена',
+              requestId: req.requestId,
+            },
+          });
+        }
         const forbiddenUpdateKeys = forbiddenNominationUpdateKeysForUser(
           req.user,
           before.competition,

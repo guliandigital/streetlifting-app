@@ -116,7 +116,7 @@ try {
   await mkdir(join(previous, 'migrations'), { recursive: true });
   await cp(schema, join(previous, 'schema.prisma'));
   for (const entry of await readdir(join(api, 'prisma/migrations'))) {
-    if (entry !== newest)
+    if (entry < newest || entry === 'migration_lock.toml')
       await cp(join(api, 'prisma/migrations', entry), join(previous, 'migrations', entry), {
         recursive: true,
       });
@@ -130,6 +130,8 @@ INSERT INTO "user" (id, email, "displayName", "updatedAt")
 VALUES ('00000000-0000-4000-8000-000000000900', 'legacy@example.test', 'Legacy', NOW());
 INSERT INTO role_assignment (id, "userId", role)
 VALUES ('00000000-0000-4000-8000-000000000901', '00000000-0000-4000-8000-000000000900', 'secretary');
+INSERT INTO athlete (id, "firstName", "lastName", "dateOfBirth", gender, "countryCode", "updatedAt")
+VALUES ('00000000-0000-4000-8000-000000000902', 'Legacy', 'Athlete', '1998-01-01', 'M', 'AM', NOW());
 `,
   );
   run(binary('psql'), [

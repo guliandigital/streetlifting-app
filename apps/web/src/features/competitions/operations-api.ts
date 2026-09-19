@@ -108,13 +108,7 @@ export interface NominationDto {
   flightId: string | null;
   groupId: string | null;
   status:
-    | 'draft'
-    | 'paid'
-    | 'weighed_in'
-    | 'on_platform'
-    | 'finished'
-    | 'disqualified'
-    | 'withdrawn';
+    'draft' | 'paid' | 'weighed_in' | 'on_platform' | 'finished' | 'disqualified' | 'withdrawn';
   isEntryFeePaid: boolean;
   paymentStatus: 'unpaid' | 'partial' | 'paid' | 'waived' | 'refunded';
   paidAmountKopecks: string | number;
@@ -135,7 +129,8 @@ export interface NominationDto {
     lastName: string;
     firstName: string;
     middleName: string | null;
-    dateOfBirth: string;
+    dateOfBirth: string | null;
+    birthYear?: number | null;
     clubName: string | null;
     federationCardNumber: string | null;
     photoUrl: string | null;
