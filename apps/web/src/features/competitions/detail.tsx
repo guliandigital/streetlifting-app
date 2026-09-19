@@ -1,3 +1,4 @@
+import { competitionCity, competitionSourceLabel } from '../../lib/competition-presentation.js';
 import { hasCompleteAttemptSet } from '@streetlifting/domain';
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
@@ -14,7 +15,7 @@ import {
 } from '../../components/workspace.js';
 import { useAuthStore } from '../../lib/auth/store.js';
 import { ApiClientError } from '../../lib/api-client.js';
-import { formatRub, rubToKopecks } from '../../lib/money.js';
+import { formatEntryFee, rubToKopecks } from '../../lib/money.js';
 import { type CompetitionDto, useCompetition, useUpdateCompetition } from './api.js';
 import { type CompetitionOpsResponse, useCompetitionOps } from './operations-api.js';
 import { CompetitionTeamPanel } from './team-panel.js';
@@ -774,6 +775,12 @@ export default function CompetitionDetailFeature() {
                   value={`${c.federation.nameRu} (${c.federation.code})`}
                 />
                 <Field
+                  label={t('competitions.source.label')}
+                  value={t(
+                    `competitions.source.${competitionSourceLabel(c.description, c.status)}`,
+                  )}
+                />
+                <Field
                   label={t('competitions.fields.status')}
                   value={t(`competitions.status.${c.status}`)}
                 />
@@ -785,13 +792,19 @@ export default function CompetitionDetailFeature() {
                   label={t('competitions.fields.registrationDeadline')}
                   value={formatDateTime(c.registrationDeadline)}
                 />
-                <Field label={t('competitions.fields.city')} value={c.city} />
+                <Field
+                  label={t('competitions.fields.city')}
+                  value={competitionCity(c.city, c.startDate)}
+                />
                 <Field label={t('competitions.fields.venue')} value={c.venue} />
                 <Field label={t('competitions.fields.timezone')} value={c.timezone} />
                 <Field label={t('competitions.fields.rulebook')} value={c.rulebook} />
                 <Field
                   label={t('competitions.fields.entryFeeRub')}
-                  value={formatRub(c.entryFeeKopecks)}
+                  value={formatEntryFee(
+                    c.entryFeeKopecks,
+                    t('publicRegistration.entryFeeUnspecified'),
+                  )}
                 />
                 <Field
                   label={t('competitions.fields.onlineRegistrationOpen')}

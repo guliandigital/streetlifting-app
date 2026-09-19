@@ -1,8 +1,9 @@
+import { competitionCity } from '../../lib/competition-presentation.js';
 import { Link, useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@streetlifting/ui';
-import { formatRub } from '../../lib/money.js';
+import { formatEntryFee } from '../../lib/money.js';
 import { publicRegistrationApi } from './api.js';
 
 function formatDate(value: string): string {
@@ -18,7 +19,11 @@ export default function PublicFederationRegistrationFeature() {
   });
 
   if (isLoading) {
-    return <div className="mx-auto max-w-5xl px-6 py-10 text-sm text-muted-foreground">{t('common.loading')}</div>;
+    return (
+      <div className="mx-auto max-w-5xl px-6 py-10 text-sm text-muted-foreground">
+        {t('common.loading')}
+      </div>
+    );
   }
 
   if (error || !data) {
@@ -30,7 +35,10 @@ export default function PublicFederationRegistrationFeature() {
   }
 
   return (
-    <div data-testid="public-federation-registration" className="mx-auto max-w-5xl px-6 py-8 space-y-5">
+    <div
+      data-testid="public-federation-registration"
+      className="mx-auto max-w-5xl px-6 py-8 space-y-5"
+    >
       <div>
         <div className="text-sm text-muted-foreground">{data.federation.code}</div>
         <h1 className="text-2xl font-semibold">{data.federation.nameRu}</h1>
@@ -56,12 +64,22 @@ export default function PublicFederationRegistrationFeature() {
                 <CardHeader>
                   <CardTitle>{competition.nameRu}</CardTitle>
                   <CardDescription>
-                    {formatDate(competition.startDate)} · {competition.city ?? '—'} · {competition.venue ?? '—'}
+                    {formatDate(competition.startDate)} ·{' '}
+                    {competitionCity(competition.city, competition.startDate) ?? '—'} ·{' '}
+                    {competition.venue ?? '—'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                  <span>{t('publicRegistration.entryFee')}: {formatRub(competition.entryFeeKopecks)}</span>
-                  <span>{t('publicRegistration.currentNominations')}: {competition._count.nominations}</span>
+                  <span>
+                    {t('publicRegistration.entryFee')}:{' '}
+                    {formatEntryFee(
+                      competition.entryFeeKopecks,
+                      t('publicRegistration.entryFeeUnspecified'),
+                    )}
+                  </span>
+                  <span>
+                    {t('publicRegistration.currentNominations')}: {competition._count.nominations}
+                  </span>
                 </CardContent>
               </Card>
             </Link>

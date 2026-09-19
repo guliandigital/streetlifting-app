@@ -1,9 +1,10 @@
+import { competitionCity, competitionSourceLabel } from '../../lib/competition-presentation.js';
 import { useMemo, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../lib/auth/store.js';
 import { WorkspaceButton, WorkspacePage } from '../../components/workspace.js';
-import { formatRub } from '../../lib/money.js';
+import { formatEntryFee } from '../../lib/money.js';
 import { useCompetitions } from './api.js';
 import { formatDate } from './format.js';
 
@@ -141,14 +142,23 @@ export default function CompetitionsListFeature() {
                     {c.nameRu}
                   </Link>
                   <div className="text-xs pt-muted">{c.nameEn}</div>
+                  <div className="text-xs pt-muted">
+                    {t(`competitions.source.${competitionSourceLabel(c.description, c.status)}`)}
+                  </div>
                 </td>
-                <td>{c.city ?? <span className="pt-muted italic">—</span>}</td>
+                <td>
+                  {competitionCity(c.city, c.startDate) ?? (
+                    <span className="pt-muted italic">—</span>
+                  )}
+                </td>
                 <td>
                   {c.federation.nameRu}
                   <div className="text-xs pt-muted">{c.federation.code}</div>
                 </td>
                 <td className="text-center">{t(`competitions.status.${c.status}`)}</td>
-                <td className="text-right tabular-nums">{formatRub(c.entryFeeKopecks)}</td>
+                <td className="text-right tabular-nums">
+                  {formatEntryFee(c.entryFeeKopecks, t('publicRegistration.entryFeeUnspecified'))}
+                </td>
                 <td className="text-right tabular-nums">{c._count?.nominations ?? 0}</td>
               </tr>
             ))}
