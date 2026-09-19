@@ -14,6 +14,8 @@ import { validateUuidParams } from '../lib/params.js';
 import { createSyncOutboxEvent, outboxPayload } from '../lib/sync-outbox.js';
 import { publishCompetitionLiveUpdate } from '../lib/live-updates.js';
 
+import { lockCompetition, assertCompetitionTransition } from '../lib/competition-lifecycle.js';
+
 const log = moduleLogger('competitions');
 
 function stripUndefined<T extends object>(obj: T): Partial<T> {
@@ -474,7 +476,6 @@ export const competitionsPlugin: FeaturePlugin = {
           }
         }
 
-        const eventType = competitionEventType(before.status, nextStatus);
         const updated = await audit.withAudit(
           {
             ...audit.fromRequest(req),
@@ -494,6 +495,19 @@ export const competitionsPlugin: FeaturePlugin = {
             after: parsed.data,
           },
           async (tx) => {
+            const locked = await lockCompetition(tx, before.id);
+            const effectiveStatus = parsed.data.status ?? locked.status;
+            await assertCompetitionTransition(tx, before.id, locked.status, effectiveStatus);
+            if (
+              effectiveStatus === locked.status &&
+              Object.keys(parsed.data).every((key) => key === 'status')
+            ) {
+              return tx.competition.findUniqueOrThrow({
+                where: { id: before.id },
+                include: competitionInclude,
+              });
+            }
+            const eventType = competitionEventType(locked.status, effectiveStatus);
             const result = await tx.competition.update({
               where: { id: req.params.id },
               data: toUpdateData(parsed.data),
@@ -508,7 +522,7 @@ export const competitionsPlugin: FeaturePlugin = {
                 competitionId: result.id,
                 federationId: result.federationId,
                 code: result.code,
-                beforeStatus: before.status,
+                beforeStatus: locked.status,
                 status: result.status,
                 changedFields: Object.keys(parsed.data).sort(),
                 updatedAt: result.updatedAt.toISOString(),

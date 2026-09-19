@@ -9,6 +9,8 @@ import { validateUuidParams } from '../lib/params.js';
 import { publishCompetitionLiveUpdate } from '../lib/live-updates.js';
 import { buildConsentTexts } from '../lib/consent-texts.js';
 
+import { lockEditableCompetition, CompetitionConflict } from '../lib/competition-lifecycle.js';
+
 const log = moduleLogger('public-registration');
 
 const CLOSED_STATUSES = [
@@ -396,6 +398,14 @@ export const publicRegistrationPlugin: FeaturePlugin = {
 
         try {
           const result = await prisma.$transaction(async (tx) => {
+            await lockEditableCompetition(tx, competition.id);
+            const currentCompetition = await tx.competition.findUniqueOrThrow({
+              where: { id: competition.id },
+              include: { teamMembers: { where: { role: 'organizer', status: 'confirmed' } } },
+            });
+            if (!registrationAvailability(currentCompetition).isAvailable) {
+              throw new CompetitionConflict('registration_closed', 'Online registration is closed');
+            }
             const athleteData = {
               lastName: normalizeName(data.athlete.lastName),
               firstName: normalizeName(data.athlete.firstName),

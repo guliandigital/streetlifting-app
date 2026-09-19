@@ -111,9 +111,16 @@ it('cannot bypass the limit through the component path alias', async () => {
 });
 
 it('accepts the last permitted operator attempt for an admitted athlete', async () => {
+  const admitted = await db.nomination.findUnique();
   const tx = {
+    $queryRaw: vi.fn(async () => [{ status: 'in_progress' }]),
+    athlete: db.athlete,
     attempt: { findFirst: vi.fn(async () => null), create: vi.fn(async () => ({ id: 'saved' })) },
-    nomination: { findUnique: vi.fn(async () => null), findMany: vi.fn(async () => []) },
+    nomination: {
+      findUniqueOrThrow: vi.fn(async () => admitted),
+      findUnique: vi.fn(async () => null),
+      findMany: vi.fn(async () => []),
+    },
   };
   db.$transaction.mockImplementation(async (callback) => callback(tx));
   db.nomination.findUnique
@@ -210,6 +217,9 @@ it('rejects direct decisions by the scoreboard operator', async () => {
 });
 it('prevents the scoreboard operator reopening a decided attempt', async () => {
   const tx = {
+    $queryRaw: vi.fn(async () => [{ status: 'in_progress' }]),
+    nomination: { findUniqueOrThrow: db.nomination.findUnique },
+    athlete: db.athlete,
     attempt: {
       findFirst: vi.fn(async () => ({ id: 'saved', result: 'good_lift' })),
       update: vi.fn(),
@@ -249,6 +259,9 @@ describe('operational reference consistency', () => {
   });
   it('prevents operator edits after the first judge vote even before a majority', async () => {
     const tx = {
+      $queryRaw: vi.fn(async () => [{ status: 'in_progress' }]),
+      nomination: { findUniqueOrThrow: db.nomination.findUnique },
+      athlete: db.athlete,
       attempt: {
         findFirst: vi.fn(async () => ({
           id: 'saved',

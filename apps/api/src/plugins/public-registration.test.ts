@@ -4,7 +4,7 @@ import { publicRegistrationPlugin } from './public-registration.js';
 import { buildConsentTexts } from '../lib/consent-texts.js';
 
 const db = vi.hoisted(() => ({
-  competition: { findUnique: vi.fn() },
+  competition: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn() },
   discipline: { findUnique: vi.fn(), findMany: vi.fn() },
   division: { findUnique: vi.fn() },
   weightClass: { findUnique: vi.fn() },
@@ -13,6 +13,7 @@ const db = vi.hoisted(() => ({
   consent: { createMany: vi.fn() },
   $transaction: vi.fn(),
   $executeRaw: vi.fn(),
+  $queryRaw: vi.fn(),
 }));
 vi.mock('../lib/db.js', async () => ({
   prisma: db,
@@ -71,6 +72,8 @@ const payload = {
 beforeEach(() => {
   vi.clearAllMocks();
   db.competition.findUnique.mockResolvedValue(competition);
+  db.competition.findUniqueOrThrow.mockResolvedValue(competition);
+  db.$queryRaw.mockResolvedValue([{ status: competition.status }]);
   db.discipline.findUnique.mockResolvedValue({ id: disciplineId });
   db.discipline.findMany.mockResolvedValue([]);
   db.division.findUnique.mockResolvedValue({ id: divisionId, competitionId: id, gender: 'M' });

@@ -161,6 +161,11 @@ jobs:
         env:
           PD_DB_E2E: '1'
         run: pnpm exec tsx scripts/check-personal-data-db.ts
+      - name: Check concurrent tournament lifecycle with PostgreSQL
+        working-directory: apps/api
+        env:
+          PD_DB_E2E: '1'
+        run: pnpm exec tsx scripts/check-competition-concurrency-db.ts
       - run: pnpm e2e:web
       - name: Upload Playwright report
         if: failure()
