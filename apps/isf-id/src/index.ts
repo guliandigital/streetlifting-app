@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+// Vercel detects the framework from direct imports in the server entrypoint.
+import 'fastify';
 import { buildIsfIdApp } from './isf-id-app.js';
 import { createIsfIdIssuer, isfIdIssuerConfigFromEnv } from './issuer.js';
 
