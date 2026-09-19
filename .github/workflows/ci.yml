@@ -17,7 +17,8 @@ concurrency:
 
 jobs:
   check:
-    name: lint + typecheck + test + build
+    # Stable check name required by main branch protection; also runs lint/build.
+    name: typecheck + test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
