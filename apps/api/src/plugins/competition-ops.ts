@@ -1654,6 +1654,18 @@ export const competitionOpsPlugin: FeaturePlugin = {
           });
         }
         if (
+          ['on_platform', 'finished'].includes(parsed.data.status) &&
+          !parsed.data.isMandatePassed
+        ) {
+          return reply.code(409).send({
+            error: {
+              code: 'mandate_required',
+              message: 'Mandate approval is required for this nomination status',
+              requestId: req.requestId,
+            },
+          });
+        }
+        if (
           parsed.data.isMandatePassed &&
           !(await hasCompleteAthleteProfile(parsed.data.athleteId))
         ) {
@@ -2029,6 +2041,20 @@ export const competitionOpsPlugin: FeaturePlugin = {
           });
         }
         const data: NominationUpdate = { ...parsed.data };
+        if (
+          ['on_platform', 'finished'].includes(data.status ?? before.status) &&
+          (!(data.isMandatePassed ?? before.isMandatePassed) ||
+            !(await hasCompleteAthleteProfile(before.athleteId)))
+        ) {
+          return reply.code(409).send({
+            error: {
+              code: 'mandate_required',
+              message:
+                'Mandate approval and a complete profile are required for this nomination status',
+              requestId: req.requestId,
+            },
+          });
+        }
         if (data.isMandatePassed && !(await hasCompleteAthleteProfile(before.athleteId))) {
           return reply.code(400).send({
             error: {
@@ -2129,7 +2155,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
           where: { id: req.params.nominationId },
           include: {
             competition: { select: { id: true, federationId: true, status: true } },
-            discipline: { select: { components: { orderBy: { order: 'asc' } } } },
+            discipline: {
+              select: { attemptCount: true, components: { orderBy: { order: 'asc' } } },
+            },
           },
         });
         if (!nomination) {
@@ -2156,6 +2184,19 @@ export const competitionOpsPlugin: FeaturePlugin = {
         if (isCompetitionLocked(nomination.competition)) {
           return sendCompetitionLocked(reply, req.requestId);
         }
+        if (
+          !nomination.isMandatePassed ||
+          !(await hasCompleteAthleteProfile(nomination.athleteId))
+        ) {
+          return reply.code(409).send({
+            error: {
+              code: 'mandate_required',
+              message:
+                'A complete athlete profile and mandate approval are required before recording attempts',
+              requestId: req.requestId,
+            },
+          });
+        }
 
         const attemptNumber = Number(req.params.attemptNumber);
         const parsed = AttemptUpsert.safeParse({ ...(req.body as object), attemptNumber });
@@ -2170,6 +2211,18 @@ export const competitionOpsPlugin: FeaturePlugin = {
         }
         const componentId =
           parsed.data.componentId ?? nomination.discipline.components[0]?.id ?? null;
+        const attemptLimit =
+          nomination.discipline.components.find((component) => component.id === componentId)
+            ?.attemptCount ?? nomination.discipline.attemptCount;
+        if (attemptNumber > attemptLimit) {
+          return reply.code(400).send({
+            error: {
+              code: 'attempt_limit_exceeded',
+              message: 'Attempt number exceeds the discipline component limit',
+              requestId: req.requestId,
+            },
+          });
+        }
         if (
           parsed.data.notes !== undefined &&
           !hasScopedRole(req.user, nomination.competition, ['federation_admin', 'secretary'])
@@ -2267,7 +2320,9 @@ export const competitionOpsPlugin: FeaturePlugin = {
           where: { id: req.params.nominationId },
           include: {
             competition: { select: { id: true, federationId: true, status: true } },
-            discipline: { select: { components: { orderBy: { order: 'asc' } } } },
+            discipline: {
+              select: { attemptCount: true, components: { orderBy: { order: 'asc' } } },
+            },
             flight: { select: { platformId: true } },
           },
         });
@@ -2287,6 +2342,19 @@ export const competitionOpsPlugin: FeaturePlugin = {
         }
         if (isCompetitionLocked(nomination.competition)) {
           return sendCompetitionLocked(reply, req.requestId);
+        }
+        if (
+          !nomination.isMandatePassed ||
+          !(await hasCompleteAthleteProfile(nomination.athleteId))
+        ) {
+          return reply.code(409).send({
+            error: {
+              code: 'mandate_required',
+              message:
+                'A complete athlete profile and mandate approval are required before recording attempts',
+              requestId: req.requestId,
+            },
+          });
         }
         if (!nomination.flight) {
           return reply.code(409).send({
@@ -2316,6 +2384,18 @@ export const competitionOpsPlugin: FeaturePlugin = {
         }
         const componentId =
           parsed.data.componentId ?? nomination.discipline.components[0]?.id ?? null;
+        const attemptLimit =
+          nomination.discipline.components.find((component) => component.id === componentId)
+            ?.attemptCount ?? nomination.discipline.attemptCount;
+        if (attemptNumber > attemptLimit) {
+          return reply.code(400).send({
+            error: {
+              code: 'attempt_limit_exceeded',
+              message: 'Attempt number exceeds the discipline component limit',
+              requestId: req.requestId,
+            },
+          });
+        }
         if (
           componentId &&
           !nomination.discipline.components.some((component) => component.id === componentId)

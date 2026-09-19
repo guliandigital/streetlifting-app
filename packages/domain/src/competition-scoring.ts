@@ -73,10 +73,13 @@ function scoreComponent(
 }
 
 export function calculateNominationScore(nomination: ScoringNomination): NominationScore {
-  const components = nomination.components.length > 0 ? nomination.components : [{ id: 'default', attemptCount: nomination.discipline.attemptCount, fixedWeightKg: null }];
+  const components =
+    nomination.components.length > 0
+      ? nomination.components
+      : [{ id: 'default', attemptCount: nomination.discipline.attemptCount, fixedWeightKg: null }];
   let finalScore = 0;
   let bestSuccessfulAttemptKg = 0;
-  let hasResult = false;
+  let successfulComponents = 0;
 
   for (const component of components) {
     const attempts =
@@ -87,13 +90,14 @@ export function calculateNominationScore(nomination: ScoringNomination): Nominat
     if (componentScore.result !== null) {
       finalScore += componentScore.result;
       bestSuccessfulAttemptKg += componentScore.bestWeightKg ?? component.fixedWeightKg ?? 0;
-      hasResult = true;
+      successfulComponents += 1;
     }
   }
 
   return {
-    bestSuccessfulAttemptKg: hasResult ? bestSuccessfulAttemptKg : null,
-    finalScore: hasResult ? finalScore : null,
+    bestSuccessfulAttemptKg:
+      successfulComponents === components.length ? bestSuccessfulAttemptKg : null,
+    finalScore: successfulComponents === components.length ? finalScore : null,
     completedAttemptCount: nomination.attempts.length,
     hasPendingAttempts: nomination.attempts.some((attempt) => attempt.result === 'pending'),
   };
@@ -111,7 +115,8 @@ function compareRankable(
   a: ScoringNomination & { finalScore: number | null },
   b: ScoringNomination & { finalScore: number | null },
 ): number {
-  const scoreDiff = (b.finalScore ?? Number.NEGATIVE_INFINITY) - (a.finalScore ?? Number.NEGATIVE_INFINITY);
+  const scoreDiff =
+    (b.finalScore ?? Number.NEGATIVE_INFINITY) - (a.finalScore ?? Number.NEGATIVE_INFINITY);
   if (scoreDiff !== 0) return scoreDiff;
 
   const bodyWeightA = a.bodyWeightAtWeighIn ?? Number.POSITIVE_INFINITY;
@@ -160,9 +165,12 @@ export function calculateNominationPlaces(
 
   return nominations.map((nomination) => ({
     nominationId: nomination.id,
-    placeInClass: scopePlaces.get('class')?.get(groupKey(nomination, 'class'))?.get(nomination.id) ?? null,
+    placeInClass:
+      scopePlaces.get('class')?.get(groupKey(nomination, 'class'))?.get(nomination.id) ?? null,
     placeInDivision:
-      scopePlaces.get('division')?.get(groupKey(nomination, 'division'))?.get(nomination.id) ?? null,
-    placeOverall: scopePlaces.get('overall')?.get(groupKey(nomination, 'overall'))?.get(nomination.id) ?? null,
+      scopePlaces.get('division')?.get(groupKey(nomination, 'division'))?.get(nomination.id) ??
+      null,
+    placeOverall:
+      scopePlaces.get('overall')?.get(groupKey(nomination, 'overall'))?.get(nomination.id) ?? null,
   }));
 }
