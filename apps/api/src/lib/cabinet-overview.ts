@@ -64,7 +64,13 @@ export async function readCabinetOverview(user: CabinetOverviewActor) {
         _count: {
           select: {
             nominations: { where: { status: 'finished' } },
-            records: { where: { revokedAt: null, ratifiedAt: { not: null } } },
+            records: {
+              where: {
+                revokedAt: null,
+                ratifiedAt: { not: null },
+                ratifiedByUserId: { not: null },
+              },
+            },
           },
         },
         nominations: {
@@ -84,7 +90,7 @@ export async function readCabinetOverview(user: CabinetOverviewActor) {
           },
         },
         records: {
-          where: { revokedAt: null, ratifiedAt: { not: null } },
+          where: { revokedAt: null, ratifiedAt: { not: null }, ratifiedByUserId: { not: null } },
           orderBy: { achievedOn: 'desc' },
           take: 12,
           select: {

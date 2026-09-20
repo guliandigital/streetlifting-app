@@ -113,7 +113,7 @@ export async function captureFinalizationSnapshot(
       schemaVersion: 1,
       kind: 'operational_finalization',
       approvalStatus: 'not_recorded',
-      calculationVersion: 'competition-scoring-v1',
+      calculationVersion: 'competition-scoring-v2',
       sourceCommit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
       competition,
       nominations,

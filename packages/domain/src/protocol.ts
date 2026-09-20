@@ -12,6 +12,7 @@ export const protocolDataSchema = z.object({
       placeInDivision: z.number().nullable(),
       placeOverall: z.number().nullable(),
       bodyWeightAtWeighIn: z.number().nullable(),
+      reweighWeightKg: z.number().positive().optional(),
       bestSuccessfulAttemptKg: z.number().nullable(),
       finalScore: z.number().nullable(),
       athlete: z.object({
@@ -44,7 +45,7 @@ export type ProtocolData = z.infer<typeof protocolDataSchema>;
 export interface CompetitionProtocol extends ProtocolData {
   provenance: {
     source: 'working' | 'finalization_snapshot' | 'legacy_unverified';
-    approvalStatus: 'not_recorded';
+    approvalStatus: 'not_recorded' | 'approved';
     revision: number | null;
     createdAt: string | null;
     payloadHash: string | null;

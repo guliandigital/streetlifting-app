@@ -25,6 +25,7 @@ export interface ScoringNomination {
   divisionId: string;
   weightClassId: string;
   bodyWeightAtWeighIn: number | null;
+  reweighWeightKg?: number | undefined;
   entryNumber: number | null;
   status?: string;
   discipline: ScoringDiscipline;
@@ -148,6 +149,10 @@ function compareRankable(
   const bodyWeightB = b.bodyWeightAtWeighIn ?? Number.POSITIVE_INFINITY;
   if (bodyWeightA !== bodyWeightB) return bodyWeightA - bodyWeightB;
 
+  const reweighA = a.reweighWeightKg ?? Number.POSITIVE_INFINITY;
+  const reweighB = b.reweighWeightKg ?? Number.POSITIVE_INFINITY;
+  if (reweighA !== reweighB) return reweighA - reweighB;
+
   const entryA = a.entryNumber ?? Number.POSITIVE_INFINITY;
   const entryB = b.entryNumber ?? Number.POSITIVE_INFINITY;
   if (entryA !== entryB) return entryA - entryB;
@@ -157,9 +162,24 @@ function compareRankable(
 
 function assignGroupPlaces(
   nominations: Array<ScoringNomination & { finalScore: number | null }>,
+  legacy = false,
 ): Map<string, number> {
   const ranked = nominations.filter(rankable).sort(compareRankable);
-  return new Map(ranked.map((nomination, index) => [nomination.id, index + 1]));
+  let place = 0;
+  return new Map(
+    ranked.map((nomination, index) => {
+      const previous = ranked[index - 1];
+      if (
+        legacy ||
+        !previous ||
+        nomination.finalScore !== previous.finalScore ||
+        nomination.bodyWeightAtWeighIn !== previous.bodyWeightAtWeighIn ||
+        nomination.reweighWeightKg !== previous.reweighWeightKg
+      )
+        place = index + 1;
+      return [nomination.id, place];
+    }),
+  );
 }
 
 function groupKey(nomination: ScoringNomination, scope: 'class' | 'division' | 'overall'): string {
@@ -170,8 +190,9 @@ function groupKey(nomination: ScoringNomination, scope: 'class' | 'division' | '
   return nomination.disciplineId;
 }
 
-export function calculateNominationPlaces(
+function calculatePlaces(
   nominations: Array<ScoringNomination & { finalScore: number | null }>,
+  legacy = false,
 ): NominationPlaces[] {
   const scopes = ['class', 'division', 'overall'] as const;
   const scopePlaces = new Map<(typeof scopes)[number], Map<string, Map<string, number>>>();
@@ -184,7 +205,7 @@ export function calculateNominationPlaces(
     }
     scopePlaces.set(
       scope,
-      new Map([...groups.entries()].map(([key, group]) => [key, assignGroupPlaces(group)])),
+      new Map([...groups.entries()].map(([key, group]) => [key, assignGroupPlaces(group, legacy)])),
     );
   }
 
@@ -198,4 +219,20 @@ export function calculateNominationPlaces(
     placeOverall:
       scopePlaces.get('overall')?.get(groupKey(nomination, 'overall'))?.get(nomination.id) ?? null,
   }));
+}
+
+/** ISF v5.1 section 7.10: shared places leave the next position vacant. */
+export function calculateNominationPlaces(
+  nominations: Array<ScoringNomination & { finalScore: number | null }>,
+) {
+  return calculatePlaces(nominations);
+}
+/** Historical v1 snapshots retain the original entry-number tie breaker. */
+export function calculateNominationPlacesV1(
+  nominations: Array<ScoringNomination & { finalScore: number | null }>,
+) {
+  return calculatePlaces(
+    nominations.map(({ reweighWeightKg: _weight, ...n }) => n),
+    true,
+  );
 }

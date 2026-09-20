@@ -73,6 +73,7 @@ export interface AthleteRecordDto {
   competitionId: string;
   competitionName: string;
   ratifiedAt: string | null;
+  ratificationStatus: 'ratified' | 'unverified' | 'revoked';
 }
 
 export interface AthleteRecordsResponse {

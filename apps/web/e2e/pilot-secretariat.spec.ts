@@ -349,6 +349,38 @@ test('pilot secretary create/edit flow after persisted auth state', async ({ pag
   await expect(page.getByTestId('protocol-provenance')).toContainText('Версия 1');
   await expect(page.getByTestId('protocol-provenance')).toContainText('SHA-256:');
   await expect(page.getByTestId('protocol-provenance')).toContainText('не зарегистрировано');
+  await page.goto(`/competitions/${competitionId}`);
+  await page
+    .getByTestId('protocol-decision-reason')
+    .fill('Проверено по подписанному протоколу и реестру федерации');
+  await page.locator('[name=signedProtocolReference]').fill('Fixture signed protocol');
+  await page.locator('[name=headJudgeSigned]').check();
+  await page.locator('[name=chiefSecretarySigned]').check();
+  await page.getByTestId('approve-protocol').click();
+  await expect(page.getByTestId('finalization-snapshot-panel')).toContainText('Утверждено');
+  await page.getByTestId('prepare-record-candidates').click();
+  await page.getByText('Проверить доказательства рекорда', { exact: true }).click();
+  for (const field of [
+    'sanctionReference',
+    'judgingReference',
+    'weightReference',
+    'equipmentReference',
+    'videoReference',
+    'registryReference',
+  ])
+    await page.locator(`[name=${field}]`).fill(`Fixture ${field}`);
+  await page
+    .getByLabel('Проверены категория, допустимость попытки и первенство результата (§7.7)')
+    .check();
+  await page.getByRole('button', { name: 'Проверен', exact: true }).click();
+  await page.getByRole('button', { name: 'Ратифицировать', exact: true }).click();
+  await expect(page.getByTestId('finalization-snapshot-panel')).toContainText('Ратифицирован');
+  await page.getByRole('button', { name: 'Выдать выписку', exact: true }).click();
+  const issuedDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Скачать версию 1', exact: true }).click();
+  expect((await issuedDownload).suggestedFilename()).toMatch(/result-.*-v1\.html$/);
+  await page.goto(`/competitions/${competitionId}/protocol-print`);
+  await expect(page.getByTestId('protocol-provenance')).toContainText('Утверждено администратором');
   await page.goto(`/federations/${federationId}`);
   await expect(page.getByTestId('accounting-reconciliation')).toBeVisible();
   await expect(page.getByTestId('reconciliation-totals')).toContainText(

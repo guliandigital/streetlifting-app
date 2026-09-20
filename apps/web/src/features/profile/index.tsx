@@ -1,3 +1,4 @@
+import { MyIssuedDocuments } from './issued-documents.js';
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
@@ -623,6 +624,7 @@ export default function ProfileFeature() {
                   )}
                 </section>
                 <section>
+                  <MyIssuedDocuments />
                   <h3 className="mb-2 text-sm font-medium">{t('profile.athlete.records')}</h3>
                   {cabinet.data.athlete.records.length ? (
                     <ul className="space-y-2 text-sm">

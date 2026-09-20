@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateNominationPlaces,
+  calculateNominationPlacesV1,
   calculateNominationScore,
   hasCompleteAttemptSet,
   type ScoringNomination,
@@ -155,7 +156,7 @@ describe('competition scoring', () => {
     },
   );
 
-  it('breaks ties by lower bodyweight and then lower entry number', () => {
+  it('shares places for equal result and bodyweight, leaving the next place vacant', () => {
     const places = calculateNominationPlaces([
       { ...baseNomination, id: 'heavy', finalScore: 100, bodyWeightAtWeighIn: 82, entryNumber: 1 },
       { ...baseNomination, id: 'light', finalScore: 100, bodyWeightAtWeighIn: 80, entryNumber: 3 },
@@ -163,7 +164,16 @@ describe('competition scoring', () => {
     ]);
 
     expect(places.find((place) => place.nominationId === 'early')?.placeInClass).toBe(1);
-    expect(places.find((place) => place.nominationId === 'light')?.placeInClass).toBe(2);
+    expect(places.find((place) => place.nominationId === 'light')?.placeInClass).toBe(1);
     expect(places.find((place) => place.nominationId === 'heavy')?.placeInClass).toBe(3);
   });
+});
+
+it('retains entry-number tie breaking only for historical v1 snapshots', () => {
+  const nominations = [
+    { ...baseNomination, id: 'late', finalScore: 100, entryNumber: 3 },
+    { ...baseNomination, id: 'early', finalScore: 100, entryNumber: 2 },
+  ];
+  expect(calculateNominationPlacesV1(nominations).map((n) => n.placeInClass)).toEqual([2, 1]);
+  expect(calculateNominationPlaces(nominations).map((n) => n.placeInClass)).toEqual([1, 1]);
 });
