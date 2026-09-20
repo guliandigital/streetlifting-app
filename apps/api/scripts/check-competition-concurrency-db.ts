@@ -36,6 +36,12 @@ await app.register(competitionOpsPlugin.register);
 await app.register(competitionsPlugin.register);
 const { athletesPlugin } = await import('../src/plugins/athletes.js');
 await app.register(athletesPlugin.register);
+const { protocolReviewPlugin } = await import('../src/plugins/protocol-review.js');
+const { issuedResultDocumentsPlugin } = await import('../src/plugins/issued-result-documents.js');
+const { cabinetPlugin } = await import('../src/plugins/cabinet.js');
+await app.register(protocolReviewPlugin.register);
+await app.register(issuedResultDocumentsPlugin.register);
+await app.register(cabinetPlugin.register);
 const suffix = randomUUID();
 try {
   const federation = await db.federation.create({
@@ -476,6 +482,30 @@ try {
     });
     assert.equal(denied.statusCode, 403, denied.body);
     assert.equal(denied.body.includes(snapshot.payloadHash), false);
+    const reviewHeaders = { authorization: `Bearer ${await signAccessToken(outsider.id)}` };
+    for (const method of ['GET', 'POST'] as const) {
+      const deniedReview = await app.inject({
+        method,
+        url: `/competitions/${competition.id}/protocol-review`,
+        headers: reviewHeaders,
+        ...(method === 'POST'
+          ? {
+              payload: {
+                action: 'approve',
+                evidence: {
+                  signedProtocolReference: 'fixture signed protocol',
+                  headJudgeSigned: true,
+                  chiefSecretarySigned: true,
+                },
+                expectedRevision: 1,
+                reason: 'Not authorized approval',
+              },
+            }
+          : {}),
+      });
+      assert.equal(deniedReview.statusCode, 403, deniedReview.body);
+    }
+
     for (const url of protocolUrls) {
       const exported = await app.inject({
         url,
@@ -506,6 +536,327 @@ try {
   assert.equal(
     (await db.attempt.findUniqueOrThrow({ where: { id: attempt.id } })).result,
     'good_lift',
+  );
+
+  // Full authorized workflow, with duplicate requests racing on the same competition lock.
+  const administrator = await db.user.create({
+    data: {
+      email: `admin-${suffix}@example.test`,
+      displayName: 'Federation admin',
+      roleAssignments: {
+        create: {
+          role: 'federation_admin',
+          federationId: federation.id,
+          acknowledgedAt: new Date(),
+          acknowledgedTextVersion: ACCESS_ACKNOWLEDGMENT_VERSION,
+        },
+      },
+    },
+  });
+  const adminHeaders = { authorization: `Bearer ${await signAccessToken(administrator.id)}` };
+  const reviewUrl = `/competitions/${competition.id}/protocol-review`;
+  const decide = (command: object) =>
+    app.inject({ method: 'POST', url: reviewUrl, headers: adminHeaders, payload: command });
+  const reason = 'Verified against source protocol and federation register';
+  const approve = {
+    action: 'approve',
+    evidence: {
+      signedProtocolReference: 'fixture signed protocol',
+      headJudgeSigned: true,
+      chiefSecretarySigned: true,
+    },
+    expectedRevision: 1,
+    reason,
+  };
+  assert.equal(
+    (await decide({ action: 'candidates', expectedRevision: 1, reason })).statusCode,
+    409,
+  );
+  assert.equal((await decide({ ...approve, evidence: undefined })).statusCode, 400);
+  for (const r of await Promise.all([decide(approve), decide(approve)]))
+    assert.equal(r.statusCode, 200, r.body);
+  assert.equal(await db.protocolApproval.count({ where: { snapshotId: snapshot.id } }), 1);
+  assert.equal(
+    (await app.inject({ url: protocolUrls[0]!, headers: adminHeaders })).json().provenance
+      .approvalStatus,
+    'approved',
+  );
+  assert.equal(
+    (await app.inject({ method: 'POST', url: reviewUrl, payload: approve })).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: `/competitions/${legacy.id}/protocol-review`,
+        headers: adminHeaders,
+        payload: approve,
+      })
+    ).statusCode,
+    409,
+  );
+  for (const r of await Promise.all([
+    decide({ action: 'candidates', expectedRevision: 1, reason }),
+    decide({ action: 'candidates', expectedRevision: 1, reason }),
+  ]))
+    assert.equal(r.statusCode, 200, r.body);
+  const candidates = await db.recordReview.findMany({ where: { snapshotId: snapshot.id } });
+  assert.equal(candidates.length, 1);
+  const candidate = candidates[0]!;
+  const ratify = {
+    action: 'ratify',
+    expectedRevision: 1,
+    candidateId: candidate.id,
+    achievedOn: '2030-01-01',
+    reason,
+  };
+  assert.equal((await decide(ratify)).statusCode, 409);
+  const checked = await decide({
+    action: 'review',
+    expectedRevision: 1,
+    candidateId: candidate.id,
+    decision: 'verified',
+    evidence: {
+      sanctionReference: 'fixture sanction',
+      judgingReference: 'fixture judges',
+      weightReference: 'fixture weight',
+      equipmentReference: 'fixture equipment',
+      videoReference: 'fixture video',
+      registryReference: 'fixture registry',
+      previousBest: null,
+      categoryAndAttemptEligibilityConfirmed: true,
+    },
+    reason,
+  });
+  assert.equal(checked.statusCode, 200, checked.body);
+  assert.equal((await decide({ ...ratify, achievedOn: '2040-01-01' })).statusCode, 409);
+  for (const r of await Promise.all([decide(ratify), decide(ratify)]))
+    assert.equal(r.statusCode, 200, r.body);
+  assert.equal(await db.record.count({ where: { competitionId: competition.id } }), 1);
+  const oldRecord = await db.record.findFirstOrThrow({ where: { competitionId: competition.id } });
+  assert(oldRecord.ratifiedAt && oldRecord.ratifiedByUserId === administrator.id);
+  const issue = { action: 'issue', expectedRevision: 1, nominationId: nomination.id, reason };
+  const issued = await Promise.all([decide(issue), decide(issue)]);
+  for (const r of issued) assert.equal(r.statusCode, 200, r.body);
+  assert.equal(issued[0].json().id, issued[1].json().id);
+  const firstDoc = await db.issuedResultDocument.findUniqueOrThrow({
+    where: { id: issued[0].json().id },
+  });
+  assert.equal(firstDoc.version, 1);
+  assert.equal(snapshotHash(firstDoc.payload), firstDoc.payloadHash);
+  await assert.rejects(
+    db.issuedResultDocument.update({ where: { id: firstDoc.id }, data: { reason: 'tampered' } }),
+  );
+  await assert.rejects(
+    db.protocolApproval.update({
+      where: { snapshotId: snapshot.id },
+      data: { reason: 'tampered' },
+    }),
+  );
+  const owner = await db.user.create({
+    data: { email: `owner-${suffix}@example.test`, displayName: 'Owner' },
+  });
+  await db.athlete.update({ where: { id: athlete.id }, data: { userId: owner.id } });
+  const ownerHeaders = { authorization: `Bearer ${await signAccessToken(owner.id)}` };
+  const docUrl = `/issued-result-documents/${firstDoc.id}/download`;
+  const ownDoc = await app.inject({ url: docUrl, headers: ownerHeaders });
+  assert.equal(ownDoc.statusCode, 200, ownDoc.body);
+  assert.equal(ownDoc.headers['cache-control'], 'private, no-store');
+  assert(ownDoc.body.includes(snapshot.payloadHash));
+  assert.equal((await app.inject({ url: docUrl })).statusCode, 401);
+  const stranger = await db.user.create({
+    data: { email: `stranger-${suffix}@example.test`, displayName: 'Stranger' },
+  });
+  assert.equal(
+    (
+      await app.inject({
+        url: docUrl,
+        headers: { authorization: `Bearer ${await signAccessToken(stranger.id)}` },
+      })
+    ).statusCode,
+    404,
+  );
+  assert.equal(
+    (await app.inject({ url: '/my/issued-result-documents', headers: ownerHeaders })).json()
+      .documents.length,
+    1,
+  );
+  assert.equal(
+    (await app.inject({ url: '/cabinet/overview', headers: ownerHeaders })).json().athlete
+      .recordsTotal,
+    1,
+  );
+  const currentAttempt = await db.attempt.findUniqueOrThrow({ where: { id: attempt.id } });
+  const correction = {
+    action: 'correct',
+    sourceReference: 'fixture signed original',
+    clericalCorrectionOnly: true,
+    expectedRevision: 1,
+    nominationId: nomination.id,
+    attemptId: attempt.id,
+    weightKg: currentAttempt.weightKg + 5,
+    repsCount: currentAttempt.repsCount,
+    result: 'good_lift',
+    reason,
+  };
+  for (const r of await Promise.all([decide(correction), decide(correction)]))
+    assert.equal(r.statusCode, 200, r.body);
+  assert.equal(
+    await db.competitionFinalizationSnapshot.count({ where: { competitionId: competition.id } }),
+    2,
+  );
+  assert.equal(
+    (await db.attempt.findUniqueOrThrow({ where: { id: attempt.id } })).weightKg,
+    currentAttempt.weightKg,
+    'Draft correction must not alter official projection',
+  );
+  assert.equal((await decide(issue)).statusCode, 409, 'Old revision cannot issue new evidence');
+  assert.equal(
+    (await decide({ ...issue, expectedRevision: 2 })).statusCode,
+    409,
+    'Draft cannot issue documents',
+  );
+  for (const r of await Promise.all([
+    decide({ ...approve, expectedRevision: 2 }),
+    decide({ ...approve, expectedRevision: 2 }),
+  ]))
+    assert.equal(r.statusCode, 200, r.body);
+  assert.equal(
+    (await db.attempt.findUniqueOrThrow({ where: { id: attempt.id } })).weightKg,
+    currentAttempt.weightKg + 5,
+  );
+  assert.equal(
+    (await db.recordReview.findUniqueOrThrow({ where: { id: candidate.id } })).status,
+    'superseded',
+  );
+  assert((await db.record.findUniqueOrThrow({ where: { id: oldRecord.id } })).revokedAt);
+  assert.equal(
+    (await app.inject({ url: '/cabinet/overview', headers: ownerHeaders })).json().athlete
+      .recordsTotal,
+    0,
+  );
+  const historicalDoc = await app.inject({ url: docUrl, headers: ownerHeaders });
+  assert(historicalDoc.body.includes('Историческая версия'));
+  assert.deepEqual(
+    (await db.issuedResultDocument.findUniqueOrThrow({ where: { id: firstDoc.id } })).payload,
+    firstDoc.payload,
+  );
+  const second = await decide({ ...issue, expectedRevision: 2 });
+  assert.equal(second.statusCode, 200, second.body);
+  const secondDoc = await db.issuedResultDocument.findUniqueOrThrow({
+    where: { id: second.json().id },
+  });
+  assert.equal(secondDoc.version, 2);
+  assert.equal(secondDoc.previousDocumentId, firstDoc.id);
+  assert.equal(
+    (await decide({ action: 'candidates', expectedRevision: 2, reason })).statusCode,
+    200,
+  );
+  const nextSnapshot = await db.competitionFinalizationSnapshot.findUniqueOrThrow({
+    where: { competitionId_revision: { competitionId: competition.id, revision: 2 } },
+  });
+  const nextCandidate = await db.recordReview.findFirstOrThrow({
+    where: { snapshotId: nextSnapshot.id },
+  });
+  assert.equal(
+    (
+      await decide({
+        action: 'review',
+        expectedRevision: 2,
+        candidateId: nextCandidate.id,
+        decision: 'verified',
+        evidence: {
+          sanctionReference: 'fixture sanction',
+          judgingReference: 'fixture judges',
+          weightReference: 'fixture weight',
+          equipmentReference: 'fixture equipment',
+          videoReference: 'fixture video',
+          registryReference: 'fixture registry',
+          previousBest: null,
+          categoryAndAttemptEligibilityConfirmed: true,
+        },
+        reason,
+      })
+    ).statusCode,
+    200,
+  );
+  const reratified = await decide({
+    ...ratify,
+    expectedRevision: 2,
+    candidateId: nextCandidate.id,
+  });
+  assert.equal(reratified.statusCode, 200, reratified.body);
+  assert.equal(
+    (await app.inject({ url: '/cabinet/overview', headers: ownerHeaders })).json().athlete
+      .recordsTotal,
+    1,
+  );
+  assert.equal(await db.record.count({ where: { competitionId: competition.id } }), 1);
+  assert.equal(
+    await db.syncOutbox.count({
+      where: { aggregateId: competition.id, eventType: 'competition.protocol.corrected' },
+    }),
+    1,
+  );
+  assert.equal(
+    await db.auditLog.count({
+      where: { scopeCompetitionId: competition.id, action: 'competition.protocol.approve' },
+    }),
+    2,
+  );
+  assert.equal(
+    await db.auditLog.count({
+      where: { scopeCompetitionId: competition.id, action: 'competition.protocol.correct' },
+    }),
+    1,
+  );
+  assert.deepEqual(
+    (await db.competitionFinalizationSnapshot.findUniqueOrThrow({ where: { id: snapshot.id } }))
+      .payload,
+    snapshot.payload,
+  );
+  const correctedEvent = await db.syncOutbox.findFirstOrThrow({
+    where: { aggregateId: competition.id, eventType: 'competition.protocol.corrected' },
+  });
+  const sourceFederation = await db.federation.findUniqueOrThrow({
+    where: { id: competition.federationId },
+  });
+  assert.equal(
+    correctedEvent.tenant,
+    sourceFederation.isfTenantCode ?? sourceFederation.countryCode.toLowerCase(),
+  );
+  assert.equal((correctedEvent.payload as Record<string, unknown>).code, competition.code);
+  assert.equal((correctedEvent.payload as Record<string, unknown>).status, 'finalized');
+  const originalWeight = (await db.nomination.findUniqueOrThrow({ where: { id: nomination.id } }))
+    .bodyWeightAtWeighIn;
+  const reweigh = {
+    action: 'reweigh',
+    expectedRevision: 2,
+    reason,
+    sourceReference: 'fixture reweigh sheet',
+    weights: [{ nominationId: nomination.id, weightKg: 72 }],
+  };
+  const reweighed = await Promise.all([decide(reweigh), decide(reweigh)]);
+  for (const response of reweighed) assert.equal(response.statusCode, 200, response.body);
+  assert.equal(reweighed[0].json().id, reweighed[1].json().id);
+  const approvedReweigh = await decide({ ...approve, expectedRevision: 3 });
+  assert.equal(approvedReweigh.statusCode, 200, approvedReweigh.body);
+  assert.equal(
+    (await db.nomination.findUniqueOrThrow({ where: { id: nomination.id } })).bodyWeightAtWeighIn,
+    originalWeight,
+  );
+  const reweighExport = await app.inject({ url: protocolUrls[0]!, headers: adminHeaders });
+  assert.equal(reweighExport.json().nominations[0].reweighWeightKg, 72);
+  console.log(
+    JSON.stringify({
+      protocolApproval: true,
+      correctionRevision: true,
+      recordReviewRatification: true,
+      issuedDocumentHistory: true,
+      ownerDocumentIsolation: true,
+      concurrentReplaySafe: true,
+    }),
   );
   console.log(
     JSON.stringify({

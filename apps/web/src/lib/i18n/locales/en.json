@@ -491,9 +491,10 @@
     "waitForCall": "Wait for the operator to call the attempt, or the result has already been finalized."
   },
   "protocolPrint": {
+    "approved": "Approved by the federation administrator.",
     "source": {
       "working": "Working protocol — results may change",
-      "finalization_snapshot": "Protocol snapshot captured at finalization",
+      "finalization_snapshot": "Saved protocol snapshot",
       "legacy_unverified": "Archive without a snapshot — current reference data, historical version unverified"
     },
     "approvalNotRecorded": "Official federation approval has not been recorded.",

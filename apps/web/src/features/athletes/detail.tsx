@@ -702,7 +702,13 @@ export default function AthleteDetailFeature() {
                           {row.competitionName}
                         </Link>
                       </td>
-                      <td className="text-center">{row.ratifiedAt ? '✓' : '—'}</td>
+                      <td className="text-center">
+                        {row.ratificationStatus === 'ratified'
+                          ? 'Ратифицирован'
+                          : row.ratificationStatus === 'revoked'
+                            ? 'Отозван / повторная проверка'
+                            : 'Не подтверждён'}
+                      </td>
                     </tr>
                   ))
                 )}

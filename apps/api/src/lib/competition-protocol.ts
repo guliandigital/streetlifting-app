@@ -11,6 +11,7 @@ export async function getCompetitionProtocol(competitionId: string): Promise<Com
       const snapshot = await tx.competitionFinalizationSnapshot.findFirst({
         where: { competitionId },
         orderBy: { revision: 'desc' },
+        include: { approval: true },
       });
       let result: CompetitionProtocol;
       if (snapshot) {
@@ -24,7 +25,7 @@ export async function getCompetitionProtocol(competitionId: string): Promise<Com
           ...data,
           provenance: {
             source: 'finalization_snapshot',
-            approvalStatus: 'not_recorded',
+            approvalStatus: snapshot.approval ? 'approved' : 'not_recorded',
             revision: snapshot.revision,
             createdAt: snapshot.createdAt.toISOString(),
             payloadHash: snapshot.payloadHash,

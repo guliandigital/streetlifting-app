@@ -331,6 +331,11 @@ export const athletesPlugin: FeaturePlugin = {
           competitionId: r.competitionId,
           competitionName: r.competition.nameRu,
           ratifiedAt: r.ratifiedAt ? r.ratifiedAt.toISOString() : null,
+          ratificationStatus: r.revokedAt
+            ? 'revoked'
+            : r.ratifiedAt && r.ratifiedByUserId
+              ? 'ratified'
+              : 'unverified',
         }));
         return { records: items, total: items.length };
       },

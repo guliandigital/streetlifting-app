@@ -591,6 +591,9 @@ model CompetitionFinalizationSnapshot {
   payload         Json
 
   competition Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  approval ProtocolApproval?
+  recordReviews RecordReview[]
+  issuedDocuments IssuedResultDocument[]
 
   @@unique([competitionId, revision])
   @@map("competition_finalization_snapshot")
@@ -639,6 +642,7 @@ model WeightClass {
 }
 
 model Athlete {
+  issuedResultDocuments IssuedResultDocument[]
   id                   String       @id @default(uuid()) @db.Uuid
   /// Optional until the athlete explicitly claims the sporting profile through ISF ID.
   userId               String?      @unique @db.Uuid
@@ -883,6 +887,8 @@ model PassportReviewRequest {
 }
 
 model Nomination {
+  recordReviews RecordReview[]
+  issuedDocuments IssuedResultDocument[]
   id                      String           @id @default(uuid()) @db.Uuid
   competitionId           String           @db.Uuid
   athleteId               String           @db.Uuid
@@ -1008,6 +1014,7 @@ model PlateSet {
 // ─── Records, attachments, consent ───────────────────────────────────────
 
 model Record {
+  reviews RecordReview[]
   id              String       @id @default(uuid()) @db.Uuid
   scope           RecordScope
   federationId    String?      @db.Uuid
@@ -1327,4 +1334,60 @@ model AuditLog {
   @@index([scopeFederationId, occurredAt])
   @@index([action, occurredAt])
   @@map("audit_log")
+}
+
+/// Explicit federation approval, append-only and tied to one immutable revision.
+model ProtocolApproval {
+  id               String                          @id @default(uuid()) @db.Uuid
+  snapshotId       String                          @unique @db.Uuid
+  approvedByUserId String                          @db.Uuid
+  approvedAt       DateTime                        @default(now()) @db.Timestamptz(6)
+  reason           String
+  evidence         Json
+  snapshot         CompetitionFinalizationSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+
+  @@map("protocol_approval")
+}
+
+model RecordReview {
+  id                 String                          @id @default(uuid()) @db.Uuid
+  snapshotId         String                          @db.Uuid
+  nominationId       String                          @db.Uuid
+  status             String                          @default("candidate")
+  createdAt          DateTime                        @default(now()) @db.Timestamptz(6)
+  reviewedAt         DateTime?                       @db.Timestamptz(6)
+  reviewedByUserId   String?                         @db.Uuid
+  evidence           Json?
+  reviewReason       String?
+  ratificationReason String?
+  recordId           String?                         @db.Uuid
+  snapshot           CompetitionFinalizationSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  nomination         Nomination                      @relation(fields: [nominationId], references: [id], onDelete: Restrict)
+  record             Record?                         @relation(fields: [recordId], references: [id], onDelete: Restrict)
+
+  @@unique([snapshotId, nominationId])
+  @@map("record_review")
+}
+
+/// Issued result extract; contents and prior versions are never rewritten.
+model IssuedResultDocument {
+  id                 String                          @id @default(uuid()) @db.Uuid
+  snapshotId         String                          @db.Uuid
+  nominationId       String                          @db.Uuid
+  athleteId          String                          @db.Uuid
+  version            Int
+  previousDocumentId String?                         @db.Uuid
+  issuedAt           DateTime                        @default(now()) @db.Timestamptz(6)
+  issuedByUserId     String                          @db.Uuid
+  reason             String
+  payload            Json
+  payloadHash        String                          @db.Char(64)
+  snapshot           CompetitionFinalizationSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  nomination         Nomination                      @relation(fields: [nominationId], references: [id], onDelete: Restrict)
+  athlete            Athlete                         @relation(fields: [athleteId], references: [id], onDelete: Restrict)
+
+  @@unique([snapshotId, nominationId])
+  @@unique([nominationId, version])
+  @@index([athleteId, issuedAt])
+  @@map("issued_result_document")
 }

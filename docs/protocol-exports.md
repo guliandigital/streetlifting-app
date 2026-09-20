@@ -12,9 +12,9 @@ Responses are private/no-store. This is not a public publication endpoint.
 - `legacy_unverified`: finalized/archived tournament without a snapshot. Current
   operational data is shown explicitly as unverified historical evidence.
 
-Every source carries `approvalStatus: not_recorded`. Finalization is not federation
-approval, record ratification or issuance of a document. Official approval/correction
-authority remains a separate decision. No archive backfill or financial posting occurs.
+Finalization alone carries `approvalStatus: not_recorded`. An explicit, persisted
+federation-administrator decision changes the projection to `approved`. See
+[protocol review workflow](protocol-review-workflow.md). No archive backfill or automatic financial posting occurs.
 
 CSV/XLSX preserve their first 15 columns and append protocolSource, snapshotRevision,
 snapshotCreatedAt, snapshotHash and approvalStatus per result. Consumers that assume

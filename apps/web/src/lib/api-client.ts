@@ -1,3 +1,4 @@
+import type { ProtocolReviewCommand, ProtocolReviewResponse } from '@streetlifting/domain';
 import type { CompetitionProtocol } from '@streetlifting/domain';
 import type {
   AthleteCreate,
@@ -579,6 +580,23 @@ export const api = {
       return request(`/competitions${qs ? `?${qs}` : ''}`);
     },
     get: (id: string): Promise<{ competition: CompetitionDto }> => request(`/competitions/${id}`),
+    reviewProtocol: (id: string): Promise<ProtocolReviewResponse> =>
+      request(`/competitions/${id}/protocol-review`),
+    decideProtocol: (
+      id: string,
+      command: ProtocolReviewCommand,
+    ): Promise<{ id: string; replayed?: boolean }> =>
+      request(`/competitions/${id}/protocol-review`, { method: 'POST', body: command }),
+    issuedDocument: (id: string): Promise<Blob> =>
+      requestBlob(`/issued-result-documents/${id}/download`),
+    myIssuedDocuments: (): Promise<{
+      documents: Array<{
+        id: string;
+        version: number;
+        issuedAt: string;
+        snapshot: { revision: number; competition: { id: string; nameRu: string } };
+      }>;
+    }> => request('/my/issued-result-documents'),
     protocol: (id: string): Promise<CompetitionProtocol> =>
       request(`/competitions/${id}/protocol.json`),
     finalizationSnapshot: (id: string): Promise<FinalizationSnapshotResponse> =>

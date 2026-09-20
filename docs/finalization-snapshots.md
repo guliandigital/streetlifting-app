@@ -18,7 +18,7 @@ The payload captures event dates/rulebook, discipline formats and component limi
 division age/gender/veteran coefficients, actual weight categories, admitted weights,
 attempt results, scores and placements. Historical reads return stored values;
 later reference-catalog edits never rerun the scoring engine for this evidence.
-`calculationVersion: competition-scoring-v1` identifies the current algorithm in
+`calculationVersion: competition-scoring-v2` identifies the current algorithm in
 `packages/domain/src/competition-scoring.ts`; any future semantic change must use
 a new version. Production additionally records the Vercel Git commit.
 
@@ -44,8 +44,11 @@ results, so it is not a public export.
 `snapshot: null` means no captured evidence exists. It must not trigger reconstruction
 from current catalog values. `approvalStatus: not_recorded` is intentional: service
 finalization is not federation approval, record ratification or document issuance.
-Approval/revision authority and billing rules are still awaiting owner decisions.
-There is no correction endpoint or accounting operation in this release.
+The owner subsequently selected the federation administrator as approval/correction
+authority. [Protocol review](protocol-review-workflow.md) adds explicit approvals,
+correction revisions, record review and issued documents. This endpoint now returns
+the latest revision and derives approvalStatus from the separate immutable decision.
+The payload itself remains unchanged. Automatic billing rules still await owner direction.
 
 ## Migration and recovery
 

@@ -1262,6 +1262,24 @@ export const federationsPlugin: FeaturePlugin = {
           return reply.code(201).send({ writeoff });
         } catch (err) {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            // The federation document number is the existing durable idempotency key.
+            // A lost-response retry must return the original posting, not encourage renumbering.
+            const existing = await prisma.writeoff.findUnique({
+              where: {
+                federationId_number: { federationId: req.params.id, number: parsed.data.number },
+              },
+              include: { competition: { select: { id: true, code: true, nameRu: true } } },
+            });
+            if (
+              existing &&
+              existing.date.getTime() === dateOnly(parsed.data.date).getTime() &&
+              existing.nominationsCount === parsed.data.nominationsCount &&
+              existing.competitionId === (parsed.data.competitionId ?? null) &&
+              existing.linkedReceiptId === (parsed.data.linkedReceiptId ?? null)
+            ) {
+              return reply.code(200).send({ writeoff: existing, replayed: true });
+            }
+
             return reply.code(409).send({
               error: {
                 code: 'number_taken',

@@ -274,10 +274,12 @@ export const competitionsPlugin: FeaturePlugin = {
               requestId: req.requestId,
             },
           });
-        const snapshot = await prisma.competitionFinalizationSnapshot.findUnique({
-          where: { competitionId_revision: { competitionId: competition.id, revision: 1 } },
+        const snapshot = await prisma.competitionFinalizationSnapshot.findFirst({
+          where: { competitionId: competition.id },
+          orderBy: { revision: 'desc' },
+          include: { approval: true },
         });
-        return { snapshot, approvalStatus: 'not_recorded' };
+        return { snapshot, approvalStatus: snapshot?.approval ? 'approved' : 'not_recorded' };
       },
     );
 

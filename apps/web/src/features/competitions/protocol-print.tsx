@@ -66,7 +66,13 @@ export default function CompetitionProtocolPrintFeature() {
         <h2 className="text-xl font-semibold">{data.competition.nameRu}</h2>
         <div data-testid="protocol-provenance" className="space-y-1 text-sm">
           <p>{t(`protocolPrint.source.${data.provenance.source}`)}</p>
-          <p>{t('protocolPrint.approvalNotRecorded')}</p>
+          <p>
+            {t(
+              data.provenance.approvalStatus === 'approved'
+                ? 'protocolPrint.approved'
+                : 'protocolPrint.approvalNotRecorded',
+            )}
+          </p>
           {data.provenance.revision !== null && (
             <>
               <p>
@@ -108,6 +114,11 @@ export default function CompetitionProtocolPrintFeature() {
                     <TableCell>{nomination.weightClass.nameRu}</TableCell>
                     <TableCell className="tabular-nums">
                       {nomination.bodyWeightAtWeighIn ?? '—'}
+                      {nomination.reweighWeightKg !== undefined && (
+                        <small className="block">
+                          Перевзвешивание: {nomination.reweighWeightKg}
+                        </small>
+                      )}
                     </TableCell>
                     <TableCell className="tabular-nums">
                       {nomination.bestSuccessfulAttemptKg ?? '—'}

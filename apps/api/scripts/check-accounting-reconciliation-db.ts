@@ -255,6 +255,31 @@ try {
   assert.equal((await app.inject({ url, headers: accountant.headers })).statusCode, 403);
   assert.equal(await db.writeoff.count({ where: { federationId: own.id } }), 57);
   assert.equal(await db.receipt.count({ where: { federationId: own.id } }), 55);
+
+  // Only disposable test data is posted. No billing basis is inferred from results.
+  const poster = await makeUser(own.id);
+  const writeoffUrl = `/federations/${own.id}/writeoffs`;
+  const posting = {
+    number: `retry-${randomUUID()}`,
+    date: '2030-01-01',
+    nominationsCount: 2,
+    competitionId: competition.id,
+  };
+  const post = (payload: object) =>
+    app.inject({ method: 'POST', url: writeoffUrl, headers: poster.headers, payload });
+  const retries = await Promise.all([post(posting), post(posting)]);
+  assert.deepEqual(retries.map((r) => r.statusCode).sort(), [200, 201]);
+  assert.equal(retries[0].json().writeoff.id, retries[1].json().writeoff.id);
+  const replay = await post(posting);
+  assert.equal(replay.statusCode, 200, replay.body);
+  assert.equal((await post({ ...posting, nominationsCount: 3 })).statusCode, 409);
+  assert.equal(await db.writeoff.count({ where: { federationId: own.id } }), 58);
+  assert.equal(
+    await db.auditLog.count({
+      where: { targetId: replay.json().writeoff.id, action: 'federation.writeoff.created' },
+    }),
+    1,
+  );
   console.log(
     'PASS accounting: full-ledger totals beyond 50, distinct nominations, historical gaps, pagination, unmatched postings, tenant/role isolation, revocation, read-only',
   );

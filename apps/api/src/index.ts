@@ -1,3 +1,5 @@
+import { issuedResultDocumentsPlugin } from './plugins/issued-result-documents.js';
+import { protocolReviewPlugin } from './plugins/protocol-review.js';
 import Fastify, { type FastifyError } from 'fastify';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import cors from '@fastify/cors';
@@ -125,6 +127,8 @@ const features = [
   federationChaptersPlugin,
   competitionsPlugin,
   competitionOpsPlugin,
+  protocolReviewPlugin,
+  issuedResultDocumentsPlugin,
   ...(websocketEnabled ? [liveUpdatesPlugin] : []),
   publicRegistrationPlugin,
   isfIntegrationPlugin,
