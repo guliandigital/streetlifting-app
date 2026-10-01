@@ -4,7 +4,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://api.streetlifting.app/:path*"
+      "destination": "https://api.streetlifting.pro/:path*"
     },
     {
       "source": "/((?!api/|assets/|sw\\.js|service-worker\\.js|registerSW\\.js|site\\.webmanifest|favicon|brand/|apple-touch-icon|android-chrome).*)",

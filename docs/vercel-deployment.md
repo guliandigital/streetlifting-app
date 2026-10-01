@@ -4,11 +4,11 @@ Hosting decision: [ADR-0013](decisions/ADR-0013-vercel-hosting.md). Three projec
 `amobit` Vercel team, all linked to `guliandigital/streetlifting-app`; production deploys on
 push to `main`, previews on pull requests.
 
-| Project                | Root directory | Framework preset | Production domain                            |
-| ---------------------- | -------------- | ---------------- | -------------------------------------------- |
-| `streetlifting-web`    | `apps/web`     | Vite             | `streetlifting.app`, `www.streetlifting.app` |
-| `streetlifting-api`    | `apps/api`     | Fastify          | `api.streetlifting.app`                      |
-| `streetlifting-isf-id` | `apps/isf-id`  | Fastify          | `id.streetlifting.app`                       |
+| Project                | Root directory | Framework preset | Production domain                                                              |
+| ---------------------- | -------------- | ---------------- | ------------------------------------------------------------------------------ |
+| `streetlifting-web`    | `apps/web`     | Vite             | `app.streetlifting.pro` (legacy: `streetlifting.app`, `www.streetlifting.app`) |
+| `streetlifting-api`    | `apps/api`     | Fastify          | `api.streetlifting.pro` (legacy: `api.streetlifting.app`)                      |
+| `streetlifting-isf-id` | `apps/isf-id`  | Fastify          | `id.streetlifting.pro`                                                         |
 
 Each app has a `vercel-build` script that Vercel runs instead of `build`:
 
@@ -44,13 +44,13 @@ storage driver automatically.
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `NODE_ENV`                                           | `production`                                                                                                         |
 | `JWT_SECRET`                                         | `openssl rand -base64 48` (sensitive)                                                                                |
-| `CORS_ORIGIN`                                        | `https://streetlifting.app,https://www.streetlifting.app`                                                            |
+| `CORS_ORIGIN`                                        | `https://app.streetlifting.pro` (same-origin via the web rewrite; legacy `streetlifting.app` origins may stay)       |
 | `CRON_SECRET`                                        | `openssl rand -base64 32` (sensitive) — Vercel sends it to cron targets                                              |
 | `LOG_LEVEL`                                          | `info`                                                                                                               |
 | `RATE_LIMIT_MAX`                                     | `120`                                                                                                                |
 | `SENTRY_DSN`                                         | optional                                                                                                             |
 | `SMTP_*` / `MAILER_*`                                | as in `apps/api/.env.example`                                                                                        |
-| `ISF_ID_ENABLED`, `ISF_ID_ISSUER`, `ISF_ID_JWKS_URL` | `true`, `https://id.streetlifting.app`, `https://id.streetlifting.app/.well-known/jwks.json` once ISF ID is verified |
+| `ISF_ID_ENABLED`, `ISF_ID_ISSUER`, `ISF_ID_JWKS_URL` | `true`, `https://id.streetlifting.pro`, `https://id.streetlifting.pro/.well-known/jwks.json` once ISF ID is verified |
 | `ISF_WEBHOOK_URL`, `ISF_WEBHOOK_SECRET`              | when the ISF downstream is configured                                                                                |
 | `ROOT_EMAIL`, `ROOT_PASSWORD`                        | **not** stored in Vercel; used once from a workstation (see seeding)                                                 |
 
@@ -62,14 +62,19 @@ Neon provides. `ISF_ID_PRIVATE_KEY` holds the RSA PEM as a sensitive variable
 
 ### 4. Domains
 
-Add in each project (Settings → Domains) and point DNS at reg.ru to Vercel:
+Add in each project (Settings → Domains) and point DNS to Vercel. `streetlifting.app` is served
+by Cloudflare DNS (records must be "DNS only"); `streetlifting.pro` stays on reg.ru hosting DNS
+(ISPmanager of hosting `u3307701`), where the `id`, `app` and `api` records point to Vercel and the
+federation WordPress site keeps its own records:
 
 | Domain                  | Project              | DNS                          |
 | ----------------------- | -------------------- | ---------------------------- |
 | `streetlifting.app`     | streetlifting-web    | `A 76.76.21.21`              |
 | `www.streetlifting.app` | streetlifting-web    | `CNAME cname.vercel-dns.com` |
 | `api.streetlifting.app` | streetlifting-api    | `CNAME cname.vercel-dns.com` |
-| `id.streetlifting.app`  | streetlifting-isf-id | `CNAME cname.vercel-dns.com` |
+| `id.streetlifting.pro`  | streetlifting-isf-id | `CNAME cname.vercel-dns.com` |
+| `app.streetlifting.pro` | streetlifting-web    | `CNAME cname.vercel-dns.com` |
+| `api.streetlifting.pro` | streetlifting-api    | `CNAME cname.vercel-dns.com` |
 
 Vercel issues TLS certificates automatically once DNS resolves. The `.vercel.app` URLs are behind
 Vercel Authentication (team default) and are not used by the SPA.
@@ -96,7 +101,7 @@ DATABASE_URL='<DATABASE_URL_UNPOOLED>' ROOT_EMAIL=... ROOT_PASSWORD=... \
    curl -fsS https://streetlifting.app/api/health
    curl -fsS https://streetlifting.app/api/health/competitions
    curl -fsS https://streetlifting.app/api/health/competition-ops
-   curl -fsS https://id.streetlifting.app/health
+   curl -fsS https://id.streetlifting.pro/health
    ```
 
 3. Run the GitHub Actions **ISF production smoke** workflow (authenticated ISF export checks).
