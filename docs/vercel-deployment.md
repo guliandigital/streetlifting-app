@@ -4,11 +4,11 @@ Hosting decision: [ADR-0013](decisions/ADR-0013-vercel-hosting.md). Three projec
 `amobit` Vercel team, all linked to `guliandigital/streetlifting-app`; production deploys on
 push to `main`, previews on pull requests.
 
-| Project                | Root directory | Framework preset | Production domain                            |
-| ---------------------- | -------------- | ---------------- | -------------------------------------------- |
-| `streetlifting-web`    | `apps/web`     | Vite             | `streetlifting.app`, `www.streetlifting.app` |
-| `streetlifting-api`    | `apps/api`     | Fastify          | `api.streetlifting.app`                      |
-| `streetlifting-isf-id` | `apps/isf-id`  | Fastify          | `id.streetlifting.pro`                       |
+| Project                | Root directory | Framework preset | Production domain                                                              |
+| ---------------------- | -------------- | ---------------- | ------------------------------------------------------------------------------ |
+| `streetlifting-web`    | `apps/web`     | Vite             | `app.streetlifting.pro` (legacy: `streetlifting.app`, `www.streetlifting.app`) |
+| `streetlifting-api`    | `apps/api`     | Fastify          | `api.streetlifting.pro` (legacy: `api.streetlifting.app`)                      |
+| `streetlifting-isf-id` | `apps/isf-id`  | Fastify          | `id.streetlifting.pro`                                                         |
 
 Each app has a `vercel-build` script that Vercel runs instead of `build`:
 
@@ -44,7 +44,7 @@ storage driver automatically.
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `NODE_ENV`                                           | `production`                                                                                                         |
 | `JWT_SECRET`                                         | `openssl rand -base64 48` (sensitive)                                                                                |
-| `CORS_ORIGIN`                                        | `https://streetlifting.app,https://www.streetlifting.app`                                                            |
+| `CORS_ORIGIN`                                        | `https://app.streetlifting.pro` (same-origin via the web rewrite; legacy `streetlifting.app` origins may stay)       |
 | `CRON_SECRET`                                        | `openssl rand -base64 32` (sensitive) — Vercel sends it to cron targets                                              |
 | `LOG_LEVEL`                                          | `info`                                                                                                               |
 | `RATE_LIMIT_MAX`                                     | `120`                                                                                                                |
@@ -63,8 +63,9 @@ Neon provides. `ISF_ID_PRIVATE_KEY` holds the RSA PEM as a sensitive variable
 ### 4. Domains
 
 Add in each project (Settings → Domains) and point DNS to Vercel. `streetlifting.app` is served
-by Cloudflare DNS (records must be "DNS only"); `streetlifting.pro` stays on reg.ru DNS, where only
-the `id` record is added and the federation WordPress site keeps its own records:
+by Cloudflare DNS (records must be "DNS only"); `streetlifting.pro` stays on reg.ru hosting DNS
+(ISPmanager of hosting `u3307701`), where the `id`, `app` and `api` records point to Vercel and the
+federation WordPress site keeps its own records:
 
 | Domain                  | Project              | DNS                          |
 | ----------------------- | -------------------- | ---------------------------- |
@@ -72,6 +73,8 @@ the `id` record is added and the federation WordPress site keeps its own records
 | `www.streetlifting.app` | streetlifting-web    | `CNAME cname.vercel-dns.com` |
 | `api.streetlifting.app` | streetlifting-api    | `CNAME cname.vercel-dns.com` |
 | `id.streetlifting.pro`  | streetlifting-isf-id | `CNAME cname.vercel-dns.com` |
+| `app.streetlifting.pro` | streetlifting-web    | `CNAME cname.vercel-dns.com` |
+| `api.streetlifting.pro` | streetlifting-api    | `CNAME cname.vercel-dns.com` |
 
 Vercel issues TLS certificates automatically once DNS resolves. The `.vercel.app` URLs are behind
 Vercel Authentication (team default) and are not used by the SPA.

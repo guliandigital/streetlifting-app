@@ -66,19 +66,19 @@ Re-running rotates that user's password and preserves existing non-revoked scope
 3. Smoke checks:
 
    ```bash
-   curl -fsS https://streetlifting.app/api/health
-   curl -fsS https://streetlifting.app/api/health/competitions
-   curl -fsS https://streetlifting.app/api/health/competition-ops
+   curl -fsS https://app.streetlifting.pro/api/health
+   curl -fsS https://app.streetlifting.pro/api/health/competitions
+   curl -fsS https://app.streetlifting.pro/api/health/competition-ops
    curl -fsS https://id.streetlifting.pro/health
-   curl -fsSI https://streetlifting.app/sw.js | grep -Ei 'content-type|cache-control'
-   ISF_META_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' https://streetlifting.app/api/isf/v1/meta)
+   curl -fsSI https://app.streetlifting.pro/sw.js | grep -Ei 'content-type|cache-control'
+   ISF_META_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' https://app.streetlifting.pro/api/isf/v1/meta)
    test "$ISF_META_STATUS" = "401"
    ```
 
 4. Authenticated pilot smoke against production:
 
    ```bash
-   PILOT_SMOKE_API_URL=https://streetlifting.app/api \
+   PILOT_SMOKE_API_URL=https://app.streetlifting.pro/api \
    PILOT_SMOKE_EMAIL=<root-or-secretary-email> \
    PILOT_SMOKE_PASSWORD=<password> \
    pnpm release:smoke
@@ -92,7 +92,7 @@ Re-running rotates that user's password and preserves existing non-revoked scope
    `ISF_SMOKE_SERVICE_TOKEN` from the `production` environment secret. Locally:
 
    ```bash
-   ISF_SMOKE_API_URL=https://streetlifting.app/api \
+   ISF_SMOKE_API_URL=https://app.streetlifting.pro/api \
    ISF_SMOKE_SERVICE_TOKEN=<service-client-token> \
    ISF_SMOKE_TENANT=ru \
    pnpm release:smoke:isf
@@ -120,8 +120,8 @@ Re-running rotates that user's password and preserves existing non-revoked scope
 1. Create the Playwright auth state automatically, when QA credentials are available:
 
    ```bash
-   E2E_API_URL=https://streetlifting.app/api \
-   E2E_WEB_URL=https://streetlifting.app \
+   E2E_API_URL=https://app.streetlifting.pro/api \
+   E2E_WEB_URL=https://app.streetlifting.pro \
    E2E_EMAIL=<root-or-secretary-email> \
    E2E_PASSWORD=<password> \
    pnpm --filter=@streetlifting/web e2e:auth
@@ -130,14 +130,14 @@ Re-running rotates that user's password and preserves existing non-revoked scope
    Or save it after a manual browser login:
 
    ```bash
-   E2E_WEB_URL=https://streetlifting.app pnpm --filter=@streetlifting/web e2e:auth:manual
+   E2E_WEB_URL=https://app.streetlifting.pro pnpm --filter=@streetlifting/web e2e:auth:manual
    ```
 
 2. Run the browser QA flow with the saved `apps/web/e2e/.auth/secretary.json` state:
 
    ```bash
-   E2E_API_URL=https://streetlifting.app/api \
-   E2E_WEB_URL=https://streetlifting.app \
+   E2E_API_URL=https://app.streetlifting.pro/api \
+   E2E_WEB_URL=https://app.streetlifting.pro \
    E2E_SKIP_WEB_SERVER=1 \
    pnpm e2e:web
    ```

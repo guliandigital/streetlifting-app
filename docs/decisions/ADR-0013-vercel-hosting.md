@@ -21,8 +21,8 @@ Three Vercel projects in the `amobit` team, all linked to
 
 | Project                | Root          | Preset  | Domain                  |
 | ---------------------- | ------------- | ------- | ----------------------- |
-| `streetlifting-web`    | `apps/web`    | vite    | `streetlifting.app`     |
-| `streetlifting-api`    | `apps/api`    | fastify | `api.streetlifting.app` |
+| `streetlifting-web`    | `apps/web`    | vite    | `app.streetlifting.pro` |
+| `streetlifting-api`    | `apps/api`    | fastify | `api.streetlifting.pro` |
 | `streetlifting-isf-id` | `apps/isf-id` | fastify | `id.streetlifting.pro`  |
 
 - The SPA keeps calling `/api/*` on its own origin; `apps/web/vercel.json`
