@@ -65,7 +65,7 @@ A user can hold multiple role assignments. The desktop client persists the user'
 See [ADR-0013](decisions/ADR-0013-vercel-hosting.md) and [vercel-deployment.md](vercel-deployment.md).
 
 - Web → Vercel static deployment (`streetlifting.app`), `/api/*` rewritten to the API project
-- API + ISF ID → Vercel Fastify functions (`api.streetlifting.app`, `id.streetlifting.app`)
+- API + ISF ID → Vercel Fastify functions (`api.streetlifting.app`, `id.streetlifting.pro`)
 - Postgres → Neon (two databases: app and ISF ID); uploads → private Vercel Blob
 - Live updates over WebSocket are not available on Vercel; tournament screens use 2 s HTTP polling
 - Desktop binaries → GitHub Releases (Tauri updater pulls `latest.json` from this repo's releases) — deferred

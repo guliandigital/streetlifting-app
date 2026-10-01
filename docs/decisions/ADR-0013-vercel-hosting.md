@@ -23,7 +23,7 @@ Three Vercel projects in the `amobit` team, all linked to
 | ---------------------- | ------------- | ------- | ----------------------- |
 | `streetlifting-web`    | `apps/web`    | vite    | `streetlifting.app`     |
 | `streetlifting-api`    | `apps/api`    | fastify | `api.streetlifting.app` |
-| `streetlifting-isf-id` | `apps/isf-id` | fastify | `id.streetlifting.app`  |
+| `streetlifting-isf-id` | `apps/isf-id` | fastify | `id.streetlifting.pro`  |
 
 - The SPA keeps calling `/api/*` on its own origin; `apps/web/vercel.json`
   rewrites that prefix to the API project. Bearer tokens, not cookies, carry the

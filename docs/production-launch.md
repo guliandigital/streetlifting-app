@@ -69,7 +69,7 @@ Re-running rotates that user's password and preserves existing non-revoked scope
    curl -fsS https://streetlifting.app/api/health
    curl -fsS https://streetlifting.app/api/health/competitions
    curl -fsS https://streetlifting.app/api/health/competition-ops
-   curl -fsS https://id.streetlifting.app/health
+   curl -fsS https://id.streetlifting.pro/health
    curl -fsSI https://streetlifting.app/sw.js | grep -Ei 'content-type|cache-control'
    ISF_META_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' https://streetlifting.app/api/isf/v1/meta)
    test "$ISF_META_STATUS" = "401"

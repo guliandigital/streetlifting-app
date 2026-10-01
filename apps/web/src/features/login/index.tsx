@@ -68,7 +68,7 @@ export default function LoginFeature() {
         </CardHeader>
         <CardContent>
           <Button asChild variant="outline" className="w-full mb-4">
-            <a href="https://id.streetlifting.app/login?audience=streetlifting-api&amp;return_to=https%3A%2F%2Fstreetlifting.app%2Fisf-id">
+            <a href="https://id.streetlifting.pro/login?audience=streetlifting-api&amp;return_to=https%3A%2F%2Fstreetlifting.app%2Fisf-id">
               Continue with ISF ID
             </a>
           </Button>
