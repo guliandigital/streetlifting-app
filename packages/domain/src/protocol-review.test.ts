@@ -178,8 +178,12 @@ describe('ISF 5.1 evidence and reweighing', () => {
       previousBest: 50,
       categoryAndAttemptEligibilityConfirmed: true,
     };
-    expect(() => validateRecordEvidence('three_attempts_max', 51, evidence)).toThrow();
-    expect(() => validateRecordEvidence('three_attempts_max', 51.25, evidence)).not.toThrow();
+    // Section 10.3: +0.5 kg in every weighted lift, the Barbell Squat included.
+    expect(() => validateRecordEvidence('three_attempts_max', 50.25, evidence)).toThrow();
+    expect(() => validateRecordEvidence('three_attempts_max', 50.5, evidence)).not.toThrow();
+    expect(() =>
+      validateRecordEvidence('three_attempts_max', 72.8, { ...evidence, previousBest: 72.3 }),
+    ).not.toThrow();
     expect(() => validateRecordEvidence('reps_to_failure', 50, evidence)).toThrow();
     expect(() => validateRecordEvidence('reps_to_failure', 51, evidence)).not.toThrow();
     expect(() => validateRecordEvidence('isometric_hold', 100, evidence)).toThrow();

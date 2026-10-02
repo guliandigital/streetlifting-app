@@ -116,7 +116,9 @@ the application does not authenticate handwritten signatures or inspect external
 Sections 7.7 and 10 require sanctioning, eligible referees/category/attempts,
 weight/equipment evidence, frontal video and registry review. Verification saves
 structured references and the previous record (null explicitly means first record
-in that category). Section 10.3 minimum improvements are 1.25 kg or one repetition;
+in that category). Section 10.3 minimum improvements (v5.2, as in the IPF) are 0.5 kg in
+every weighted lift, the Barbell Squat included, or one repetition in Multirep. They are
+separate from the 1.25 kg (2.5 kg squat) attempt step;
 unsupported isometric records are blocked. The reviewer also checks first performance
 priority under 7.7.6. This release does not silently resolve archive category identity.
 

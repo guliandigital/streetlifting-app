@@ -1871,7 +1871,8 @@ function AttemptEditor({
           data-testid="attempt-weight"
           type="number"
           min="0"
-          step="0.5"
+          // Attempts move in 1.25 kg steps, records in 0.5 kg: 0.25 admits both.
+          step="0.25"
           value={weightKg}
           onChange={(e) => setWeightKg(e.target.value)}
         />
