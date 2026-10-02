@@ -223,14 +223,31 @@ export function correctProtocol(
   };
 }
 
-/** ISF v5.1 sections 7.7 and 10.3; central ISF recognition remains external. */
+/**
+ * Minimum improvement over the current record (ISF v5.2 section 10.3, as in
+ * the IPF): +0.5 kg in every weighted lift, the Barbell Squat included, and
+ * +1 repetition in Multirep. This is separate from the 1.25 / 2.5 kg attempt step.
+ */
+export const RECORD_MIN_IMPROVEMENT_KG = 0.5;
+export const RECORD_MIN_IMPROVEMENT_REPS = 1;
+
+/** ISF v5.2 sections 7.7 and 10.3; central ISF recognition remains external. */
 export function validateRecordEvidence(format: string, result: number, value: unknown) {
   const evidence = recordReviewEvidence.parse(value);
   if (!['three_attempts_max', 'reps_to_failure', 'reps_in_time'].includes(format))
     throw new Error('Для этой дисциплины требуется отдельный регламент рекордов');
-  const increment = format === 'three_attempts_max' ? 1.25 : 1;
-  if (evidence.previousBest !== null && result < evidence.previousBest + increment)
-    throw new Error(`Превышение действующего рекорда должно составлять не менее ${increment}`);
+  const weighted = format === 'three_attempts_max';
+  const increment = weighted ? RECORD_MIN_IMPROVEMENT_KG : RECORD_MIN_IMPROVEMENT_REPS;
+  // Compared in thousandths so decimal weights (72.3 + 0.5) are not rejected by float error.
+  if (
+    evidence.previousBest !== null &&
+    Math.round(result * 1000) < Math.round((evidence.previousBest + increment) * 1000)
+  )
+    throw new Error(
+      weighted
+        ? `Превышение действующего рекорда должно составлять не менее ${increment} кг`
+        : `Превышение действующего рекорда должно составлять не менее ${increment} повторения`,
+    );
   return evidence;
 }
 
