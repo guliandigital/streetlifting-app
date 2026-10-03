@@ -54,6 +54,10 @@ describe('ISF ID internal launch endpoint', () => {
       expect(accepted.statusCode).toBe(200);
       expect(accepted.headers['cache-control']).toBe('no-store');
       expect(accepted.body).toContain('ISF ID');
+      expect(accepted.body).toContain('International Streetlifting Federation');
+      expect(accepted.body).toContain('data:image/png;base64,');
+      expect(accepted.headers['content-security-policy']).toContain('img-src data:');
+      expect(accepted.headers['content-security-policy']).toContain("connect-src 'self'");
       expect(accepted.body).toContain("credentials:'same-origin'");
       expect(accepted.body).not.toContain('sessionStorage');
 
