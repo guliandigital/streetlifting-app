@@ -58,7 +58,7 @@ describe('ISF ID internal launch endpoint', () => {
       expect(accepted.body).toContain('data:image/png;base64,');
       expect(accepted.headers['content-security-policy']).toContain('img-src data:');
       expect(accepted.headers['content-security-policy']).toContain("connect-src 'self'");
-      expect(accepted.body).toContain("credentials:'same-origin'");
+      expect(accepted.body).toMatch(/credentials:\s*['"]same-origin['"]/);
       expect(accepted.body).not.toContain('sessionStorage');
 
       const federationSite = await app.inject({
