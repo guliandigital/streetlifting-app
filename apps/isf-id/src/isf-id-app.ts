@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import Fastify from 'fastify';
 import { z } from 'zod';
+import { Prisma } from '../generated/prisma/index.js';
 import type { IsfIdIssuer } from './issuer.js';
 import { registerIsfIdAuthentication } from './auth.js';
 import { registerBrowserLogin } from './browser-login.js';
@@ -25,6 +26,41 @@ export function buildIsfIdApp(issuer: IsfIdIssuer, serviceToken: string) {
     },
     bodyLimit: 16 * 1024,
     trustProxy: true,
+  });
+
+  app.setErrorHandler((error, request, reply) => {
+    if (isDatabaseUnavailable(error)) {
+      request.log.error({ err: error }, 'ISF ID database unavailable');
+      reply.code(503).header('cache-control', 'no-store').header('retry-after', '30');
+      const message = 'Sign-in is temporarily unavailable. Please try again shortly.';
+      // Authorization validates the client before querying the session or issuing a code.
+      if (request.method === 'GET' && request.routeOptions.url === '/oauth/authorize') {
+        return reply
+          .header('referrer-policy', 'no-referrer')
+          .header('x-content-type-options', 'nosniff')
+          .type('text/plain; charset=utf-8')
+          .send(message);
+      }
+      return reply.send({ error: { code: 'identity_unavailable', message } });
+    }
+
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'statusCode' in error &&
+      typeof error.statusCode === 'number' &&
+      error.statusCode >= 400 &&
+      error.statusCode < 500
+    ) {
+      return reply.send(error);
+    }
+
+    request.log.error({ err: error }, 'ISF ID request failed');
+    return reply.code(500).header('cache-control', 'no-store').send({
+      statusCode: 500,
+      error: 'Internal Server Error',
+      message: 'Internal Server Error',
+    });
   });
 
   app.get('/health', async () => ({ status: 'ok', service: 'isf-id' }));
@@ -62,6 +98,16 @@ export function buildIsfIdApp(issuer: IsfIdIssuer, serviceToken: string) {
   });
 
   return app;
+}
+
+function isDatabaseUnavailable(error: unknown): boolean {
+  const code =
+    error instanceof Prisma.PrismaClientKnownRequestError
+      ? error.code
+      : error instanceof Prisma.PrismaClientInitializationError
+        ? error.errorCode
+        : undefined;
+  return code === 'P1001' || code === 'P1002' || code === 'P1017';
 }
 
 function constantTimeMatch(provided: string, expected: string): boolean {
