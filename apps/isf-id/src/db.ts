@@ -4,13 +4,16 @@ declare global {
   var __isfIdPrisma: PrismaClient | undefined;
 }
 
-/** Neon pooled endpoints need `pgbouncer=true` for Prisma (transaction-mode PgBouncer). */
-function normalizeDatabaseUrl(url: string | undefined): string | undefined {
+/** Allow Neon cold starts and support transaction-mode pooled connections. */
+export function normalizeDatabaseUrl(url: string | undefined): string | undefined {
   if (!url) return url;
   try {
     const parsed = new URL(url);
     if (parsed.hostname.includes('-pooler') && !parsed.searchParams.has('pgbouncer')) {
       parsed.searchParams.set('pgbouncer', 'true');
+    }
+    if (parsed.hostname.endsWith('.neon.tech') && !parsed.searchParams.has('connect_timeout')) {
+      parsed.searchParams.set('connect_timeout', '15');
     }
     return parsed.toString();
   } catch {
